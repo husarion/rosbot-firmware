@@ -1,0 +1,73 @@
+{
+  "version": "2.0.0",
+  "tasks": [
+    {
+      "label": "ROSbot: Build firmware",
+      "type": "shell",
+      "command": "platformio",
+      "args": [
+        "run",
+        "-e",
+        "rosbot"
+      ],
+      "group": "build",
+      "problemMatcher": ["$platformio"]
+    },
+    {
+      "label": "ROSbot: Build and deploy firmware",
+      "type": "shell",
+      "command": "platformio",
+      "args": [
+        "run",
+        "-e",
+        "rosbot",
+        "--target",
+        "upload"
+      ],
+      "group": "build",
+      "problemMatcher": ["$platformio"]
+    },
+
+    {
+      "label": "ROSbot XL: Build firmware",
+      "type": "shell",
+      "command": "platformio",
+      "args": [
+        "run",
+        "-e",
+        "rosbot_xl"
+      ],
+      "group": "build",
+      "problemMatcher": ["$platformio"]
+    },
+    {
+      "label": "ROSbot XL: Build and deploy firmware",
+      "type": "shell",
+      "command": "platformio",
+      "args": [
+        "run",
+        "-e",
+        "rosbot_xl",
+        "--target",
+        "upload"
+      ],
+      "group": "build",
+      "problemMatcher": ["$platformio"]
+    },
+
+    {
+      "label": "Build Releases",
+      "type": "shell",
+      "command": "platformio",
+      "args": [
+        "run",
+        "-e",
+        "rosbot_release",
+        "-e",
+        "rosbot_xl_release"
+      ],
+      "group": "build",
+      "problemMatcher": ["$platformio"]
+    },
+  ]
+}
