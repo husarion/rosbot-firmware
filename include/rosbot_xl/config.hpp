@@ -16,6 +16,18 @@
 
 #include <Arduino.h>
 
+#include "hardware_encoder.hpp"
+#include "imu_bno055.hpp"
+#include "led_indicator.hpp"
+#include "motor_array.hpp"
+#include "motor_drv8848.hpp"
+#include "pid.hpp"
+#include "ros/publishers/battery_publisher.hpp"
+#include "ros/publishers/buttons_publisher.hpp"
+#include "ros/publishers/imu_publisher.hpp"
+#include "ros/publishers/joint_state_publisher.hpp"
+#include "serial_manager.hpp"
+
 // ────────────── Buttons ──────────────
 static constexpr uint8_t PUSH_BUTTON1 = PF11;
 static constexpr uint8_t PUSH_BUTTON2 = PF12;
@@ -82,6 +94,7 @@ inline constexpr ImuBno055Config imu_bno055_config = {
     .sensor_id = 0x37,
     .int_pin = PF2,
     .axis_config = Adafruit_BNO055::REMAP_CONFIG_P1,
+    .axis_sign = Adafruit_BNO055::REMAP_SIGN_P0,
 };
 
 // ────────────── LEDs ──────────────
@@ -101,6 +114,49 @@ static constexpr uint16_t DOMAIN_ID = 255;  // 255 inherit from Micro ROS Agent
 static constexpr uint32_t PING_TIMEOUT_MS = 100;
 static constexpr uint8_t PING_ATTEMPTS = 3;
 
+// ────────────── Publishers ──────────────
+inline QueueHandle_t battery_queue;
+inline QueueHandle_t imu_queue;
+inline QueueHandle_t joint_state_queue;
+
+static constexpr uint8_t BATTERY_NUM_CELLS = 3;
+static constexpr float BATTERY_CELL_CAPACITY = 2.6f;  // Ah
+static constexpr float BATTERY_DESIGN_CAPACITY =
+    BATTERY_NUM_CELLS * BATTERY_CELL_CAPACITY;
+inline constexpr BatteryPublisherConfig battery_pub_config = {
+    .topic = "battery",
+    .queue = battery_queue,
+    .frame_id = "base_link",
+    .design_capacity = BATTERY_DESIGN_CAPACITY,
+    .num_cells = BATTERY_NUM_CELLS,
+};
+
+inline constexpr uint8_t buttons_pins[2] = {PUSH_BUTTON2, PUSH_BUTTON1};
+inline constexpr ButtonsPublisherConfig buttons_pub_config = {
+    .topic = "buttons",
+    .pins = buttons_pins,
+    .num_buttons = 2,
+};
+
+inline constexpr ImuPublisherConfig imu_pub_config = {
+    .topic = "_imu/data_raw",
+    .queue = imu_queue,
+    .frame_id = "imu_link",
+};
+
+inline constexpr JointStatePublisherConfig joint_state_pub_config = {
+    .topic = "_motors_response",
+    .queue = joint_state_queue,
+    .frame_id = "base_link",
+};
+
 // ────────────── SBC Interface ──────────────
 static constexpr uint32_t SBC_CONNECT_TIMEOUT_MS = 10;
 static constexpr uint32_t POWEROFF_DELAY_MS = 5000;
+
+inline constexpr SerialConfig FTDI_SERIAL_CONFIG = {.serial = &Serial1,
+                                                    .baudrate = 921600,
+                                                    .rxPin = PA10,
+                                                    .txPin = PA9,
+                                                    .timeout_ms = 1,
+                                                    .name = "FTDI_SERIAL"};

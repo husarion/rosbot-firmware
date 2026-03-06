@@ -77,6 +77,7 @@ struct TaskHandleWrapper {
     auto result = xTaskCreate(cfg.function, cfg.name,
                               configMINIMAL_STACK_SIZE + cfg.stack, freq_param,
                               cfg.priority, &handle);
+    (void)result;
   }
 
   void destroy() {

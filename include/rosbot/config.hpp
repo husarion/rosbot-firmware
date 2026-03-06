@@ -98,6 +98,7 @@ inline constexpr ImuBno055Config imu_bno055_config = {
     .sensor_id = 0xA0,
     .int_pin = PA6,
     .axis_config = Adafruit_BNO055::REMAP_CONFIG_P0,
+    .axis_sign = Adafruit_BNO055::REMAP_SIGN_P4,
 };
 
 // ────────────── LEDs ──────────────

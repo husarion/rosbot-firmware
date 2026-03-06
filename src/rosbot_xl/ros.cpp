@@ -30,7 +30,6 @@
 #include "ros/publishers/joint_state_publisher.hpp"
 #include "ros/subscribers/led_subscriber.hpp"
 
-void rosSetup() {}
 // PUBLISHERS
 static BatteryPublisher s_battery_pub(battery_pub_config);
 static ButtonsPublisher s_buttons_pub(buttons_pub_config);
@@ -74,10 +73,8 @@ static std::vector<SubscriptionEntry> s_subscriptions = {
         .callback = motorsCmdCallback,
         .best_effort = true,
     },
-    makeLedSubscription({.pin = GRN_LED, .topic_name = "led/left"},
+    makeLedSubscription({.pin = GRN_LED, .topic_name = "led"},
                         &s_led_left_state),
-    makeLedSubscription({.pin = GRN_LED2, .topic_name = "led/right"},
-                        &s_led_right_state),
 };
 
 // SERVICES

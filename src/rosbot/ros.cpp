@@ -31,7 +31,6 @@
 #include "ros/publishers/range_publisher.hpp"
 #include "ros/subscribers/led_subscriber.hpp"
 
-void rosSetup() {}
 // PUBLISHERS
 static BatteryPublisher s_battery_pub(battery_pub_config);
 static ButtonsPublisher s_buttons_pub(buttons_pub_config);

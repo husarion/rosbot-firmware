@@ -25,7 +25,7 @@ bool ImuBno055::init() {
   }
 
   bno_.setAxisRemap(cfg_.axis_config);
-  bno_.setAxisSign(Adafruit_BNO055::REMAP_SIGN_P4);
+  bno_.setAxisSign(cfg_.axis_sign);
   bno_.setExtCrystalUse(true);
 
   return true;
