@@ -97,7 +97,7 @@ void HardwareEncoder::init() {
   // Encoder mode x4
   encoder_cfg_.EncoderMode = TIM_ENCODERMODE_TI12;
   encoder_cfg_.IC1Polarity =
-      (cfg_.dir_cw) ? TIM_ICPOLARITY_RISING : TIM_ICPOLARITY_FALLING;
+      (cfg_.inv_dir) ? TIM_ICPOLARITY_RISING : TIM_ICPOLARITY_FALLING;
   encoder_cfg_.IC1Selection = TIM_ICSELECTION_DIRECTTI;
   encoder_cfg_.IC1Prescaler = TIM_ICPSC_DIV1;
   encoder_cfg_.IC1Filter = 0x0F;
@@ -133,7 +133,7 @@ void HardwareEncoder::update() {
 
     float dt = static_cast<float>(dt_us) * US_TO_SEC;
     float vel = delta_pos / dt;
-    data_.velocity = lowPass(last_velocity_, vel, 0.1f);
+    data_.velocity = lowPass(last_velocity_, vel);
 
     last_velocity_ = data_.velocity;
     last_cnt_ = cnt;

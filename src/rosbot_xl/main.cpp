@@ -14,7 +14,6 @@
 
 #include <Arduino.h>
 
-#include "battery_adc.hpp"
 #include "battery_interface.hpp"
 #include "config.hpp"
 #include "encoder_array.hpp"
@@ -28,7 +27,7 @@
 #include "ros/ros_node.hpp"
 
 // ───────── Battery ─────────
-BatteryAdc battery_adc(battery_adc_config);
+// BatteryAdc battery_adc(battery_adc_config);
 
 // ───────── Encoders ─────────
 static HardwareEncoder enc_fl(enc_fl_config);
@@ -56,28 +55,13 @@ static constexpr uint8_t DRIVER_GROUP_COUNT =
     sizeof(driver_groups) / sizeof(driver_groups[0]);
 
 // ─────────Extern variables─────────
-BatteryInterface* g_battery = &battery_adc;
+// BatteryInterface* g_battery = &battery_adc;
 EncoderArray g_encoders(encoders, ENCODER_COUNT);
 ImuInterface* g_imu = &imu_bno055;
 LedIndicator g_indicator(led_status_config);
 MotorArray g_motors(motors, MOTOR_COUNT, driver_groups, DRIVER_GROUP_COUNT);
 
-bool useAlt() {
-  return digitalRead(PUSH_BUTTON1) == LOW || digitalRead(PUSH_BUTTON2) == LOW;
-}
-
-void confirmAlt() {
-  digitalWrite(GRN_LED, HIGH);
-  digitalWrite(GRN_LED2, HIGH);
-}
-
-SerialManagerConfig serial_config = {
-    .main = SBC_SERIAL_CONFIG,
-    .alt = &FTDI_SERIAL_CONFIG,
-    .useAltCondition = useAlt,
-    .confirmAlt = confirmAlt
-};
-SerialManager g_serialManager(serial_config);
+SerialManager g_serialManager({.main = FTDI_SERIAL_CONFIG});
 
 void BoardPheripheralsInit() {
   // Initialize Buttons
@@ -87,12 +71,7 @@ void BoardPheripheralsInit() {
   // Initialize LEDs
   pinMode(RED_LED, OUTPUT);
   pinMode(GRN_LED, OUTPUT);
-  pinMode(GRN_LED2, OUTPUT);
   digitalWrite(RED_LED, HIGH);
-
-  // Enable power for IMU sensor
-  pinMode(IMU_POWER_ON, OUTPUT);
-  digitalWrite(IMU_POWER_ON, HIGH);
 
   // Initialize I2C
   imu_i2c.begin();
@@ -108,12 +87,12 @@ void setup() {
 
   // Pre-communication
   g_serialManager.init();
-  const auto& selected_serial = g_serialManager.selectCommunicationSerial();
+  const auto& selected_serial = g_serialManager.selectCommunicationSerial(0);
   g_serialManager.configureNamespace();
   g_ros_node.setNamespace(g_serialManager.getNamespace());
 
   // Sensors initialization
-  battery_adc.init();
+  // battery_adc.init();
   g_encoders.init();
   imu_bno055.init();
   g_indicator.init();

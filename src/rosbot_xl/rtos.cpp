@@ -43,15 +43,17 @@ void imuTask(void* p);
 void ledIndicatorTask(void* p);
 void monitorTask(void* p);
 void motorControlTask(void* p);
+void ledAnimationTask(void* p);
 void uRosTask(void* p);
 void uRosPingTask(void* p);
 
 inline TaskConfig tasks[] = {
-    {"Battery", Priority::SENSORS, Stack::SMALL, 10, batteryTask},
+    // {"Battery", Priority::SENSORS, Stack::SMALL, 10, batteryTask},
     {"Encoder", Priority::CONTROL, Stack::SMALL, 500, encoderTask},
-    {"Imu", Priority::SENSORS, Stack::SMALL, 50, imuTask},
+    {"Imu", Priority::SENSORS, Stack::SMALL, 100, imuTask},
+    {"LedAnimation", Priority::OBSERVING, Stack::MEDIUM, 1, ledAnimationTask},
     {"LedIndicator", Priority::OBSERVING, Stack::XSMALL, 20, ledIndicatorTask},
-    {"Monitor", Priority::OBSERVING, Stack::MEDIUM, 1, monitorTask},
+    // {"Monitor", Priority::OBSERVING, Stack::MEDIUM, 1, monitorTask},
     {"MotorControl", Priority::CONTROL, Stack::MEDIUM, 200, motorControlTask},
     {"uRos", Priority::COMMUNICATION, Stack::LARGE, 100, uRosTask},
     {"uRosPing", Priority::OBSERVING, Stack::MEDIUM, 2, uRosPingTask},
@@ -66,22 +68,22 @@ void createTasks() {
 }
 
 // ===== Task functions =====
-void batteryTask(void* p) {
-  TickType_t period = taskGetPeriod(p);
-  TickType_t wake_time = xTaskGetTickCount();
-  BatteryStamped data = {};
+// void batteryTask(void* p) {
+//   TickType_t period = taskGetPeriod(p);
+//   TickType_t wake_time = xTaskGetTickCount();
+//   BatteryStamped data = {};
 
-  while (true) {
-    bool connected = rtos_get_timestamp_ns(data.timestamp_ns);
-    g_battery->update();  // TODO: DMA should be used
-    data.data = g_battery->getData();
+//   while (true) {
+//     bool connected = rtos_get_timestamp_ns(data.timestamp_ns);
+//     g_battery->update();  // TODO: DMA should be used
+//     data.data = g_battery->getData();
 
-    if (connected) {
-      xQueueOverwrite(battery_queue, &data);
-    }
-    vTaskDelayUntil(&wake_time, period);
-  }
-}
+//     if (connected) {
+//       xQueueOverwrite(battery_queue, &data);
+//     }
+//     vTaskDelayUntil(&wake_time, period);
+//   }
+// }
 
 void encoderTask(void* p) {
   TickType_t period = taskGetPeriod(p);
@@ -117,12 +119,21 @@ void imuTask(void* p) {
   }
 }
 
+void ledAnimationTask(void* p) {
+  TickType_t period = taskGetPeriod(p);
+  TickType_t wake_time = xTaskGetTickCount();
+
+  while (true) {
+    vTaskDelayUntil(&wake_time, period);
+  }
+}
+
 void ledIndicatorTask(void* p) {
   TickType_t period = taskGetPeriod(p);
   TickType_t wake_time = xTaskGetTickCount();
 
   while (true) {
-    bool battery_low = g_battery->isLow();
+    bool battery_low = false;  // g_battery->isLow();
     bool error_state = false;
 
     g_indicator.update(battery_low, !g_ros_node.isConnected(), error_state);

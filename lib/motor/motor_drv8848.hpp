@@ -29,7 +29,7 @@ struct MotorDrv8848Config {
   uint8_t pwm_pin;     // PWM output
   uint8_t in_a_pin;    // direction input A
   uint8_t in_b_pin;    // direction input B
-  bool dir_cw;         // polarity inversion
+  bool inv_dir;         // polarity inversion
   float max_velocity;  // [rad/s] clamp
   float min_velocity;  // [rad/s] deadband
   uint32_t pwm_freq;   // [Hz]

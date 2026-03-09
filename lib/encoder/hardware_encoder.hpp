@@ -22,9 +22,10 @@ struct HardwareEncoderConfig {
   uint8_t pin_a;         // TIMx_CH1 pin
   uint8_t pin_b;         // TIMx_CH2 pin
   TIM_TypeDef* timer;    // e.g. TIM1, TIM3, TIM8
-  bool dir_cw;           // polarity
+  bool inv_dir;          // polarity
   float rad_per_tick;    // radians per encoder tick
   const char* frame_id;  // human name, e.g. "FR"
+  float alpha = 1.0f;    // low-pass filter coefficient for velocity
 };
 
 class HardwareEncoder : public EncoderInterface {
@@ -38,8 +39,8 @@ class HardwareEncoder : public EncoderInterface {
 
  private:
   const uint32_t getTicks() const { return timer_handle_->Instance->CNT; }
-  float lowPass(float prev, float input, float alpha) const {
-    float filtered = alpha * input + (1.0f - alpha) * prev;
+  float lowPass(float prev, float input) const {
+    float filtered = cfg_.alpha * input + (1.0f - cfg_.alpha) * prev;
     return fabs(filtered) > ZERO_THRESHOLD ? filtered : 0.0f;
   }
   static inline int32_t compute_delta(uint32_t cnt, uint32_t last_cnt);

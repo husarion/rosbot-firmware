@@ -37,41 +37,46 @@ constexpr float GEAR_RATIO = 50.0f;
 constexpr uint16_t ENCODER_CPR = 64;
 constexpr float TICKS_PER_REVOLUTION = ENCODER_CPR * GEAR_RATIO;
 constexpr float RAD_PER_TICK = (2.0f * PI) / TICKS_PER_REVOLUTION;
+constexpr float LOW_PASS_ALPHA = 0.05f;
 
 inline constexpr HardwareEncoderConfig enc_fl_config = {
-    .pin_a = PE9,
-    .pin_b = PE11,
-    .timer = TIM1,
-    .dir_cw = false,
-    .rad_per_tick = RAD_PER_TICK,
-    .frame_id = "fl_wheel_joint",
-};
-
-inline constexpr HardwareEncoderConfig enc_fr_config = {
-    .pin_a = PA15,
-    .pin_b = PB3,
-    .timer = TIM2,
-    .dir_cw = true,
-    .rad_per_tick = RAD_PER_TICK,
-    .frame_id = "fr_wheel_joint",
-};
-
-inline constexpr HardwareEncoderConfig enc_rl_config = {
-    .pin_a = PC6,
-    .pin_b = PC7,
-    .timer = TIM3,
-    .dir_cw = false,
-    .rad_per_tick = RAD_PER_TICK,
-    .frame_id = "rl_wheel_joint",
-};
-
-inline constexpr HardwareEncoderConfig enc_rr_config = {
     .pin_a = PD12,
     .pin_b = PD13,
     .timer = TIM4,
-    .dir_cw = true,
+    .inv_dir = true,
+    .rad_per_tick = RAD_PER_TICK,
+    .frame_id = "fl_wheel_joint",
+    .alpha = LOW_PASS_ALPHA,
+};
+
+inline constexpr HardwareEncoderConfig enc_fr_config = {
+    .pin_a = PC6,
+    .pin_b = PC7,
+    .timer = TIM3,
+    .inv_dir = false,
+    .rad_per_tick = RAD_PER_TICK,
+    .frame_id = "fr_wheel_joint",
+    .alpha = LOW_PASS_ALPHA,
+};
+
+inline constexpr HardwareEncoderConfig enc_rl_config = {
+    .pin_a = PA15,
+    .pin_b = PB3,
+    .timer = TIM2,
+    .inv_dir = true,
+    .rad_per_tick = RAD_PER_TICK,
+    .frame_id = "rl_wheel_joint",
+    .alpha = LOW_PASS_ALPHA,
+};
+
+inline constexpr HardwareEncoderConfig enc_rr_config = {
+    .pin_a = PE9,
+    .pin_b = PE11,
+    .timer = TIM1,
+    .inv_dir = false,
     .rad_per_tick = RAD_PER_TICK,
     .frame_id = "rr_wheel_joint",
+    .alpha = LOW_PASS_ALPHA,
 };
 
 // ────────────── Fan ──────────────
@@ -106,6 +111,72 @@ inline constexpr LedIndicatorConfig led_status_config = {
     .initial_state = HIGH,
     .blink_period_ms = 500,
     .label = "STATUS",
+};
+
+// ────────────── Motors ──────────────
+constexpr uint32_t MOTOR_PWM_FREQ = 20000;  // 20 kHz
+constexpr float MAX_VELOCITY = 22.0f;
+constexpr float MIN_VELOCITY = 0.5f;
+
+inline constexpr DriverGroupConfig right_motors_driver = {PC13, PE0};
+inline constexpr DriverGroupConfig left_motors_driver = {PC14, PE1};
+inline constexpr DriverGroupConfig driver_groups[] = {
+    right_motors_driver,
+    left_motors_driver,
+};
+
+inline constexpr MotorDrv8848Config motor_fl_config = {
+    .pwm_pin = PF9,
+    .in_a_pin = PD10,
+    .in_b_pin = PD11,
+    .inv_dir = true,
+    .max_velocity = MAX_VELOCITY,
+    .min_velocity = MIN_VELOCITY,
+    .pwm_freq = MOTOR_PWM_FREQ,
+    .frame_id = "fl_wheel_joint",
+};
+
+inline constexpr MotorDrv8848Config motor_fr_config = {
+    .pwm_pin = PF8,
+    .in_a_pin = PG5,
+    .in_b_pin = PG6,
+    .inv_dir = false,
+    .max_velocity = MAX_VELOCITY,
+    .min_velocity = MIN_VELOCITY,
+    .pwm_freq = MOTOR_PWM_FREQ,
+    .frame_id = "fr_wheel_joint",
+};
+
+inline constexpr MotorDrv8848Config motor_rl_config = {
+    .pwm_pin = PF7,
+    .in_a_pin = PG11,
+    .in_b_pin = PG12,
+    .inv_dir = true,
+    .max_velocity = MAX_VELOCITY,
+    .min_velocity = MIN_VELOCITY,
+    .pwm_freq = MOTOR_PWM_FREQ,
+    .frame_id = "rl_wheel_joint",
+};
+
+inline constexpr MotorDrv8848Config motor_rr_config = {
+    .pwm_pin = PF6,
+    .in_a_pin = PE12,
+    .in_b_pin = PE13,
+    .inv_dir = false,
+    .max_velocity = MAX_VELOCITY,
+    .min_velocity = MIN_VELOCITY,
+    .pwm_freq = MOTOR_PWM_FREQ,
+    .frame_id = "rr_wheel_joint",
+};
+
+// ────────────── PID ──────────────
+// PID configuration is the same for all motors
+inline constexpr PIDConfig pid_config = {
+    .kp = 0.15f,
+    .ki = 0.55f,
+    .kd = 0.007f,
+    .min_output = -1.0f,
+    .max_output = 1.0f,
 };
 
 // ────────────── ROS ──────────────

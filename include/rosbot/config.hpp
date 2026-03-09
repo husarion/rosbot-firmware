@@ -49,41 +49,46 @@ constexpr float GEAR_RATIO = 34.0f;
 constexpr uint16_t ENCODER_CPR = 48;
 constexpr float TICKS_PER_REVOLUTION = ENCODER_CPR * GEAR_RATIO;
 constexpr float RAD_PER_TICK = (2.0f * PI) / TICKS_PER_REVOLUTION;
+constexpr float LOW_PASS_ALPHA = 0.1f;
 
 inline constexpr HardwareEncoderConfig enc_fl_config = {
     .pin_a = PB6,
     .pin_b = PB7,
     .timer = TIM4,
-    .dir_cw = false,
+    .inv_dir = false,
     .rad_per_tick = RAD_PER_TICK,
     .frame_id = "fl_wheel_joint",
+    .alpha = LOW_PASS_ALPHA,
 };
 
 inline constexpr HardwareEncoderConfig enc_fr_config = {
     .pin_a = PA0,
     .pin_b = PA1,
     .timer = TIM2,
-    .dir_cw = true,
+    .inv_dir = true,
     .rad_per_tick = RAD_PER_TICK,
     .frame_id = "fr_wheel_joint",
+    .alpha = LOW_PASS_ALPHA,
 };
 
 inline constexpr HardwareEncoderConfig enc_rl_config = {
     .pin_a = PB4,
     .pin_b = PA7,
     .timer = TIM3,
-    .dir_cw = false,
+    .inv_dir = false,
     .rad_per_tick = RAD_PER_TICK,
     .frame_id = "rl_wheel_joint",
+    .alpha = LOW_PASS_ALPHA,
 };
 
 inline constexpr HardwareEncoderConfig enc_rr_config = {
     .pin_a = PC6,
     .pin_b = PC7,
     .timer = TIM8,
-    .dir_cw = true,
+    .inv_dir = true,
     .rad_per_tick = RAD_PER_TICK,
     .frame_id = "rr_wheel_joint",
+    .alpha = LOW_PASS_ALPHA,
 };
 
 // ────────────── IMU ──────────────
@@ -115,7 +120,7 @@ inline constexpr LedIndicatorConfig led_status_config = {
 
 // ────────────── Motors ──────────────
 constexpr uint32_t MOTOR_PWM_FREQ = 20000;  // 20 kHz
-constexpr float MAX_VELOCITY = 30.0f;
+constexpr float MAX_VELOCITY = 25.0f;
 constexpr float MIN_VELOCITY = 1.0f;
 
 inline constexpr DriverGroupConfig right_motors_driver = {PC13, PE0};
@@ -129,7 +134,7 @@ inline constexpr MotorDrv8848Config motor_fl_config = {
     .pwm_pin = PF9,
     .in_a_pin = PE5,
     .in_b_pin = PE6,
-    .dir_cw = false,
+    .inv_dir = false,
     .max_velocity = MAX_VELOCITY,
     .min_velocity = MIN_VELOCITY,
     .pwm_freq = MOTOR_PWM_FREQ,
@@ -140,7 +145,7 @@ inline constexpr MotorDrv8848Config motor_fr_config = {
     .pwm_pin = PF6,
     .in_a_pin = PG10,
     .in_b_pin = PG11,
-    .dir_cw = true,
+    .inv_dir = true,
     .max_velocity = MAX_VELOCITY,
     .min_velocity = MIN_VELOCITY,
     .pwm_freq = MOTOR_PWM_FREQ,
@@ -151,7 +156,7 @@ inline constexpr MotorDrv8848Config motor_rl_config = {
     .pwm_pin = PF8,
     .in_a_pin = PC15,
     .in_b_pin = PF2,
-    .dir_cw = false,
+    .inv_dir = false,
     .max_velocity = MAX_VELOCITY,
     .min_velocity = MIN_VELOCITY,
     .pwm_freq = MOTOR_PWM_FREQ,
@@ -162,7 +167,7 @@ inline constexpr MotorDrv8848Config motor_rr_config = {
     .pwm_pin = PF7,
     .in_a_pin = PD3,
     .in_b_pin = PD4,
-    .dir_cw = true,
+    .inv_dir = true,
     .max_velocity = MAX_VELOCITY,
     .min_velocity = MIN_VELOCITY,
     .pwm_freq = MOTOR_PWM_FREQ,
