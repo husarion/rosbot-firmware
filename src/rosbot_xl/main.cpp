@@ -20,6 +20,7 @@
 #include "hardware_encoder.hpp"
 #include "imu_bno055.hpp"
 #include "led_indicator.hpp"
+#include "led_strip.hpp"
 #include "motor_array.hpp"
 #include "motor_drv8848.hpp"
 #include "rtos.hpp"
@@ -38,7 +39,10 @@ static EncoderInterface* encoders[] = {&enc_fl, &enc_fr, &enc_rl, &enc_rr};
 static constexpr uint8_t ENCODER_COUNT = sizeof(encoders) / sizeof(encoders[0]);
 
 // ───────── IMU ─────────
-ImuBno055 imu_bno055(imu_bno055_config);
+static ImuBno055 imu_bno055(imu_bno055_config);
+
+// ───────── LED Strip ─────────
+static SpiTransport s_transport(spi_config);
 
 // ───────── Motors ─────────
 static MotorDrv8848 motor_fl(motor_fl_config, &enc_fl,
@@ -59,21 +63,33 @@ static constexpr uint8_t DRIVER_GROUP_COUNT =
 EncoderArray g_encoders(encoders, ENCODER_COUNT);
 ImuInterface* g_imu = &imu_bno055;
 LedIndicator g_indicator(led_status_config);
+LedStrip g_led_strip;
 MotorArray g_motors(motors, MOTOR_COUNT, driver_groups, DRIVER_GROUP_COUNT);
 
 SerialManager g_serialManager({.main = FTDI_SERIAL_CONFIG});
 
 void BoardPheripheralsInit() {
-  // Initialize Buttons
+  // Buttons
   pinMode(PUSH_BUTTON1, INPUT_PULLUP);
   pinMode(PUSH_BUTTON2, INPUT_PULLUP);
 
-  // Initialize LEDs
+  // LEDs
   pinMode(RED_LED, OUTPUT);
   pinMode(GRN_LED, OUTPUT);
   digitalWrite(RED_LED, HIGH);
 
-  // Initialize I2C
+  // Power supply
+  pinMode(EN_LOC_5V, OUTPUT);
+  digitalWrite(EN_LOC_5V, HIGH);
+
+  // Power board
+  pinMode(PWR_BRD_GPIO_INPUT, INPUT_PULLUP);
+
+  // Audio
+  pinMode(AUDIO_SHDN, OUTPUT);
+  digitalWrite(AUDIO_SHDN, HIGH);
+
+  // I2C
   imu_i2c.begin();
   imu_i2c.setClock(400000);
 
@@ -96,6 +112,7 @@ void setup() {
   g_encoders.init();
   imu_bno055.init();
   g_indicator.init();
+  g_led_strip.init(strip_config, &s_transport);
   g_motors.init();
   g_ros_node.transportInit(selected_serial);
 

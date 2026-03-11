@@ -16,11 +16,13 @@
 
 #include <STM32FreeRTOS.h>
 
+#include "animations/led_animations.hpp"
 #include "battery_interface.hpp"
 #include "config.hpp"
 #include "encoder_array.hpp"
 #include "imu_interface.hpp"
 #include "led_indicator.hpp"
+#include "led_strip.hpp"
 #include "motor_array.hpp"
 #include "ros/publishers/battery_publisher.hpp"
 #include "ros/publishers/imu_publisher.hpp"
@@ -28,12 +30,12 @@
 #include "ros/ros_node.hpp"
 #include "serial_manager.hpp"
 
-
 // ===== Queues =====
 void createQueues() {
   battery_queue = xQueueCreate(1, sizeof(BatteryStamped));
   imu_queue = xQueueCreate(1, sizeof(ImuStamped));
   joint_state_queue = xQueueCreate(1, sizeof(EncodersStamped));
+  led_strip_queue = xQueueCreate(1, sizeof(LedFrameMsg));
 }
 
 // ===== Create all tasks =====
@@ -51,7 +53,7 @@ inline TaskConfig tasks[] = {
     // {"Battery", Priority::SENSORS, Stack::SMALL, 10, batteryTask},
     {"Encoder", Priority::CONTROL, Stack::SMALL, 500, encoderTask},
     {"Imu", Priority::SENSORS, Stack::SMALL, 100, imuTask},
-    {"LedAnimation", Priority::OBSERVING, Stack::MEDIUM, 1, ledAnimationTask},
+    {"LedAnimation", Priority::OBSERVING, Stack::MEDIUM, 25, ledAnimationTask},
     {"LedIndicator", Priority::OBSERVING, Stack::XSMALL, 20, ledIndicatorTask},
     // {"Monitor", Priority::OBSERVING, Stack::MEDIUM, 1, monitorTask},
     {"MotorControl", Priority::CONTROL, Stack::MEDIUM, 200, motorControlTask},
@@ -121,10 +123,37 @@ void imuTask(void* p) {
 
 void ledAnimationTask(void* p) {
   TickType_t period = taskGetPeriod(p);
-  TickType_t wake_time = xTaskGetTickCount();
+
+  LedFrameMsg frame;
+  const TickType_t timeout = pdMS_TO_TICKS(LED_STRIP_TIMEOUT_MS);
+  const TickType_t idle_period = pdMS_TO_TICKS(IDLE_ANIMATION_CHANGE_MS);
+  const TickType_t interval = pdMS_TO_TICKS(IDLE_ANIMATION_INTERVAL_MS);
+
+  TickType_t last_msg_time = xTaskGetTickCount();
+  TickType_t last_idle_change = 0;
+  int idle_state = 0;
 
   while (true) {
-    vTaskDelayUntil(&wake_time, period);
+    TickType_t now = xTaskGetTickCount();
+
+    if (xQueueReceive(led_strip_queue, &frame, 0) == pdTRUE) {
+      g_led_strip.setFromRGB8(frame.rgb_data, frame.pixel_count);
+      g_led_strip.show();
+      last_msg_time = now;
+    }
+
+    if ((now - last_msg_time) > timeout && (now - last_idle_change) > idle_period) {
+      if (idle_state == 0) {
+        idleAnimation(g_led_strip, 0xA0, 0xA0, 0xA0, interval);
+        idle_state = 1;
+      } else {
+        idleAnimation(g_led_strip, 0xA0, 0x00, 0x00, interval);
+        idle_state = 0;
+      }
+
+      last_idle_change = now;
+    }
+    vTaskDelay(period);
   }
 }
 

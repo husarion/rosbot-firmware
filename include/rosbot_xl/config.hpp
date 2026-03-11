@@ -19,6 +19,7 @@
 #include "hardware_encoder.hpp"
 #include "imu_bno055.hpp"
 #include "led_indicator.hpp"
+#include "led_strip.hpp"
 #include "motor_array.hpp"
 #include "motor_drv8848.hpp"
 #include "pid.hpp"
@@ -27,10 +28,16 @@
 #include "ros/publishers/imu_publisher.hpp"
 #include "ros/publishers/joint_state_publisher.hpp"
 #include "serial_manager.hpp"
+#include "transport/spi_transport.hpp"
+
+// ────────────── Board ──────────────
+static constexpr uint8_t AUDIO_SHDN = PB2;
+static constexpr uint8_t AUDIO_DAC_OUT = PA4;
+static constexpr uint8_t EN_LOC_5V = PF13;
 
 // ────────────── Buttons ──────────────
 static constexpr uint8_t PUSH_BUTTON1 = PF11;
-static constexpr uint8_t PUSH_BUTTON2 = PF12;
+static constexpr uint8_t PUSH_BUTTON2 = PF12; // MCU reset button
 
 // ────────────── Encoders ──────────────
 constexpr float GEAR_RATIO = 50.0f;
@@ -113,6 +120,33 @@ inline constexpr LedIndicatorConfig led_status_config = {
     .label = "STATUS",
 };
 
+// ────────────── LED Strip ──────────────
+static constexpr uint16_t IDLE_ANIMATION_CHANGE_MS = 2000;
+static constexpr uint16_t IDLE_ANIMATION_INTERVAL_MS = 60;
+static constexpr uint16_t LED_STRIP_TIMEOUT_MS = 1000;
+
+inline constexpr SpiTransportConfig spi_config = {
+    .mosi_pin  = PB15,
+    .miso_pin  = PB14,
+    .sck_pin   = PB10,
+    .spi_speed = 4000000,
+    .bit_order = MSBFIRST,
+    .spi_mode  = SPI_MODE3,
+};
+
+inline constexpr SwapPair swaps[] = {
+    {13, 17},
+    {14, 16},
+};
+inline constexpr LedStripConfig strip_config = {
+    .num_leds     = 18,
+    .swaps             = swaps,
+    .swap_count        = sizeof(swaps) / sizeof(swaps[0]),
+    .init_r            = 0x0F,
+    .init_g            = 0x00,
+    .init_b            = 0x00,
+};
+
 // ────────────── Motors ──────────────
 constexpr uint32_t MOTOR_PWM_FREQ = 20000;  // 20 kHz
 constexpr float MAX_VELOCITY = 22.0f;
@@ -189,6 +223,7 @@ static constexpr uint8_t PING_ATTEMPTS = 3;
 inline QueueHandle_t battery_queue;
 inline QueueHandle_t imu_queue;
 inline QueueHandle_t joint_state_queue;
+inline QueueHandle_t led_strip_queue;
 
 static constexpr uint8_t BATTERY_NUM_CELLS = 3;
 static constexpr float BATTERY_CELL_CAPACITY = 2.6f;  // Ah
@@ -202,11 +237,11 @@ inline constexpr BatteryPublisherConfig battery_pub_config = {
     .num_cells = BATTERY_NUM_CELLS,
 };
 
-inline constexpr uint8_t buttons_pins[2] = {PUSH_BUTTON2, PUSH_BUTTON1};
+inline constexpr uint8_t buttons_pins[] = {PUSH_BUTTON1};
 inline constexpr ButtonsPublisherConfig buttons_pub_config = {
     .topic = "buttons",
     .pins = buttons_pins,
-    .num_buttons = 2,
+    .num_buttons = sizeof(buttons_pins) / sizeof(buttons_pins[0]),
 };
 
 inline constexpr ImuPublisherConfig imu_pub_config = {
@@ -220,6 +255,16 @@ inline constexpr JointStatePublisherConfig joint_state_pub_config = {
     .queue = joint_state_queue,
     .frame_id = "base_link",
 };
+
+// ────────────── PowerBoard ──────────────
+static constexpr uint8_t PWR_BRD_GPIO_INPUT = PD4;   // PB5 on power board -> output push pull
+static constexpr uint8_t PWR_BRD_GPIO_OUTPUT = PD7;  // PB8 on power board -> input
+static constexpr HardwareSerial& PWR_BRD_SERIAL = Serial2;
+static constexpr uint32_t PWR_BRD_SERIAL_BAUDRATE = 38400;
+static constexpr uint8_t PWR_BRD_SERIAL_RX = PD6;
+static constexpr uint8_t PWR_BRD_SERIAL_TX = PD5;
+static constexpr uint32_t PWR_BRD_SERIAL_CONFIG = 0x06;
+static constexpr uint32_t PWR_BRD_SERIAL_TIMEOUT_MS = 10;
 
 // ────────────── SBC Interface ──────────────
 static constexpr uint32_t SBC_CONNECT_TIMEOUT_MS = 10;
