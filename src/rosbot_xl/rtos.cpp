@@ -20,17 +20,22 @@
 #include "battery_interface.hpp"
 #include "config.hpp"
 #include "encoder_array.hpp"
+#include "fan.hpp"
 #include "imu_interface.hpp"
 #include "led_indicator.hpp"
 #include "led_strip.hpp"
 #include "motor_array.hpp"
+#include "ntc.hpp"
 #include "ros/publishers/battery_publisher.hpp"
 #include "ros/publishers/imu_publisher.hpp"
 #include "ros/publishers/joint_state_publisher.hpp"
 #include "ros/ros_node.hpp"
 #include "serial_manager.hpp"
 
-// ===== Queues =====
+// Externs
+extern FanController g_fan;
+
+// ───── Queues ─────
 void createQueues() {
   battery_queue = xQueueCreate(1, sizeof(BatteryStamped));
   imu_queue = xQueueCreate(1, sizeof(ImuStamped));
@@ -38,9 +43,10 @@ void createQueues() {
   led_strip_queue = xQueueCreate(1, sizeof(LedFrameMsg));
 }
 
-// ===== Create all tasks =====
+// ───── Create all tasks ─────
 void batteryTask(void* p);
 void encoderTask(void* p);
+void fanTask(void* p);
 void imuTask(void* p);
 void ledIndicatorTask(void* p);
 void monitorTask(void* p);
@@ -52,6 +58,7 @@ void uRosPingTask(void* p);
 inline TaskConfig tasks[] = {
     // {"Battery", Priority::SENSORS, Stack::SMALL, 10, batteryTask},
     {"Encoder", Priority::CONTROL, Stack::SMALL, 500, encoderTask},
+    {"Fan", Priority::OBSERVING, Stack::SMALL, 10, fanTask},
     {"Imu", Priority::SENSORS, Stack::SMALL, 100, imuTask},
     {"LedAnimation", Priority::OBSERVING, Stack::MEDIUM, 25, ledAnimationTask},
     {"LedIndicator", Priority::OBSERVING, Stack::XSMALL, 20, ledIndicatorTask},
@@ -69,7 +76,7 @@ void createTasks() {
   }
 }
 
-// ===== Task functions =====
+// ───── Task functions ─────
 // void batteryTask(void* p) {
 //   TickType_t period = taskGetPeriod(p);
 //   TickType_t wake_time = xTaskGetTickCount();
@@ -103,6 +110,19 @@ void encoderTask(void* p) {
     vTaskDelayUntil(&wake_time, period);
   }
 }
+
+void fanTask(void* p) {
+  TickType_t period = taskGetPeriod(p);
+  TickType_t wake_time = xTaskGetTickCount();
+
+  while (true) {
+    float temp = ntc.readCelsius();
+    g_fan.update(temp);
+  
+    vTaskDelayUntil(&wake_time, period);
+  }
+}
+
 
 void imuTask(void* p) {
   TickType_t period = taskGetPeriod(p);

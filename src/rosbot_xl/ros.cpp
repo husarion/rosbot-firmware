@@ -44,11 +44,18 @@ static std::vector<PublisherInterface*> s_publishers = {
 uint8_t pub_count = static_cast<uint8_t>(s_publishers.size());
 
 // SUBSCRIBERS
+constexpr uint8_t MAX_ENCODING_SIZE = 16;
 
 // LED strip subscriber
 static sensor_msgs__msg__Image s_img_msg = {
     .height       = 1,
     .width        = MAX_NUM_LEDS,
+    .encoding = 
+        {
+            .data = new char[MAX_ENCODING_SIZE](),
+            .size = 0,
+            .capacity = MAX_ENCODING_SIZE,
+        },
     .is_bigendian = false,
     .step         = MAX_NUM_LEDS * 3,
     .data =
@@ -60,11 +67,15 @@ static sensor_msgs__msg__Image s_img_msg = {
 };
 
 void ledStripCallback(const void* msg_in) {
+    if (uxQueueMessagesWaiting(led_strip_queue) != 0) {
+        return; // If not empty, skip to avoid overwriting unprocessed frame
+    }
+
     const sensor_msgs__msg__Image* img =
         reinterpret_cast<const sensor_msgs__msg__Image*>(msg_in);
 
     if (img->height != 1) return;
-    // if (strcmp(img->encoding.data, "rgb8") != 0) return;
+    if (strcmp(img->encoding.data, "rgb8") != 0) return;
 
     LedFrameMsg frame;
     frame.pixel_count = img->width;

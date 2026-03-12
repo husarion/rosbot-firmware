@@ -1,0 +1,34 @@
+// AUTOMATICALLY GENERATED FILE. PLEASE DO NOT MODIFY IT MANUALLY
+//
+// PlatformIO Debugging Solution
+//
+// Documentation: https://docs.platformio.org/en/latest/plus/debugging.html
+// Configuration: https://docs.platformio.org/en/latest/projectconf/sections/env/options/debug/index.html
+
+{
+    "version": "0.2.0",
+    "configurations": [
+        {
+            "type": "platformio-debug",
+            "request": "launch",
+            "name": "ROSbot Debug",
+            "executable": "/home/aayli/Husarion/Firmware/rosbot-firmware/.pio/build/rosbot/firmware.elf",
+            "projectEnvName": "rosbot",
+            "toolchainBinDir": "/home/aayli/.platformio/packages/toolchain-gccarmnoneeabi@1.90201.191206/bin",
+            "internalConsoleOptions": "openOnSessionStart",
+            "svdPath": "/home/aayli/.platformio/platforms/husarion_boards/misc/svd/STM32F40x.svd",
+            "loadMode": "manual"
+        },
+        {
+            "type": "platformio-debug",
+            "request": "launch",
+            "name": "ROSbot XL Debug",
+            "executable": "/home/aayli/Husarion/Firmware/rosbot-firmware/.pio/build/rosbot_xl/firmware.elf",
+            "projectEnvName": "rosbot_xl",
+            "toolchainBinDir": "/home/aayli/.platformio/packages/toolchain-gccarmnoneeabi@1.90201.191206/bin",
+            "internalConsoleOptions": "openOnSessionStart",
+            "svdPath": "/home/aayli/.platformio/platforms/husarion_boards/misc/svd/STM32F40x.svd",
+            "loadMode": "manual"
+        }
+    ]
+}

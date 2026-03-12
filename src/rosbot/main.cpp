@@ -67,7 +67,7 @@ static RangeInterface* range_sensors[] = {&range_fl, &range_fr, &range_rl,
 static constexpr uint8_t RANGE_COUNT =
     sizeof(range_sensors) / sizeof(range_sensors[0]);
 
-// ─────────Extern variables─────────
+// ───────── Extern variables ─────────
 BatteryInterface* g_battery = &battery_adc;
 EncoderArray g_encoders(encoders, ENCODER_COUNT);
 ImuInterface* g_imu = &imu_bno055;
@@ -90,7 +90,7 @@ SerialManagerConfig serial_config = {.main = SBC_SERIAL_CONFIG,
                                      .confirmAlt = confirmAlt};
 SerialManager g_serialManager(serial_config);
 
-void BoardPheripheralsInit() {
+void boardPheripheralsInit() {
   // Initialize Buttons
   pinMode(PUSH_BUTTON1, INPUT_PULLUP);
   pinMode(PUSH_BUTTON2, INPUT_PULLUP);
@@ -114,10 +114,10 @@ void BoardPheripheralsInit() {
   delay(20);
 }
 
-/*──────────────────── Setup ────────────────────────*/
+/*───────── Setup ─────────*/
 void setup() {
   // Peripherals initialization
-  BoardPheripheralsInit();
+  boardPheripheralsInit();
 
   // Pre-communication
   g_serialManager.init();
@@ -140,10 +140,10 @@ void setup() {
   vTaskStartScheduler();
 }
 
-/*────────────── Loop ───────────────*/
+/*───────── Loop ─────────*/
 void loop() {}
 
-/*─────────── Runtime stats ────────────────────*/
+/*───────── Runtime stats ─────────*/
 HardwareTimer RunTimeStatsTimer(TIM5);
 
 void vConfigureTimerForRunTimeStats(void) {

@@ -16,12 +16,15 @@
 
 #include <Arduino.h>
 
+#include "eeprom.hpp"
 #include "hardware_encoder.hpp"
+#include "fan.hpp"
 #include "imu_bno055.hpp"
 #include "led_indicator.hpp"
 #include "led_strip.hpp"
 #include "motor_array.hpp"
 #include "motor_drv8848.hpp"
+#include "ntc.hpp"
 #include "pid.hpp"
 #include "ros/publishers/battery_publisher.hpp"
 #include "ros/publishers/buttons_publisher.hpp"
@@ -30,16 +33,40 @@
 #include "serial_manager.hpp"
 #include "transport/spi_transport.hpp"
 
-// ────────────── Board ──────────────
-static constexpr uint8_t AUDIO_SHDN = PB2;
-static constexpr uint8_t AUDIO_DAC_OUT = PA4;
-static constexpr uint8_t EN_LOC_5V = PF13;
+// ───────── Arduino settings ─────────
+inline constexpr uint32_t ADC_MAX_VALUE = 1023; // 10-bit ADC resolution (0-1023)
 
-// ────────────── Buttons ──────────────
-static constexpr uint8_t PUSH_BUTTON1 = PF11;
-static constexpr uint8_t PUSH_BUTTON2 = PF12; // MCU reset button
+// ───────── Board Peripherals ─────────
+inline constexpr uint8_t AUDIO_SHDN = PB2;
+inline constexpr uint8_t AUDIO_DAC_OUT = PA4;
+inline constexpr uint8_t EN_LOC_5V = PF13;
 
-// ────────────── Encoders ──────────────
+inline constexpr uint8_t I2C_SDA = PF0;
+inline constexpr uint8_t I2C_SCL = PF1;
+inline TwoWire imu_i2c(I2C_SDA, I2C_SCL);
+
+// ───────── Buttons ─────────
+inline constexpr uint8_t PUSH_BUTTON1 = PF11;
+inline constexpr uint8_t PUSH_BUTTON2 = PF12; // MCU reset button
+
+// ───────── EEPROM ─────────
+inline constexpr EepromConfig eeprom_config = {
+    .i2c_bus = imu_i2c,
+    .dev_id = 0x50,
+    .page_size = 16,
+    .write_delay_ms = 5,
+};
+inline Eeprom eeprom(eeprom_config);
+
+inline BoardRevisionConfig board_revision_config = {
+    .eeprom = eeprom,
+    .block = 0x00,
+    .addr = 0x00,
+    .max_length = 4,
+    .retry_count = 3,
+};
+
+// ───────── Encoders ─────────
 constexpr float GEAR_RATIO = 50.0f;
 constexpr uint16_t ENCODER_CPR = 64;
 constexpr float TICKS_PER_REVOLUTION = ENCODER_CPR * GEAR_RATIO;
@@ -86,20 +113,41 @@ inline constexpr HardwareEncoderConfig enc_rr_config = {
     .alpha = LOW_PASS_ALPHA,
 };
 
-// ────────────── Fan ──────────────
-#define FAN_PP_PIN PC13
-#define FAN_PWM_PIN PB_0_ALT1
-#define FAN_PWM_TIMER TIM3
-#define FAN_PWM_CHANNEL 3
-#define FAN_PWM_FREQUENCY 1000
-#define FAN_TEMP_THRSH_UP 35
-#define FAN_TEMP_THRSH_DOWN 30
+// ───────── Fan and temperature ─────────
+inline constexpr NtcConfig ntc_cfg {
+    .pin                = PB1,
+    .pullup_resistance  = 5230.0f,
+    .c1                 = 1.112613927e-03f,
+    .c2                 = 2.37277392e-04f,
+    .c3                 = 7.1670e-08f,
+    .offset             = 273.15 + 3,  // Kelvin to Celsius offset + calibration offset
+    .adc_max            = 1023.0f
+};
+inline Ntc ntc(ntc_cfg);
 
-// ────────────── IMU ──────────────
-static constexpr uint8_t IMU_I2C_SDA = PF0;
-static constexpr uint8_t IMU_I2C_SCL = PF1;
+inline constexpr uint8_t FAN_PP_PIN = PC13;
+inline constexpr uint8_t FAN_PWM_PIN = PB0;
 
-inline TwoWire imu_i2c(IMU_I2C_SDA, IMU_I2C_SCL);
+inline constexpr FanConfig rev1_2_fan_config {
+    .pin             = FAN_PWM_PIN,
+    .timer_instance  = TIM8,        // ← jawnie, bez auto-detekcji
+    .timer_channel   = 2,           // CH2 — library wykryje CH2N z PinMap
+    .gpio_af         = GPIO_AF3_TIM8,
+    .complementary   = true,        // CH2N = odwrócony sygnał
+    .mode            = FanMode::Proportional,
+    .pwm_frequency   = 25000,       // 25 kHz — standard PC fan
+    .temp_low        = 30,          // poniżej 30°C — duty_min
+    .temp_high       = 55,          // powyżej 55°C — duty_max
+    .duty_min        = 20,          // 20% — minimalne obroty (żeby fan nie zatkał)
+    .duty_max        = 100          // 100% — full blast
+};
+
+inline constexpr FanConfig rev1_1_fan_config {
+    .pin = FAN_PP_PIN,
+    .mode = FanMode::AlwaysOn
+};
+
+// ───────── IMU ─────────
 inline constexpr ImuBno055Config imu_bno055_config = {
     .bus = &imu_i2c,
     .i2c_addr = 0x29,
@@ -109,9 +157,9 @@ inline constexpr ImuBno055Config imu_bno055_config = {
     .axis_sign = Adafruit_BNO055::REMAP_SIGN_P0,
 };
 
-// ────────────── LEDs ──────────────
-static constexpr uint8_t RED_LED = PE4;
-static constexpr uint8_t GRN_LED = PE3;
+// ───────── LEDs ─────────
+inline constexpr uint8_t RED_LED = PE4;
+inline constexpr uint8_t GRN_LED = PE3;
 
 inline constexpr LedIndicatorConfig led_status_config = {
     .pin = RED_LED,
@@ -120,10 +168,10 @@ inline constexpr LedIndicatorConfig led_status_config = {
     .label = "STATUS",
 };
 
-// ────────────── LED Strip ──────────────
-static constexpr uint16_t IDLE_ANIMATION_CHANGE_MS = 2000;
-static constexpr uint16_t IDLE_ANIMATION_INTERVAL_MS = 60;
-static constexpr uint16_t LED_STRIP_TIMEOUT_MS = 1000;
+// ───────── LED Strip ─────────
+inline constexpr uint16_t IDLE_ANIMATION_CHANGE_MS = 2000;
+inline constexpr uint16_t IDLE_ANIMATION_INTERVAL_MS = 60;
+inline constexpr uint16_t LED_STRIP_TIMEOUT_MS = 1000;
 
 inline constexpr SpiTransportConfig spi_config = {
     .mosi_pin  = PB15,
@@ -147,7 +195,7 @@ inline constexpr LedStripConfig strip_config = {
     .init_b            = 0x00,
 };
 
-// ────────────── Motors ──────────────
+// ───────── Motors ─────────
 constexpr uint32_t MOTOR_PWM_FREQ = 20000;  // 20 kHz
 constexpr float MAX_VELOCITY = 22.0f;
 constexpr float MIN_VELOCITY = 0.5f;
@@ -203,7 +251,7 @@ inline constexpr MotorDrv8848Config motor_rr_config = {
     .frame_id = "rr_wheel_joint",
 };
 
-// ────────────── PID ──────────────
+// ───────── PID ─────────
 // PID configuration is the same for all motors
 inline constexpr PIDConfig pid_config = {
     .kp = 0.15f,
@@ -213,21 +261,21 @@ inline constexpr PIDConfig pid_config = {
     .max_output = 1.0f,
 };
 
-// ────────────── ROS ──────────────
-static constexpr const char* NODE_NAME = "rosbot_mcu";
-static constexpr uint16_t DOMAIN_ID = 255;  // 255 inherit from Micro ROS Agent
-static constexpr uint32_t PING_TIMEOUT_MS = 100;
-static constexpr uint8_t PING_ATTEMPTS = 3;
+// ───────── ROS ─────────
+inline constexpr const char* NODE_NAME = "rosbot_mcu";
+inline constexpr uint16_t DOMAIN_ID = 255;  // 255 inherit from Micro ROS Agent
+inline constexpr uint32_t PING_TIMEOUT_MS = 100;
+inline constexpr uint8_t PING_ATTEMPTS = 3;
 
-// ────────────── Publishers ──────────────
+// ───────── Publishers ─────────
 inline QueueHandle_t battery_queue;
 inline QueueHandle_t imu_queue;
 inline QueueHandle_t joint_state_queue;
 inline QueueHandle_t led_strip_queue;
 
-static constexpr uint8_t BATTERY_NUM_CELLS = 3;
-static constexpr float BATTERY_CELL_CAPACITY = 2.6f;  // Ah
-static constexpr float BATTERY_DESIGN_CAPACITY =
+inline constexpr uint8_t BATTERY_NUM_CELLS = 3;
+inline constexpr float BATTERY_CELL_CAPACITY = 2.6f;  // Ah
+inline constexpr float BATTERY_DESIGN_CAPACITY =
     BATTERY_NUM_CELLS * BATTERY_CELL_CAPACITY;
 inline constexpr BatteryPublisherConfig battery_pub_config = {
     .topic = "battery",
@@ -256,19 +304,19 @@ inline constexpr JointStatePublisherConfig joint_state_pub_config = {
     .frame_id = "base_link",
 };
 
-// ────────────── PowerBoard ──────────────
-static constexpr uint8_t PWR_BRD_GPIO_INPUT = PD4;   // PB5 on power board -> output push pull
-static constexpr uint8_t PWR_BRD_GPIO_OUTPUT = PD7;  // PB8 on power board -> input
-static constexpr HardwareSerial& PWR_BRD_SERIAL = Serial2;
-static constexpr uint32_t PWR_BRD_SERIAL_BAUDRATE = 38400;
-static constexpr uint8_t PWR_BRD_SERIAL_RX = PD6;
-static constexpr uint8_t PWR_BRD_SERIAL_TX = PD5;
-static constexpr uint32_t PWR_BRD_SERIAL_CONFIG = 0x06;
-static constexpr uint32_t PWR_BRD_SERIAL_TIMEOUT_MS = 10;
+// ───────── PowerBoard ─────────
+inline constexpr uint8_t PWR_BRD_GPIO_INPUT = PD4;   // PB5 on power board -> output push pull
+inline constexpr uint8_t PWR_BRD_GPIO_OUTPUT = PD7;  // PB8 on power board -> input
+inline constexpr HardwareSerial& PWR_BRD_SERIAL = Serial2;
+inline constexpr uint32_t PWR_BRD_SERIAL_BAUDRATE = 38400;
+inline constexpr uint8_t PWR_BRD_SERIAL_RX = PD6;
+inline constexpr uint8_t PWR_BRD_SERIAL_TX = PD5;
+inline constexpr uint32_t PWR_BRD_SERIAL_CONFIG = 0x06;
+inline constexpr uint32_t PWR_BRD_SERIAL_TIMEOUT_MS = 10;
 
-// ────────────── SBC Interface ──────────────
-static constexpr uint32_t SBC_CONNECT_TIMEOUT_MS = 10;
-static constexpr uint32_t POWEROFF_DELAY_MS = 5000;
+// ───────── SBC Interface ─────────
+inline constexpr uint32_t SBC_CONNECT_TIMEOUT_MS = 10;
+inline constexpr uint32_t POWEROFF_DELAY_MS = 5000;
 
 inline constexpr SerialConfig FTDI_SERIAL_CONFIG = {.serial = &Serial1,
                                                     .baudrate = 921600,

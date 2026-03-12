@@ -30,7 +30,7 @@
 #include "serial_manager.hpp"
 
 
-// ===== Queues =====
+// ──── Queues ────
 void createQueues() {
   battery_queue = xQueueCreate(1, sizeof(BatteryStamped));
   imu_queue = xQueueCreate(1, sizeof(ImuStamped));
@@ -38,7 +38,7 @@ void createQueues() {
   ranges_queue = xQueueCreate(1, sizeof(RangesStamped));
 }
 
-// ===== Create all tasks =====
+// ──── Create all tasks ────
 void batteryTask(void* p);
 void encoderTask(void* p);
 void imuTask(void* p);
@@ -69,7 +69,7 @@ void createTasks() {
   }
 }
 
-// ===== Task functions =====
+// ──── Task functions ────
 void batteryTask(void* p) {
   TickType_t period = taskGetPeriod(p);
   TickType_t wake_time = xTaskGetTickCount();

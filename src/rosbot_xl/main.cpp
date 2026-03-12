@@ -30,6 +30,9 @@
 // ───────── Battery ─────────
 // BatteryAdc battery_adc(battery_adc_config);
 
+// ───────── Board Revision ─────────
+static BoardRevision board_revision(board_revision_config);
+
 // ───────── Encoders ─────────
 static HardwareEncoder enc_fl(enc_fl_config);
 static HardwareEncoder enc_fr(enc_fr_config);
@@ -37,6 +40,9 @@ static HardwareEncoder enc_rl(enc_rl_config);
 static HardwareEncoder enc_rr(enc_rr_config);
 static EncoderInterface* encoders[] = {&enc_fl, &enc_fr, &enc_rl, &enc_rr};
 static constexpr uint8_t ENCODER_COUNT = sizeof(encoders) / sizeof(encoders[0]);
+
+// ───────── Fan ─────────
+FanController g_fan;
 
 // ───────── IMU ─────────
 static ImuBno055 imu_bno055(imu_bno055_config);
@@ -68,38 +74,41 @@ MotorArray g_motors(motors, MOTOR_COUNT, driver_groups, DRIVER_GROUP_COUNT);
 
 SerialManager g_serialManager({.main = FTDI_SERIAL_CONFIG});
 
-void BoardPheripheralsInit() {
+void boardPheripheralsInit() {
+  // Audio
+  pinMode(AUDIO_SHDN, OUTPUT);
+  digitalWrite(AUDIO_SHDN, HIGH);
+
   // Buttons
   pinMode(PUSH_BUTTON1, INPUT_PULLUP);
   pinMode(PUSH_BUTTON2, INPUT_PULLUP);
+
+  // Fan
+  pinMode(FAN_PP_PIN, OUTPUT);
+  digitalWrite(FAN_PP_PIN, LOW);
 
   // LEDs
   pinMode(RED_LED, OUTPUT);
   pinMode(GRN_LED, OUTPUT);
   digitalWrite(RED_LED, HIGH);
 
-  // Power supply
+  // Peripheral Power
   pinMode(EN_LOC_5V, OUTPUT);
   digitalWrite(EN_LOC_5V, HIGH);
 
   // Power board
   pinMode(PWR_BRD_GPIO_INPUT, INPUT_PULLUP);
 
-  // Audio
-  pinMode(AUDIO_SHDN, OUTPUT);
-  digitalWrite(AUDIO_SHDN, HIGH);
-
   // I2C
   imu_i2c.begin();
   imu_i2c.setClock(400000);
 
-  delay(20);
+  delay(50);
 }
 
-/*──────────────────── Setup ────────────────────────*/
+/*───────── Setup ─────────*/
 void setup() {
-  // Peripherals initialization
-  BoardPheripheralsInit();
+  boardPheripheralsInit();
 
   // Pre-communication
   g_serialManager.init();
@@ -107,9 +116,16 @@ void setup() {
   g_serialManager.configureNamespace();
   g_ros_node.setNamespace(g_serialManager.getNamespace());
 
+  // Board revision detection
+  board_revision.init();
+  auto rev = board_revision.revision();
+  auto fan_config = (rev == Revision::V1_1) ? rev1_1_fan_config : rev1_2_fan_config;
+
   // Sensors initialization
   // battery_adc.init();
   g_encoders.init();
+  ntc.init();
+  g_fan.init(fan_config);
   imu_bno055.init();
   g_indicator.init();
   g_led_strip.init(strip_config, &s_transport);
@@ -122,10 +138,10 @@ void setup() {
   vTaskStartScheduler();
 }
 
-/*────────────── Loop ───────────────*/
+/*───────── Loop ─────────*/
 void loop() {}
 
-/*─────────── Runtime stats ────────────────────*/
+/*───────── Runtime stats ─────────*/
 HardwareTimer RunTimeStatsTimer(TIM5);
 
 void vConfigureTimerForRunTimeStats(void) {

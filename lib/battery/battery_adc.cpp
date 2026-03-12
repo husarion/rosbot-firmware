@@ -28,8 +28,7 @@ BatteryAdc::BatteryAdc(const BatteryAdcConfig config) : cfg_(config) {
 void BatteryAdc::init() { pinMode(cfg_.adc_pin, INPUT); }
 
 void BatteryAdc::update() {
-  constexpr float ADC_MAX_INV = 1.0f / 1023.0f;
-  float raw = analogRead(cfg_.adc_pin) * ADC_MAX_INV;
+  float raw = analogRead(cfg_.adc_pin) * cfg_.adc_resolution_scale;
 
   data_.voltage = raw * voltage_factor_;
 

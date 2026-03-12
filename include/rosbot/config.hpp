@@ -31,20 +31,25 @@
 #include "ros/publishers/range_publisher.hpp"
 #include "serial_manager.hpp"
 
-// ────────────── Battery ──────────────
+// ───────── Arduino settings ─────────
+static constexpr uint32_t ADC_MAX_VALUE = 1023; // 10-bit ADC resolution (0-1023)
+
+// ───────── Battery ─────────
 inline constexpr BatteryAdcConfig battery_adc_config = {
     .adc_pin = PA5,
     .v_ref = 3.3f,
     .v_min = 9.6f,
     .v_max = 12.6f,
     .divider = (5.6e4 + 1.0e4) / 1.0e4,
-    .correction = 0.986f};
+    .correction = 0.986f,
+    .adc_resolution_scale = 1.0f / ADC_MAX_VALUE,
+};
 
-// ────────────── Buttons ──────────────
+// ───────── Buttons ─────────
 static constexpr uint8_t PUSH_BUTTON1 = PG12;
 static constexpr uint8_t PUSH_BUTTON2 = PG13;
 
-// ────────────── Encoders ──────────────
+// ───────── Encoders ─────────
 constexpr float GEAR_RATIO = 34.0f;
 constexpr uint16_t ENCODER_CPR = 48;
 constexpr float TICKS_PER_REVOLUTION = ENCODER_CPR * GEAR_RATIO;
@@ -91,7 +96,7 @@ inline constexpr HardwareEncoderConfig enc_rr_config = {
     .alpha = LOW_PASS_ALPHA,
 };
 
-// ────────────── IMU ──────────────
+// ───────── IMU ─────────
 static constexpr uint8_t IMU_POWER_ON = PG4;
 static constexpr uint8_t IMU_I2C_SDA = PC9;
 static constexpr uint8_t IMU_I2C_SCL = PA8;
@@ -106,7 +111,7 @@ inline constexpr ImuBno055Config imu_bno055_config = {
     .axis_sign = Adafruit_BNO055::REMAP_SIGN_P4,
 };
 
-// ────────────── LEDs ──────────────
+// ───────── LEDs ─────────
 static constexpr uint8_t RED_LED = PE2;
 static constexpr uint8_t GRN_LED = PE3;
 static constexpr uint8_t GRN_LED2 = PE4;
@@ -118,7 +123,7 @@ inline constexpr LedIndicatorConfig led_status_config = {
     .label = "STATUS",
 };
 
-// ────────────── Motors ──────────────
+// ───────── Motors ─────────
 constexpr uint32_t MOTOR_PWM_FREQ = 20000;  // 20 kHz
 constexpr float MAX_VELOCITY = 25.0f;
 constexpr float MIN_VELOCITY = 1.0f;
@@ -174,7 +179,7 @@ inline constexpr MotorDrv8848Config motor_rr_config = {
     .frame_id = "rr_wheel_joint",
 };
 
-// ────────────── PID ──────────────
+// ───────── PID ─────────
 // PID configuration is the same for all motors
 inline constexpr PIDConfig pid_config = {
     .kp = 0.07f,
@@ -186,7 +191,7 @@ inline constexpr PIDConfig pid_config = {
     .compensation_up_to_speed = 4.0f,
 };
 
-// ────────────── Ranges ──────────────
+// ───────── Ranges ─────────
 static constexpr uint8_t RANGE_I2C_SDA = PB9;
 static constexpr uint8_t RANGE_I2C_SCL = PB8;
 
@@ -219,13 +224,13 @@ inline constexpr RangeVl53l0xConfig range_rr_config = {
     .frame_id = "rr_range",
 };
 
-// ────────────── ROS ──────────────
+// ───────── ROS ─────────
 static constexpr const char* NODE_NAME = "rosbot_mcu";
 static constexpr uint16_t DOMAIN_ID = 255;  // 255 inherit from Micro ROS Agent
 static constexpr uint32_t PING_TIMEOUT_MS = 100;
 static constexpr uint8_t PING_ATTEMPTS = 3;
 
-// ────────────── Publishers ──────────────
+// ───────── Publishers ─────────
 inline QueueHandle_t battery_queue;
 inline QueueHandle_t imu_queue;
 inline QueueHandle_t joint_state_queue;
@@ -270,7 +275,7 @@ inline constexpr RangePublisherConfig range_pub_config = {
     .max_range = 0.9f,
 };
 
-// ────────────── SBC Interface ──────────────
+// ───────── SBC Interface ─────────
 static constexpr uint32_t SBC_SERIAL_TIMEOUT_MS = 100;
 static constexpr uint8_t SBC_STATUS = PG6;  // Detect RPi which is a pullup pin
 static constexpr uint8_t RPI_CONSOLE = PG5;
