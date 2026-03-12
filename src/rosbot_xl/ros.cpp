@@ -25,8 +25,8 @@
 #include <std_srvs/srv/trigger.h>
 
 #include "config.hpp"
-#include "motor_array.hpp"
 #include "led_strip.hpp"
+#include "motor_array.hpp"
 #include "ros/publishers/battery_publisher.hpp"
 #include "ros/publishers/buttons_publisher.hpp"
 #include "ros/publishers/imu_publisher.hpp"
@@ -48,16 +48,16 @@ constexpr uint8_t MAX_ENCODING_SIZE = 16;
 
 // LED strip subscriber
 static sensor_msgs__msg__Image s_img_msg = {
-    .height       = 1,
-    .width        = MAX_NUM_LEDS,
-    .encoding = 
+    .height = 1,
+    .width = MAX_NUM_LEDS,
+    .encoding =
         {
             .data = new char[MAX_ENCODING_SIZE](),
             .size = 0,
             .capacity = MAX_ENCODING_SIZE,
         },
     .is_bigendian = false,
-    .step         = MAX_NUM_LEDS * 3,
+    .step = MAX_NUM_LEDS * 3,
     .data =
         {
             .data = new uint8_t[MAX_NUM_LEDS * 3](),
@@ -67,33 +67,32 @@ static sensor_msgs__msg__Image s_img_msg = {
 };
 
 void ledStripCallback(const void* msg_in) {
-    if (uxQueueMessagesWaiting(led_strip_queue) != 0) {
-        return; // If not empty, skip to avoid overwriting unprocessed frame
-    }
+  if (uxQueueMessagesWaiting(led_strip_queue) != 0) {
+    return;  // If not empty, skip to avoid overwriting unprocessed frame
+  }
 
-    const sensor_msgs__msg__Image* img =
-        reinterpret_cast<const sensor_msgs__msg__Image*>(msg_in);
+  const sensor_msgs__msg__Image* img =
+      reinterpret_cast<const sensor_msgs__msg__Image*>(msg_in);
 
-    if (img->height != 1) return;
-    if (strcmp(img->encoding.data, "rgb8") != 0) return;
+  if (img->height != 1) return;
+  if (strcmp(img->encoding.data, "rgb8") != 0) return;
 
-    LedFrameMsg frame;
-    frame.pixel_count = img->width;
+  LedFrameMsg frame;
+  frame.pixel_count = img->width;
 
-    uint32_t bytes_to_copy = frame.pixel_count * 3;
-    if (bytes_to_copy > sizeof(frame.rgb_data)) {
-        bytes_to_copy = sizeof(frame.rgb_data);
-        frame.pixel_count = MAX_NUM_LEDS;
-    }
+  uint32_t bytes_to_copy = frame.pixel_count * 3;
+  if (bytes_to_copy > sizeof(frame.rgb_data)) {
+    bytes_to_copy = sizeof(frame.rgb_data);
+    frame.pixel_count = MAX_NUM_LEDS;
+  }
 
-    memcpy(frame.rgb_data, img->data.data, bytes_to_copy);
-    xQueueOverwrite(led_strip_queue, &frame);
+  memcpy(frame.rgb_data, img->data.data, bytes_to_copy);
+  xQueueOverwrite(led_strip_queue, &frame);
 }
 
 SubscriptionEntry led_strip_sub = {
     .msg = &s_img_msg,
-    .type_support =
-        ROSIDL_GET_MSG_TYPE_SUPPORT(sensor_msgs, msg, Image),
+    .type_support = ROSIDL_GET_MSG_TYPE_SUPPORT(sensor_msgs, msg, Image),
     .topic_name = "led_strip",
     .callback = ledStripCallback,
     .best_effort = true,
@@ -134,8 +133,7 @@ static LedSubState s_led_state;
 static std::vector<SubscriptionEntry> s_subscriptions = {
     led_strip_sub,
     motor_sub,
-    makeLedSubscription({.pin = GRN_LED, .topic_name = "led"},
-                        &s_led_state),
+    makeLedSubscription({.pin = GRN_LED, .topic_name = "led"}, &s_led_state),
 };
 
 // SERVICES

@@ -32,7 +32,8 @@
 #include "serial_manager.hpp"
 
 // ───────── Arduino settings ─────────
-static constexpr uint32_t ADC_MAX_VALUE = 1023; // 10-bit ADC resolution (0-1023)
+static constexpr uint32_t ADC_MAX_VALUE =
+    1023;  // 10-bit ADC resolution (0-1023)
 
 // ───────── Battery ─────────
 inline constexpr BatteryAdcConfig battery_adc_config = {

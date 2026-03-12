@@ -29,7 +29,6 @@
 #include "ros/ros_node.hpp"
 #include "serial_manager.hpp"
 
-
 // ──── Queues ────
 void createQueues() {
   battery_queue = xQueueCreate(1, sizeof(BatteryStamped));

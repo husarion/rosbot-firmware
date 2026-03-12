@@ -17,8 +17,8 @@
 #include <Arduino.h>
 
 #include "eeprom.hpp"
-#include "hardware_encoder.hpp"
 #include "fan.hpp"
+#include "hardware_encoder.hpp"
 #include "imu_bno055.hpp"
 #include "led_indicator.hpp"
 #include "led_strip.hpp"
@@ -34,7 +34,8 @@
 #include "transport/spi_transport.hpp"
 
 // ───────── Arduino settings ─────────
-inline constexpr uint32_t ADC_MAX_VALUE = 1023; // 10-bit ADC resolution (0-1023)
+inline constexpr uint32_t ADC_MAX_VALUE =
+    1023;  // 10-bit ADC resolution (0-1023)
 
 // ───────── Board Peripherals ─────────
 inline constexpr uint8_t AUDIO_SHDN = PB2;
@@ -47,7 +48,7 @@ inline TwoWire imu_i2c(I2C_SDA, I2C_SCL);
 
 // ───────── Buttons ─────────
 inline constexpr uint8_t PUSH_BUTTON1 = PF11;
-inline constexpr uint8_t PUSH_BUTTON2 = PF12; // MCU reset button
+inline constexpr uint8_t PUSH_BUTTON2 = PF12;  // MCU reset button
 
 // ───────── EEPROM ─────────
 inline constexpr EepromConfig eeprom_config = {
@@ -114,38 +115,35 @@ inline constexpr HardwareEncoderConfig enc_rr_config = {
 };
 
 // ───────── Fan and temperature ─────────
-inline constexpr NtcConfig ntc_cfg {
-    .pin                = PB1,
-    .pullup_resistance  = 5230.0f,
-    .c1                 = 1.112613927e-03f,
-    .c2                 = 2.37277392e-04f,
-    .c3                 = 7.1670e-08f,
-    .offset             = 273.15 + 3,  // Kelvin to Celsius offset + calibration offset
-    .adc_max            = 1023.0f
-};
+inline constexpr NtcConfig ntc_cfg{
+    .pin = PB1,
+    .pullup_resistance = 5230.0f,
+    .c1 = 1.112613927e-03f,
+    .c2 = 2.37277392e-04f,
+    .c3 = 7.1670e-08f,
+    .offset = 273.15 + 3,  // Kelvin to Celsius offset + calibration offset
+    .adc_max = 1023.0f};
 inline Ntc ntc(ntc_cfg);
 
 inline constexpr uint8_t FAN_PP_PIN = PC13;
 inline constexpr uint8_t FAN_PWM_PIN = PB0;
 
-inline constexpr FanConfig rev1_2_fan_config {
-    .pin             = FAN_PWM_PIN,
-    .timer_instance  = TIM8,        // ← jawnie, bez auto-detekcji
-    .timer_channel   = 2,           // CH2 — library wykryje CH2N z PinMap
-    .gpio_af         = GPIO_AF3_TIM8,
-    .complementary   = true,        // CH2N = odwrócony sygnał
-    .mode            = FanMode::Proportional,
-    .pwm_frequency   = 25000,       // 25 kHz — standard PC fan
-    .temp_low        = 30,          // poniżej 30°C — duty_min
-    .temp_high       = 55,          // powyżej 55°C — duty_max
-    .duty_min        = 20,          // 20% — minimalne obroty (żeby fan nie zatkał)
-    .duty_max        = 100          // 100% — full blast
+inline constexpr FanConfig rev1_2_fan_config{
+    .pin = FAN_PWM_PIN,
+    .timer_instance = TIM8,  // ← jawnie, bez auto-detekcji
+    .timer_channel = 2,      // CH2 — library wykryje CH2N z PinMap
+    .gpio_af = GPIO_AF3_TIM8,
+    .complementary = true,  // CH2N = odwrócony sygnał
+    .mode = FanMode::Proportional,
+    .pwm_frequency = 25000,  // 25 kHz — standard PC fan
+    .temp_low = 30,          // poniżej 30°C — duty_min
+    .temp_high = 55,         // powyżej 55°C — duty_max
+    .duty_min = 20,          // 20% — minimalne obroty (żeby fan nie zatkał)
+    .duty_max = 100          // 100% — full blast
 };
 
-inline constexpr FanConfig rev1_1_fan_config {
-    .pin = FAN_PP_PIN,
-    .mode = FanMode::AlwaysOn
-};
+inline constexpr FanConfig rev1_1_fan_config{.pin = FAN_PP_PIN,
+                                             .mode = FanMode::AlwaysOn};
 
 // ───────── IMU ─────────
 inline constexpr ImuBno055Config imu_bno055_config = {
@@ -169,17 +167,17 @@ inline constexpr LedIndicatorConfig led_status_config = {
 };
 
 // ───────── LED Strip ─────────
-inline constexpr uint16_t IDLE_ANIMATION_CHANGE_MS = 2000;
-inline constexpr uint16_t IDLE_ANIMATION_INTERVAL_MS = 60;
+inline constexpr uint16_t IDLE_ANIMATION_CHANGE_MS = 2500;
+inline constexpr uint16_t IDLE_ANIMATION_INTERVAL_MS = 40;
 inline constexpr uint16_t LED_STRIP_TIMEOUT_MS = 1000;
 
 inline constexpr SpiTransportConfig spi_config = {
-    .mosi_pin  = PB15,
-    .miso_pin  = PB14,
-    .sck_pin   = PB10,
+    .mosi_pin = PB15,
+    .miso_pin = PB14,
+    .sck_pin = PB10,
     .spi_speed = 4000000,
     .bit_order = MSBFIRST,
-    .spi_mode  = SPI_MODE3,
+    .spi_mode = SPI_MODE3,
 };
 
 inline constexpr SwapPair swaps[] = {
@@ -187,12 +185,12 @@ inline constexpr SwapPair swaps[] = {
     {14, 16},
 };
 inline constexpr LedStripConfig strip_config = {
-    .num_leds     = 18,
-    .swaps             = swaps,
-    .swap_count        = sizeof(swaps) / sizeof(swaps[0]),
-    .init_r            = 0x0F,
-    .init_g            = 0x00,
-    .init_b            = 0x00,
+    .num_leds = 18,
+    .swaps = swaps,
+    .swap_count = sizeof(swaps) / sizeof(swaps[0]),
+    .init_r = 0x0F,
+    .init_g = 0x00,
+    .init_b = 0x00,
 };
 
 // ───────── Motors ─────────
@@ -305,8 +303,10 @@ inline constexpr JointStatePublisherConfig joint_state_pub_config = {
 };
 
 // ───────── PowerBoard ─────────
-inline constexpr uint8_t PWR_BRD_GPIO_INPUT = PD4;   // PB5 on power board -> output push pull
-inline constexpr uint8_t PWR_BRD_GPIO_OUTPUT = PD7;  // PB8 on power board -> input
+inline constexpr uint8_t PWR_BRD_GPIO_INPUT =
+    PD4;  // PB5 on power board -> output push pull
+inline constexpr uint8_t PWR_BRD_GPIO_OUTPUT =
+    PD7;  // PB8 on power board -> input
 inline constexpr HardwareSerial& PWR_BRD_SERIAL = Serial2;
 inline constexpr uint32_t PWR_BRD_SERIAL_BAUDRATE = 38400;
 inline constexpr uint8_t PWR_BRD_SERIAL_RX = PD6;

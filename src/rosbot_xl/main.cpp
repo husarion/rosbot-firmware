@@ -23,9 +23,9 @@
 #include "led_strip.hpp"
 #include "motor_array.hpp"
 #include "motor_drv8848.hpp"
+#include "ros/ros_node.hpp"
 #include "rtos.hpp"
 #include "serial_manager.hpp"
-#include "ros/ros_node.hpp"
 
 // ───────── Battery ─────────
 // BatteryAdc battery_adc(battery_adc_config);
@@ -119,7 +119,8 @@ void setup() {
   // Board revision detection
   board_revision.init();
   auto rev = board_revision.revision();
-  auto fan_config = (rev == Revision::V1_1) ? rev1_1_fan_config : rev1_2_fan_config;
+  auto fan_config =
+      (rev == Revision::V1_1) ? rev1_1_fan_config : rev1_2_fan_config;
 
   // Sensors initialization
   // battery_adc.init();

@@ -17,9 +17,9 @@
 #include <micro_ros_utilities/string_utilities.h>
 #include <sensor_msgs/msg/joint_state.h>
 
+#include "../utils.hpp"
 #include "encoder_array.hpp"
 #include "publisher_interface.hpp"
-#include "../utils.hpp"
 
 struct EncodersStamped {
   EncodersData data;
@@ -50,7 +50,9 @@ class JointStatePublisher : public PublisherInterface {
     RC_SKIP(rcl_publish(&pub_, &msg_, NULL));
   }
 
-  void fini(rcl_node_t& node) override { RC_SKIP(rcl_publisher_fini(&pub_, &node)); }
+  void fini(rcl_node_t& node) override {
+    RC_SKIP(rcl_publisher_fini(&pub_, &node));
+  }
 
  private:
   rcl_publisher_t pub_;

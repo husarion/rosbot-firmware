@@ -118,11 +118,10 @@ void fanTask(void* p) {
   while (true) {
     float temp = ntc.readCelsius();
     g_fan.update(temp);
-  
+
     vTaskDelayUntil(&wake_time, period);
   }
 }
-
 
 void imuTask(void* p) {
   TickType_t period = taskGetPeriod(p);
@@ -162,7 +161,8 @@ void ledAnimationTask(void* p) {
       last_msg_time = now;
     }
 
-    if ((now - last_msg_time) > timeout && (now - last_idle_change) > idle_period) {
+    if ((now - last_msg_time) > timeout &&
+        (now - last_idle_change) > idle_period) {
       if (idle_state == 0) {
         idleAnimation(g_led_strip, 0xA0, 0xA0, 0xA0, interval);
         idle_state = 1;
