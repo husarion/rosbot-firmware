@@ -264,7 +264,7 @@ void FanController::update(float temp) {
     applyDuty(100);
     running_ = true;
   } else {
-    const auto range = config_.temp_high - config_.temp_low;
+    static const auto range = config_.temp_high - config_.temp_low;
     const auto normalized = (temp - config_.temp_low) / range;
     applyDuty(static_cast<uint8_t>(
         (normalized * (100u - config_.duty_min) + config_.duty_min)));

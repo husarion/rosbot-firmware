@@ -23,6 +23,7 @@
 #include "led_strip.hpp"
 #include "motor_array.hpp"
 #include "motor_drv8848.hpp"
+#include "power_board.hpp"
 #include "ros/ros_node.hpp"
 #include "rtos.hpp"
 #include "serial_manager.hpp"
@@ -64,8 +65,11 @@ static constexpr uint8_t MOTOR_COUNT = sizeof(motors) / sizeof(motors[0]);
 static constexpr uint8_t DRIVER_GROUP_COUNT =
     sizeof(driver_groups) / sizeof(driver_groups[0]);
 
+// ───────── Power Board ─────────
+PowerBoard power_board(power_board_config);
+
 // ─────────Extern variables─────────
-// BatteryInterface* g_battery = &battery_adc;
+BatteryInterface* g_battery = &power_board;
 EncoderArray g_encoders(encoders, ENCODER_COUNT);
 ImuInterface* g_imu = &imu_bno055;
 LedIndicator g_indicator(led_status_config);
@@ -97,7 +101,9 @@ void boardPheripheralsInit() {
   digitalWrite(EN_LOC_5V, HIGH);
 
   // Power board
-  pinMode(PWR_BRD_GPIO_INPUT, INPUT_PULLUP);
+  pinMode(PB_SHD_DETECT, INPUT_PULLUP);
+  pinMode(PB_SHD_CONFIRM, OUTPUT);
+  digitalWrite(PB_SHD_CONFIRM, LOW);
 
   // I2C
   imu_i2c.begin();
@@ -131,7 +137,8 @@ void setup() {
   g_indicator.init();
   g_led_strip.init(strip_config, &s_transport);
   g_motors.init();
-  g_ros_node.transportInit(selected_serial);
+  power_board.init();
+  // g_ros_node.transportInit(selected_serial);
 
   // RTOS
   createQueues();

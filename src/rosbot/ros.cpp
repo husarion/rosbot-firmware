@@ -82,19 +82,19 @@ static std::vector<SubscriptionEntry> s_subscriptions = {
 };
 
 // SERVICES
-rcl_service_t get_cpu_id_service;
-std_srvs__srv__Trigger_Request s_cpuid_req;
-std_srvs__srv__Trigger_Response s_cpuid_res;
+rcl_service_t mcu_id_service;
+std_srvs__srv__Trigger_Request mcu_id_req;
+std_srvs__srv__Trigger_Response mcu_id_res;
 
-void getCpuIdCallback(const void* req, void* res) {
-  const uint32_t ADDRESS = 0x1FFF7A10;
-  const uint8_t NUM_BYTES = 12;
+void mcuIdCallback(const void* req, void* res) {
+  constexpr uint32_t MCU_UID = 0x1FFF7A10;
+  constexpr uint8_t NUM_BYTES = 12;
   uint8_t buffer[NUM_BYTES];
-  memcpy(buffer, (void*)ADDRESS, NUM_BYTES);
+  memcpy(buffer, (void*)MCU_UID, NUM_BYTES);
 
   // Prepare the CPU ID in hexadecimal format
-  char cpu_id_buffer[NUM_BYTES * 2 + 1] = {0};
-  char* hex_ptr = cpu_id_buffer;
+  char mcu_id_buffer[NUM_BYTES * 2 + 1] = {0};
+  char* hex_ptr = mcu_id_buffer;
   for (uint8_t i = 0; i < NUM_BYTES; ++i) {
     snprintf(hex_ptr, 3, "%02X", buffer[i]);
     hex_ptr += 2;
@@ -102,8 +102,8 @@ void getCpuIdCallback(const void* req, void* res) {
 
   // Prepare the final output buffer with "CPU ID: " prefix
   static char out_buffer[100];  // Ensure this is large enough
-  snprintf(out_buffer, sizeof(out_buffer), "{\"cpu_id\": \"%s\"}",
-           cpu_id_buffer);
+  snprintf(out_buffer, sizeof(out_buffer), "{\"mcu_id\": \"%s\"}",
+           mcu_id_buffer);
 
   // Set the response
   std_srvs__srv__Trigger_Response* response =
@@ -116,11 +116,11 @@ void getCpuIdCallback(const void* req, void* res) {
 static std::vector<ServiceEntry> s_services = {
     {
         .srv = {},
-        .request = &s_cpuid_req,
-        .response = &s_cpuid_res,
+        .request = &mcu_id_req,
+        .response = &mcu_id_res,
         .type_support = ROSIDL_GET_SRV_TYPE_SUPPORT(std_srvs, srv, Trigger),
-        .topic_name = "/get_cpu_id",
-        .callback = getCpuIdCallback,
+        .service_name = "mcu_id",
+        .callback = mcuIdCallback,
     },
 };
 

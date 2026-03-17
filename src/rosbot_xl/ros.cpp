@@ -27,6 +27,7 @@
 #include "config.hpp"
 #include "led_strip.hpp"
 #include "motor_array.hpp"
+#include "ros/clients/trigger_client.hpp"
 #include "ros/publishers/battery_publisher.hpp"
 #include "ros/publishers/buttons_publisher.hpp"
 #include "ros/publishers/imu_publisher.hpp"
@@ -39,9 +40,9 @@ static ButtonsPublisher s_buttons_pub(buttons_pub_config);
 static ImuPublisher s_imu_pub(imu_pub_config);
 static JointStatePublisher s_joint_pub(joint_state_pub_config);
 
-static std::vector<PublisherInterface*> s_publishers = {
+static std::vector<PublisherInterface*> publishers = {
     &s_battery_pub, &s_buttons_pub, &s_imu_pub, &s_joint_pub};
-uint8_t pub_count = static_cast<uint8_t>(s_publishers.size());
+uint8_t pub_count = static_cast<uint8_t>(publishers.size());
 
 // SUBSCRIBERS
 constexpr uint8_t MAX_ENCODING_SIZE = 16;
@@ -130,26 +131,35 @@ SubscriptionEntry motor_sub = {
 
 static LedSubState s_led_state;
 
-static std::vector<SubscriptionEntry> s_subscriptions = {
+static std::vector<SubscriptionEntry> subscriptions = {
     led_strip_sub,
     motor_sub,
     makeLedSubscription({.pin = GRN_LED, .topic_name = "led"}, &s_led_state),
 };
 
-// SERVICES
-rcl_service_t get_cpu_id_service;
-std_srvs__srv__Trigger_Request s_cpuid_req;
-std_srvs__srv__Trigger_Response s_cpuid_res;
+// CLIENTS
+void onShutdownResponse(const void* response) {
+  (void)response;
+  xSemaphoreGive(shd_sem);
+}
 
-void getCpuIdCallback(const void* req, void* res) {
-  const uint32_t ADDRESS = 0x1FFF7A10;
-  const uint8_t NUM_BYTES = 12;
+TriggerClient shutdown_client("shutdown", onShutdownResponse);
+static std::vector<ClientInterface*> clients = {&shutdown_client};
+
+// SERVICES
+rcl_service_t mcu_id_service;
+std_srvs__srv__Trigger_Request mcu_id_req;
+std_srvs__srv__Trigger_Response mcu_id_res;
+
+void mcuIdCallback(const void* req, void* res) {
+  constexpr uint32_t MCU_UID = 0x1FFF7A10;
+  constexpr uint8_t NUM_BYTES = 12;
   uint8_t buffer[NUM_BYTES];
-  memcpy(buffer, (void*)ADDRESS, NUM_BYTES);
+  memcpy(buffer, (void*)MCU_UID, NUM_BYTES);
 
   // Prepare the CPU ID in hexadecimal format
-  char cpu_id_buffer[NUM_BYTES * 2 + 1] = {0};
-  char* hex_ptr = cpu_id_buffer;
+  char mcu_id_buffer[NUM_BYTES * 2 + 1] = {0};
+  char* hex_ptr = mcu_id_buffer;
   for (uint8_t i = 0; i < NUM_BYTES; ++i) {
     snprintf(hex_ptr, 3, "%02X", buffer[i]);
     hex_ptr += 2;
@@ -157,10 +167,10 @@ void getCpuIdCallback(const void* req, void* res) {
 
   // Prepare the final output buffer with "CPU ID: " prefix
   static char out_buffer[100];  // Ensure this is large enough
-  snprintf(out_buffer, sizeof(out_buffer), "{\"cpu_id\": \"%s\"}",
-           cpu_id_buffer);
+  snprintf(out_buffer, sizeof(out_buffer), "{\"mcu_id\": \"%s\"}",
+           mcu_id_buffer);
 
-  // Set the response
+  // Response
   std_srvs__srv__Trigger_Response* response =
       (std_srvs__srv__Trigger_Response*)res;
   response->success = true;
@@ -168,25 +178,27 @@ void getCpuIdCallback(const void* req, void* res) {
   response->message.size = strlen(out_buffer);
 }
 
-static std::vector<ServiceEntry> s_services = {
+static std::vector<ServiceEntry> services = {
     {
         .srv = {},
-        .request = &s_cpuid_req,
-        .response = &s_cpuid_res,
+        .request = &mcu_id_req,
+        .response = &mcu_id_res,
         .type_support = ROSIDL_GET_SRV_TYPE_SUPPORT(std_srvs, srv, Trigger),
-        .topic_name = "/get_cpu_id",
-        .callback = getCpuIdCallback,
+        .service_name = "mcu_id",
+        .callback = mcuIdCallback,
     },
 };
 
 RosNodeConfig ros_node_config = {.node_name = NODE_NAME,
                                  .domain_id = DOMAIN_ID,
-                                 .publishers = s_publishers.data(),
-                                 .pub_count = s_publishers.size(),
-                                 .subscriptions = s_subscriptions.data(),
-                                 .sub_count = s_subscriptions.size(),
-                                 .services = s_services.data(),
-                                 .srv_count = s_services.size(),
+                                 .publishers = publishers.data(),
+                                 .pub_count = publishers.size(),
+                                 .subscriptions = subscriptions.data(),
+                                 .sub_count = subscriptions.size(),
+                                 .clients = clients.data(),
+                                 .client_count = clients.size(),
+                                 .services = services.data(),
+                                 .srv_count = services.size(),
                                  .ping_attempts = PING_ATTEMPTS,
                                  .ping_timeout_ms = PING_TIMEOUT_MS};
 

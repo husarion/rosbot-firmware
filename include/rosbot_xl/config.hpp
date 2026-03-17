@@ -15,6 +15,7 @@
 #pragma once
 
 #include <Arduino.h>
+#include <STM32Ethernet.h>
 
 #include "eeprom.hpp"
 #include "fan.hpp"
@@ -26,6 +27,7 @@
 #include "motor_drv8848.hpp"
 #include "ntc.hpp"
 #include "pid.hpp"
+#include "power_board.hpp"
 #include "ros/publishers/battery_publisher.hpp"
 #include "ros/publishers/buttons_publisher.hpp"
 #include "ros/publishers/imu_publisher.hpp"
@@ -45,6 +47,10 @@ inline constexpr uint8_t EN_LOC_5V = PF13;
 inline constexpr uint8_t I2C_SDA = PF0;
 inline constexpr uint8_t I2C_SCL = PF1;
 inline TwoWire imu_i2c(I2C_SDA, I2C_SCL);
+
+inline constexpr uint8_t PB_SERIAL_RX = PD6;
+inline constexpr uint8_t PB_SERIAL_TX = PD5;
+inline HardwareSerial pb_serial(PB_SERIAL_RX, PB_SERIAL_TX);
 
 // ───────── Buttons ─────────
 inline constexpr uint8_t PUSH_BUTTON1 = PF11;
@@ -265,11 +271,17 @@ inline constexpr uint16_t DOMAIN_ID = 255;  // 255 inherit from Micro ROS Agent
 inline constexpr uint32_t PING_TIMEOUT_MS = 100;
 inline constexpr uint8_t PING_ATTEMPTS = 3;
 
+inline const byte MAC[6] = {0x02, 0x47, 0x00, 0x00, 0x00, 0x01};
+inline const IPAddress CLIENT_IP = {192, 168, 77, 3};
+inline const IPAddress AGENT_IP = {192, 168, 77, 2};
+inline const uint16_t AGENT_PORT = 8888;
+
 // ───────── Publishers ─────────
 inline QueueHandle_t battery_queue;
 inline QueueHandle_t imu_queue;
 inline QueueHandle_t joint_state_queue;
 inline QueueHandle_t led_strip_queue;
+inline SemaphoreHandle_t shd_sem;
 
 inline constexpr uint8_t BATTERY_NUM_CELLS = 3;
 inline constexpr float BATTERY_CELL_CAPACITY = 2.6f;  // Ah
@@ -302,22 +314,22 @@ inline constexpr JointStatePublisherConfig joint_state_pub_config = {
     .frame_id = "base_link",
 };
 
-// ───────── PowerBoard ─────────
-inline constexpr uint8_t PWR_BRD_GPIO_INPUT =
-    PD4;  // PB5 on power board -> output push pull
-inline constexpr uint8_t PWR_BRD_GPIO_OUTPUT =
-    PD7;  // PB8 on power board -> input
-inline constexpr HardwareSerial& PWR_BRD_SERIAL = Serial2;
-inline constexpr uint32_t PWR_BRD_SERIAL_BAUDRATE = 38400;
-inline constexpr uint8_t PWR_BRD_SERIAL_RX = PD6;
-inline constexpr uint8_t PWR_BRD_SERIAL_TX = PD5;
-inline constexpr uint32_t PWR_BRD_SERIAL_CONFIG = 0x06;
-inline constexpr uint32_t PWR_BRD_SERIAL_TIMEOUT_MS = 10;
+// ───────── Power Board - Battery ─────────
+inline constexpr PowerBoardConfig power_board_config = {
+    .serial = pb_serial,
+    .baudrate = 38400,
+    .timeout_ms = 100,
+    .v_min = 9.6f,
+    .v_max = 12.6f,
+};
+
+// ───────── Power Board - Shutdown ─────────
+// Power Board send high signal when shutdown button is pressed
+inline constexpr uint8_t PB_SHD_DETECT = PD4;
+// Power Board monitors if signal is high to confirm shutdown
+inline constexpr uint8_t PB_SHD_CONFIRM = PD7;
 
 // ───────── SBC Interface ─────────
-inline constexpr uint32_t SBC_CONNECT_TIMEOUT_MS = 10;
-inline constexpr uint32_t POWEROFF_DELAY_MS = 5000;
-
 inline constexpr SerialConfig FTDI_SERIAL_CONFIG = {.serial = &Serial1,
                                                     .baudrate = 921600,
                                                     .rxPin = PA10,

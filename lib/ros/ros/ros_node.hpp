@@ -20,20 +20,24 @@
 #include <rclc/rclc.h>
 #include <rmw_microros/rmw_microros.h>
 
+#include "clients/client_interface.hpp"
 #include "publishers/publisher_interface.hpp"
 #include "serial_manager.hpp"
 #include "types.hpp"
 #include "utils.hpp"
 
 struct RosNodeConfig {
-  const char* node_name;  // e.g. "rosbot_mcu"
-  uint8_t domain_id;      // 255 = inherit from agent
+  const char* node_name;
+  uint8_t domain_id;  // 255 = inherit from agent
 
   PublisherInterface** publishers;
   size_t pub_count;
 
   SubscriptionEntry* subscriptions;
   size_t sub_count;
+
+  ClientInterface** clients;
+  size_t client_count;
 
   ServiceEntry* services;
   size_t srv_count;

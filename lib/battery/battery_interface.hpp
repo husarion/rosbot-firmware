@@ -19,8 +19,11 @@
 
 struct BatteryData {
   float current = NAN;
+  uint8_t health = 0;
   float percentage = NAN;
   float temperature = NAN;
+  bool present = true;
+  uint8_t status = 0;
   float voltage = NAN;
 };
 

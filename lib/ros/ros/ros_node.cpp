@@ -29,42 +29,49 @@ bool RosNode::createEntities() {
                                  &allocator_);
   rclc_node_init_default(&node_, cfg_.node_name, ns_, &support_);
 
-  // ── Register all publishers ──────────────────────────────
-  for (uint8_t i = 0; i < cfg_.pub_count; ++i) {
+  // ── Publishers ───────────────────────────────────────────
+  for (size_t i = 0; i < cfg_.pub_count; ++i) {
     RC_RETURN(cfg_.publishers[i]->init(node_, allocator_));
   }
 
-  // ── Register all subscriptions ──────────────────────────
-  for (uint8_t i = 0; i < cfg_.sub_count; ++i) {
+  // ── Subscriptions ────────────────────────────────────────
+  for (size_t i = 0; i < cfg_.sub_count; ++i) {
     auto& s = cfg_.subscriptions[i];
-    if (s.best_effort) {
+    if (s.best_effort)
       rclc_subscription_init_best_effort(&s.sub, &node_, s.type_support,
                                          s.topic_name);
-    } else {
+    else
       rclc_subscription_init_default(&s.sub, &node_, s.type_support,
                                      s.topic_name);
-    }
   }
 
-  // ── Register all services ────────────────────────────────
-  for (uint8_t i = 0; i < cfg_.srv_count; ++i) {
+  // ── Service Clients ─────────────────────────────────────
+  for (size_t i = 0; i < cfg_.client_count; ++i) {
+    RC_RETURN(cfg_.clients[i]->init(node_, allocator_));
+  }
+
+  // ── Services Serwer ───────────────────────────────────
+  for (size_t i = 0; i < cfg_.srv_count; ++i) {
     auto& s = cfg_.services[i];
-    rclc_service_init_default(&s.srv, &node_, s.type_support, s.topic_name);
+    rclc_service_init_default(&s.srv, &node_, s.type_support, s.service_name);
   }
 
-  // ── Count executor handles ───────────────────────────────
-  uint8_t exec_count = cfg_.sub_count + cfg_.srv_count;
-
-  // ── Create executor ──────────────────────────────────────
+  // ── Executor ─────────────────────────────────────────────
+  size_t exec_count = cfg_.sub_count + cfg_.srv_count + cfg_.client_count;
   executor_ = rclc_executor_get_zero_initialized_executor();
   rclc_executor_init(&executor_, &support_.context, exec_count, &allocator_);
 
-  for (uint8_t i = 0; i < cfg_.sub_count; ++i) {
+  for (size_t i = 0; i < cfg_.sub_count; ++i) {
     auto& s = cfg_.subscriptions[i];
     rclc_executor_add_subscription(&executor_, &s.sub, s.msg, s.callback,
                                    ON_NEW_DATA);
   }
-  for (uint8_t i = 0; i < cfg_.srv_count; ++i) {
+  for (size_t i = 0; i < cfg_.client_count; ++i) {
+    auto* c = cfg_.clients[i];
+    rclc_executor_add_client(&executor_, c->clientHandle(), c->responseMsg(),
+                             c->responseCallback());
+  }
+  for (size_t i = 0; i < cfg_.srv_count; ++i) {
     auto& s = cfg_.services[i];
     rclc_executor_add_service(&executor_, &s.srv, s.request, s.response,
                               s.callback);
@@ -81,6 +88,7 @@ void RosNode::destroyEntities() {
   for (uint8_t i = 0; i < cfg_.pub_count; ++i) cfg_.publishers[i]->fini(node_);
   for (uint8_t i = 0; i < cfg_.sub_count; ++i)
     RC_SKIP(rcl_subscription_fini(&cfg_.subscriptions[i].sub, &node_));
+  for (size_t i = 0; i < cfg_.client_count; ++i) cfg_.clients[i]->fini(node_);
   for (uint8_t i = 0; i < cfg_.srv_count; ++i)
     RC_SKIP(rcl_service_fini(&cfg_.services[i].srv, &node_));
 
