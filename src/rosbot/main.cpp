@@ -134,7 +134,7 @@ void setup() {
   g_indicator.init();
   g_motors.init();
   g_ranges.init();
-  g_ros_node.transportInit(*transport);
+  g_ros_node.serialTransportInit(*transport);
 
   // RTOS
   createQueues();

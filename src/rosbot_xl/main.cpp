@@ -162,7 +162,8 @@ void setup() {
   auto fan_config =
       (rev == Revision::V1_1) ? rev1_1_fan_config : rev1_2_fan_config;
 
-  // Sensors initialization
+  // Components initialization
+  Ethernet.begin(MAC, CLIENT_IP);
   g_encoders.init();
   ntc.init();
   g_fan.init(fan_config);
@@ -172,7 +173,9 @@ void setup() {
   g_motors.init();
   power_board.init();
   if (g_comm_mgr.isSerialTransport()) {
-    g_ros_node.transportInit(*transport);
+    g_ros_node.serialTransportInit(*transport);
+  } else {
+    g_ros_node.ethernetTransportInit(AGENT_IP, AGENT_PORT);
   }
 
   // RTOS

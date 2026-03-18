@@ -246,31 +246,9 @@ void shutdownTask(void* p) {
   }
 }
 
-void init_microros_eth_transport(byte mac[], IPAddress client_ip,
-                                 IPAddress agent_ip, uint16_t agent_port) {
-  static struct micro_ros_agent_locator locator;
-
-  Ethernet.begin(mac, client_ip);
-  while (Ethernet.linkStatus() == LinkOFF) {
-    vTaskDelay(pdMS_TO_TICKS(100));
-  }
-
-  locator.address = agent_ip;
-  locator.port = agent_port;
-
-  rmw_uros_set_custom_transport(false, (void*)&locator,
-                                arduino_native_ethernet_udp_transport_open,
-                                arduino_native_ethernet_udp_transport_close,
-                                arduino_native_ethernet_udp_transport_write,
-                                arduino_native_ethernet_udp_transport_read);
-}
-
 void uRosTask(void* p) {
   TickType_t period = taskGetPeriod(p);
   TickType_t wake_time = xTaskGetTickCount();
-  if (!g_comm_mgr.isSerialTransport()) {
-    init_microros_eth_transport(MAC, CLIENT_IP, AGENT_IP, AGENT_PORT);
-  }
 
   while (true) {
     g_ros_node.publishLoop();

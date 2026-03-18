@@ -127,7 +127,20 @@ void RosNode::publishLoop() {
   rclc_executor_spin_some(&executor_, RCL_MS_TO_NS(0));
 }
 
-void RosNode::transportInit(const SerialConfig& config) {
+void RosNode::ethernetTransportInit(IPAddress agent_ip, uint16_t agent_port) {
+  static struct micro_ros_agent_locator locator;
+
+  locator.address = agent_ip;
+  locator.port = agent_port;
+
+  rmw_uros_set_custom_transport(false, (void*)&locator,
+                                arduino_native_ethernet_udp_transport_open,
+                                arduino_native_ethernet_udp_transport_close,
+                                arduino_native_ethernet_udp_transport_write,
+                                arduino_native_ethernet_udp_transport_read);
+}
+
+void RosNode::serialTransportInit(const SerialConfig& config) {
   rmw_uros_set_custom_transport(
       /* Enable XRCE framing */
       true,

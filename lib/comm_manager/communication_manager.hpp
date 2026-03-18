@@ -69,7 +69,8 @@ class CommunicationManager {
 
   /// @brief  Wait up to @p timeout_ms for diagnostic serial activity.
   ///         If detected → ROS transport = diagnostic serial, debug OFF.
-  ///         If timeout  → ROS transport = primary (serial or ethernet), debug ON.
+  ///         If timeout  → ROS transport = primary (serial or ethernet), debug
+  ///         ON.
   /// @return Pointer to SerialConfig when serial transport chosen;
   ///         nullptr when ethernet is the selected transport.
   const SerialConfig* selectTransport(uint32_t timeout_ms = 2000) {
@@ -126,7 +127,8 @@ class CommunicationManager {
   ///         (i.e. communication goes via primary transport, not diagnostic)
   bool hasDebugSerial() const { return debug_available_; }
 
-  /// @return diagnostic HardwareSerial* if available for debug, nullptr otherwise
+  /// @return diagnostic HardwareSerial* if available for debug, nullptr
+  /// otherwise
   HardwareSerial* debugSerial() {
     return debug_available_ ? cfg_.diagnostic_serial.serial : nullptr;
   }

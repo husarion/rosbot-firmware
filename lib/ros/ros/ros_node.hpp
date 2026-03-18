@@ -53,10 +53,12 @@ class RosNode {
   RosNode() = default;
   explicit RosNode(const RosNodeConfig& cfg) : cfg_(cfg) {}
 
-  void transportInit(const SerialConfig& serial);
+  void serialTransportInit(const SerialConfig& serial);
+  void ethernetTransportInit(IPAddress agent_ip, uint16_t agent_port);
   bool pingAgent();
 
-  /// State machine: WAITING → AGENT_AVAILABLE → CONNECTED ⇄ DISCONNECTED
+  /// State machine: WAITING → AGENT_AVAILABLE → CONNECTED → DISCONNECTED →
+  /// WAITING
   void loop();
 
   /// Publish all registered publishers + spin executor.
