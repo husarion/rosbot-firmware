@@ -21,8 +21,8 @@
 #include <rmw_microros/rmw_microros.h>
 
 #include "clients/client_interface.hpp"
+#include "communication_manager.hpp"
 #include "publishers/publisher_interface.hpp"
-#include "serial_manager.hpp"
 #include "types.hpp"
 #include "utils.hpp"
 

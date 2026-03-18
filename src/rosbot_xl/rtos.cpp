@@ -18,6 +18,7 @@
 
 #include "animations/led_animations.hpp"
 #include "battery_interface.hpp"
+#include "communication_manager.hpp"
 #include "config.hpp"
 #include "encoder_array.hpp"
 #include "fan.hpp"
@@ -26,14 +27,17 @@
 #include "led_strip.hpp"
 #include "motor_array.hpp"
 #include "ntc.hpp"
+#include "power_board.hpp"
+#include "ros/clients/trigger_client.hpp"
 #include "ros/publishers/battery_publisher.hpp"
 #include "ros/publishers/imu_publisher.hpp"
 #include "ros/publishers/joint_state_publisher.hpp"
 #include "ros/ros_node.hpp"
-#include "serial_manager.hpp"
 
-// Externs
+// ───── Externs ─────
 extern FanController g_fan;
+extern PowerBoard power_board;
+extern TriggerClient shutdown_client;
 
 // ───── Queues ─────
 void createQueues() {
@@ -44,31 +48,32 @@ void createQueues() {
 }
 
 // ───── Create all tasks ─────
-void batteryTask(void* p);
 void encoderTask(void* p);
-void fanTask(void* p);
+void hwMonitorTask(
+    void* p);  // Bat + Fan + Indicator: Merged due limited stack size
 void imuTask(void* p);
-void ledIndicatorTask(void* p);
+void ledAnimationTask(void* p);
 void monitorTask(void* p);
 void motorControlTask(void* p);
-void ledAnimationTask(void* p);
+void shutdownTask(void* p);
 void uRosTask(void* p);
 void uRosPingTask(void* p);
 
-inline TaskConfig tasks[] = {
-    // {"Battery", Priority::SENSORS, Stack::SMALL, 10, batteryTask},
-    {"Encoder", Priority::CONTROL, Stack::SMALL, 500, encoderTask},
-    {"Fan", Priority::OBSERVING, Stack::SMALL, 10, fanTask},
-    {"Imu", Priority::SENSORS, Stack::SMALL, 100, imuTask},
-    {"LedAnimation", Priority::OBSERVING, Stack::MEDIUM, 25, ledAnimationTask},
-    {"LedIndicator", Priority::OBSERVING, Stack::XSMALL, 20, ledIndicatorTask},
-    // {"Monitor", Priority::OBSERVING, Stack::MEDIUM, 1, monitorTask},
-    {"MotorControl", Priority::CONTROL, Stack::MEDIUM, 200, motorControlTask},
-    {"uRos", Priority::COMMUNICATION, Stack::LARGE, 100, uRosTask},
-    {"uRosPing", Priority::OBSERVING, Stack::MEDIUM, 2, uRosPingTask},
+TaskConfig tasks[] = {
+    {"Encoder", Priority::CONTROL, Stack::XXS, 500, encoderTask},
+    {"HwMonitor", Priority::OBSERVING, Stack::S, 10, hwMonitorTask},
+    {"Imu", Priority::SENSORS, Stack::M, 100, imuTask},
+    {"LedAnimation", Priority::OBSERVING, Stack::XS, 25, ledAnimationTask},
+#ifndef RELEASE
+    {"Monitor", Priority::OBSERVING, Stack::XL, 1, monitorTask},
+#endif
+    {"MotorControl", Priority::CONTROL, Stack::XXS, 200, motorControlTask},
+    {"Shutdown", Priority::OBSERVING, Stack::M, 3, shutdownTask},
+    {"uRos", Priority::COMMUNICATION, Stack::L, 100, uRosTask},
+    {"uRosPing", Priority::OBSERVING, Stack::XL, 2, uRosPingTask},
 };
 
-inline TaskHandleWrapper taskHandles[sizeof(tasks) / sizeof(tasks[0])];
+TaskHandleWrapper taskHandles[sizeof(tasks) / sizeof(tasks[0])];
 
 void createTasks() {
   for (size_t i = 0; i < sizeof(tasks) / sizeof(tasks[0]); i++) {
@@ -77,23 +82,6 @@ void createTasks() {
 }
 
 // ───── Task functions ─────
-// void batteryTask(void* p) {
-//   TickType_t period = taskGetPeriod(p);
-//   TickType_t wake_time = xTaskGetTickCount();
-//   BatteryStamped data = {};
-
-//   while (true) {
-//     bool connected = rtos_get_timestamp_ns(data.timestamp_ns);
-//     g_battery->update();  // TODO: DMA should be used
-//     data.data = g_battery->getData();
-
-//     if (connected) {
-//       xQueueOverwrite(battery_queue, &data);
-//     }
-//     vTaskDelayUntil(&wake_time, period);
-//   }
-// }
-
 void encoderTask(void* p) {
   TickType_t period = taskGetPeriod(p);
   TickType_t wake_time = xTaskGetTickCount();
@@ -111,13 +99,40 @@ void encoderTask(void* p) {
   }
 }
 
-void fanTask(void* p) {
+void hwMonitorTask(void* p) {
   TickType_t period = taskGetPeriod(p);
   TickType_t wake_time = xTaskGetTickCount();
+  BatteryStamped data = {};
+  TickType_t last_battery_update = 0;
 
   while (true) {
-    float temp = ntc.readCelsius();
-    g_fan.update(temp);
+    // LED Indicator
+    bool battery_low = g_battery->isLow();
+    bool error_state = false;
+    g_indicator.update(battery_low, !g_ros_node.isConnected(), error_state);
+
+    if (xTaskGetTickCount() - last_battery_update > pdMS_TO_TICKS(1000)) {
+      // Fan
+      float temp = ntc.readCelsius();
+      g_fan.update(temp);
+
+      // Battery
+      if (!power_board.boardInfo().isValid()) {
+        power_board.requestBoardInfo();
+      }
+
+      power_board.requestBatteryState();
+      power_board.update();
+
+      if (power_board.hasBatteryUpdate()) {
+        bool connected = rtos_get_timestamp_ns(data.timestamp_ns);
+        data.data = power_board.getData();
+        if (connected) {
+          xQueueOverwrite(battery_queue, &data);
+        }
+      }
+      last_battery_update = xTaskGetTickCount();
+    }
 
     vTaskDelayUntil(&wake_time, period);
   }
@@ -177,27 +192,26 @@ void ledAnimationTask(void* p) {
   }
 }
 
-void ledIndicatorTask(void* p) {
-  TickType_t period = taskGetPeriod(p);
-  TickType_t wake_time = xTaskGetTickCount();
-
-  while (true) {
-    bool battery_low = false;  // g_battery->isLow();
-    bool error_state = false;
-
-    g_indicator.update(battery_low, !g_ros_node.isConnected(), error_state);
-    vTaskDelayUntil(&wake_time, period);
-  }
-}
-
 void monitorTask(void* p) {
   TickType_t period = taskGetPeriod(p);
   TickType_t wake_time = xTaskGetTickCount();
-  char buf[1000];
+  char buf[768];
 
   while (true) {
     vTaskGetRunTimeStats(buf);
-    g_serialManager.debug().printf("%s\r\n", buf);
+    if (g_comm_mgr.hasDebugSerial()) {
+      g_comm_mgr.debugSerial()->printf("\r\n%s\r\n", buf);
+
+      for (size_t i = 0; i < sizeof(taskHandles) / sizeof(taskHandles[0]);
+           i++) {
+        g_comm_mgr.debugSerial()->printf(
+            "%-16s %-6u B\r\n", tasks[i].name,
+            uxTaskGetStackHighWaterMark(taskHandles[i].handle) *
+                sizeof(StackType_t));
+      }
+      g_comm_mgr.debugSerial()->printf("\r\n Free heap memory: %u B\r\n",
+                                       (unsigned)xPortGetFreeHeapSize());
+    }
 
     vTaskDelayUntil(&wake_time, period);
   }
@@ -214,9 +228,50 @@ void motorControlTask(void* p) {
   }
 }
 
+void shutdownTask(void* p) {
+  TickType_t period = taskGetPeriod(p);
+  TickType_t wake_time = xTaskGetTickCount();
+
+  while (true) {
+    if (digitalRead(PB_SHD_DETECT) == HIGH) {
+      if (g_ros_node.isConnected()) {
+        shutdown_client.send();
+      }
+
+      vTaskDelay(pdMS_TO_TICKS(SHUTDOWN_WAIT_MS));
+      digitalWrite(PB_SHD_CONFIRM, HIGH);
+      vTaskSuspend(nullptr);
+    }
+    vTaskDelayUntil(&wake_time, period);
+  }
+}
+
+void init_microros_eth_transport(byte mac[], IPAddress client_ip,
+                                 IPAddress agent_ip, uint16_t agent_port) {
+  static struct micro_ros_agent_locator locator;
+
+  Ethernet.begin(mac, client_ip);
+  while (Ethernet.linkStatus() == LinkOFF) {
+    vTaskDelay(pdMS_TO_TICKS(100));
+  }
+
+  locator.address = agent_ip;
+  locator.port = agent_port;
+
+  rmw_uros_set_custom_transport(false, (void*)&locator,
+                                arduino_native_ethernet_udp_transport_open,
+                                arduino_native_ethernet_udp_transport_close,
+                                arduino_native_ethernet_udp_transport_write,
+                                arduino_native_ethernet_udp_transport_read);
+}
+
 void uRosTask(void* p) {
   TickType_t period = taskGetPeriod(p);
   TickType_t wake_time = xTaskGetTickCount();
+  if (!g_comm_mgr.isSerialTransport()) {
+    init_microros_eth_transport(MAC, CLIENT_IP, AGENT_IP, AGENT_PORT);
+  }
+
   while (true) {
     g_ros_node.publishLoop();
     vTaskDelayUntil(&wake_time, period);

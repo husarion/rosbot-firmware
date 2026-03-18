@@ -17,6 +17,7 @@
 #include <Arduino.h>
 
 #include "battery_adc.hpp"
+#include "communication_manager.hpp"
 #include "hardware_encoder.hpp"
 #include "imu_bno055.hpp"
 #include "led_indicator.hpp"
@@ -29,10 +30,9 @@
 #include "ros/publishers/imu_publisher.hpp"
 #include "ros/publishers/joint_state_publisher.hpp"
 #include "ros/publishers/range_publisher.hpp"
-#include "serial_manager.hpp"
 
 // ───────── Arduino settings ─────────
-static constexpr uint32_t ADC_MAX_VALUE =
+inline constexpr uint32_t ADC_MAX_VALUE =
     1023;  // 10-bit ADC resolution (0-1023)
 
 // ───────── Battery ─────────
@@ -47,15 +47,15 @@ inline constexpr BatteryAdcConfig battery_adc_config = {
 };
 
 // ───────── Buttons ─────────
-static constexpr uint8_t PUSH_BUTTON1 = PG12;
-static constexpr uint8_t PUSH_BUTTON2 = PG13;
+inline constexpr uint8_t PUSH_BUTTON1 = PG12;
+inline constexpr uint8_t PUSH_BUTTON2 = PG13;
 
 // ───────── Encoders ─────────
-constexpr float GEAR_RATIO = 34.0f;
-constexpr uint16_t ENCODER_CPR = 48;
-constexpr float TICKS_PER_REVOLUTION = ENCODER_CPR * GEAR_RATIO;
-constexpr float RAD_PER_TICK = (2.0f * PI) / TICKS_PER_REVOLUTION;
-constexpr float LOW_PASS_ALPHA = 0.1f;
+inline constexpr float GEAR_RATIO = 34.0f;
+inline constexpr uint16_t ENCODER_CPR = 48;
+inline constexpr float TICKS_PER_REVOLUTION = ENCODER_CPR * GEAR_RATIO;
+inline constexpr float RAD_PER_TICK = (2.0f * PI) / TICKS_PER_REVOLUTION;
+inline constexpr float LOW_PASS_ALPHA = 0.1f;
 
 inline constexpr HardwareEncoderConfig enc_fl_config = {
     .pin_a = PB6,
@@ -98,9 +98,9 @@ inline constexpr HardwareEncoderConfig enc_rr_config = {
 };
 
 // ───────── IMU ─────────
-static constexpr uint8_t IMU_POWER_ON = PG4;
-static constexpr uint8_t IMU_I2C_SDA = PC9;
-static constexpr uint8_t IMU_I2C_SCL = PA8;
+inline constexpr uint8_t IMU_POWER_ON = PG4;
+inline constexpr uint8_t IMU_I2C_SDA = PC9;
+inline constexpr uint8_t IMU_I2C_SCL = PA8;
 
 inline TwoWire imu_i2c(IMU_I2C_SDA, IMU_I2C_SCL);
 inline constexpr ImuBno055Config imu_bno055_config = {
@@ -113,9 +113,9 @@ inline constexpr ImuBno055Config imu_bno055_config = {
 };
 
 // ───────── LEDs ─────────
-static constexpr uint8_t RED_LED = PE2;
-static constexpr uint8_t GRN_LED = PE3;
-static constexpr uint8_t GRN_LED2 = PE4;
+inline constexpr uint8_t RED_LED = PE2;
+inline constexpr uint8_t GRN_LED = PE3;
+inline constexpr uint8_t GRN_LED2 = PE4;
 
 inline constexpr LedIndicatorConfig led_status_config = {
     .pin = RED_LED,
@@ -125,9 +125,9 @@ inline constexpr LedIndicatorConfig led_status_config = {
 };
 
 // ───────── Motors ─────────
-constexpr uint32_t MOTOR_PWM_FREQ = 20000;  // 20 kHz
-constexpr float MAX_VELOCITY = 25.0f;
-constexpr float MIN_VELOCITY = 1.0f;
+inline constexpr uint32_t MOTOR_PWM_FREQ = 20000;  // 20 kHz
+inline constexpr float MAX_VELOCITY = 25.0f;
+inline constexpr float MIN_VELOCITY = 1.0f;
 
 inline constexpr DriverGroupConfig right_motors_driver = {PC13, PE0};
 inline constexpr DriverGroupConfig left_motors_driver = {PC14, PE1};
@@ -193,8 +193,8 @@ inline constexpr PIDConfig pid_config = {
 };
 
 // ───────── Ranges ─────────
-static constexpr uint8_t RANGE_I2C_SDA = PB9;
-static constexpr uint8_t RANGE_I2C_SCL = PB8;
+inline constexpr uint8_t RANGE_I2C_SDA = PB9;
+inline constexpr uint8_t RANGE_I2C_SCL = PB8;
 
 inline TwoWire range_i2c(RANGE_I2C_SDA, RANGE_I2C_SCL);
 inline constexpr RangeVl53l0xConfig range_fl_config = {
@@ -226,10 +226,10 @@ inline constexpr RangeVl53l0xConfig range_rr_config = {
 };
 
 // ───────── ROS ─────────
-static constexpr const char* NODE_NAME = "rosbot_mcu";
-static constexpr uint16_t DOMAIN_ID = 255;  // 255 inherit from Micro ROS Agent
-static constexpr uint32_t PING_TIMEOUT_MS = 100;
-static constexpr uint8_t PING_ATTEMPTS = 3;
+inline constexpr const char* NODE_NAME = "rosbot_mcu";
+inline constexpr uint16_t DOMAIN_ID = 255;  // 255 inherit from Micro ROS Agent
+inline constexpr uint32_t PING_TIMEOUT_MS = 100;
+inline constexpr uint8_t PING_ATTEMPTS = 3;
 
 // ───────── Publishers ─────────
 inline QueueHandle_t battery_queue;
@@ -237,9 +237,9 @@ inline QueueHandle_t imu_queue;
 inline QueueHandle_t joint_state_queue;
 inline QueueHandle_t ranges_queue;
 
-static constexpr uint8_t BATTERY_NUM_CELLS = 3;
-static constexpr float BATTERY_CELL_CAPACITY = 2.6f;  // Ah
-static constexpr float BATTERY_DESIGN_CAPACITY =
+inline constexpr uint8_t BATTERY_NUM_CELLS = 3;
+inline constexpr float BATTERY_CELL_CAPACITY = 2.6f;  // Ah
+inline constexpr float BATTERY_DESIGN_CAPACITY =
     BATTERY_NUM_CELLS * BATTERY_CELL_CAPACITY;
 inline constexpr BatteryPublisherConfig battery_pub_config = {
     .topic = "battery",
@@ -277,10 +277,10 @@ inline constexpr RangePublisherConfig range_pub_config = {
 };
 
 // ───────── SBC Interface ─────────
-static constexpr uint32_t SBC_SERIAL_TIMEOUT_MS = 100;
-static constexpr uint8_t SBC_STATUS = PG6;  // Detect RPi which is a pullup pin
-static constexpr uint8_t RPI_CONSOLE = PG5;
-static constexpr uint8_t RPI_BTN = PG7;
+inline constexpr uint32_t SBC_SERIAL_TIMEOUT_MS = 100;
+inline constexpr uint8_t SBC_STATUS = PG6;  // Detect RPi which is a pullup pin
+inline constexpr uint8_t RPI_CONSOLE = PG5;
+inline constexpr uint8_t RPI_BTN = PG7;
 
 // Primary: SBC Serial (SBC connection)
 inline constexpr SerialConfig SBC_SERIAL_CONFIG = {.serial = &Serial1,
@@ -291,9 +291,10 @@ inline constexpr SerialConfig SBC_SERIAL_CONFIG = {.serial = &Serial1,
                                                    .name = "SBC_SERIAL"};
 
 // Secondary: FTDI Serial (Rear panel USB connection)
-inline constexpr SerialConfig FTDI_SERIAL_CONFIG = {.serial = &Serial3,
-                                                    .baudrate = 921600,
-                                                    .rxPin = PB11,
-                                                    .txPin = PB10,
-                                                    .timeout_ms = 1,
-                                                    .name = "FTDI_SERIAL"};
+inline constexpr SerialConfig DIAGNOSTIC_SERIAL_CONFIG = {
+    .serial = &Serial3,
+    .baudrate = 921600,
+    .rxPin = PB11,
+    .txPin = PB10,
+    .timeout_ms = 1,
+    .name = "FTDI_SERIAL"};

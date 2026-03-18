@@ -50,7 +50,7 @@ bool RosNode::createEntities() {
     RC_RETURN(cfg_.clients[i]->init(node_, allocator_));
   }
 
-  // ── Services Serwer ───────────────────────────────────
+  // ── Services Server ───────────────────────────────────
   for (size_t i = 0; i < cfg_.srv_count; ++i) {
     auto& s = cfg_.services[i];
     rclc_service_init_default(&s.srv, &node_, s.type_support, s.service_name);

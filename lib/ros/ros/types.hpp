@@ -21,7 +21,6 @@
 #include <rmw_microros/rmw_microros.h>
 
 #include "publishers/publisher_interface.hpp"
-#include "serial_manager.hpp"
 
 struct SubscriptionEntry {
   rcl_subscription_t sub = {};

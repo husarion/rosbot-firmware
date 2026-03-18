@@ -17,6 +17,7 @@
 #include <Arduino.h>
 #include <STM32Ethernet.h>
 
+#include "communication_manager.hpp"
 #include "eeprom.hpp"
 #include "fan.hpp"
 #include "hardware_encoder.hpp"
@@ -32,7 +33,6 @@
 #include "ros/publishers/buttons_publisher.hpp"
 #include "ros/publishers/imu_publisher.hpp"
 #include "ros/publishers/joint_state_publisher.hpp"
-#include "serial_manager.hpp"
 #include "transport/spi_transport.hpp"
 
 // ───────── Arduino settings ─────────
@@ -74,11 +74,11 @@ inline BoardRevisionConfig board_revision_config = {
 };
 
 // ───────── Encoders ─────────
-constexpr float GEAR_RATIO = 50.0f;
-constexpr uint16_t ENCODER_CPR = 64;
-constexpr float TICKS_PER_REVOLUTION = ENCODER_CPR * GEAR_RATIO;
-constexpr float RAD_PER_TICK = (2.0f * PI) / TICKS_PER_REVOLUTION;
-constexpr float LOW_PASS_ALPHA = 0.05f;
+inline constexpr float GEAR_RATIO = 50.0f;
+inline constexpr uint16_t ENCODER_CPR = 64;
+inline constexpr float TICKS_PER_REVOLUTION = ENCODER_CPR * GEAR_RATIO;
+inline constexpr float RAD_PER_TICK = (2.0f * PI) / TICKS_PER_REVOLUTION;
+inline constexpr float LOW_PASS_ALPHA = 0.05f;
 
 inline constexpr HardwareEncoderConfig enc_fl_config = {
     .pin_a = PD12,
@@ -200,9 +200,16 @@ inline constexpr LedStripConfig strip_config = {
 };
 
 // ───────── Motors ─────────
-constexpr uint32_t MOTOR_PWM_FREQ = 20000;  // 20 kHz
-constexpr float MAX_VELOCITY = 22.0f;
-constexpr float MIN_VELOCITY = 0.5f;
+inline constexpr uint32_t MOTOR_PWM_FREQ = 20000;  // 20 kHz
+inline constexpr float MAX_VELOCITY = 22.0f;
+inline constexpr float MIN_VELOCITY = 0.5f;
+
+// Table 2:
+// https://www.analog.com/media/en/technical-documentation/data-sheets/max22205.pdf
+inline constexpr uint8_t ILIM1 = PE10;
+inline constexpr uint8_t ILIM2 = PG15;
+inline constexpr uint8_t ILIM3 = PG7;
+inline constexpr uint8_t ILIM4 = PD14;
 
 inline constexpr DriverGroupConfig right_motors_driver = {PC13, PE0};
 inline constexpr DriverGroupConfig left_motors_driver = {PC14, PE1};
@@ -271,17 +278,16 @@ inline constexpr uint16_t DOMAIN_ID = 255;  // 255 inherit from Micro ROS Agent
 inline constexpr uint32_t PING_TIMEOUT_MS = 100;
 inline constexpr uint8_t PING_ATTEMPTS = 3;
 
-inline const byte MAC[6] = {0x02, 0x47, 0x00, 0x00, 0x00, 0x01};
-inline const IPAddress CLIENT_IP = {192, 168, 77, 3};
-inline const IPAddress AGENT_IP = {192, 168, 77, 2};
-inline const uint16_t AGENT_PORT = 8888;
+inline byte MAC[6] = {0x02, 0x47, 0x00, 0x00, 0x00, 0x01};
+inline IPAddress CLIENT_IP = {192, 168, 77, 3};
+inline IPAddress AGENT_IP = {192, 168, 77, 2};
+inline uint16_t AGENT_PORT = 8888;
 
 // ───────── Publishers ─────────
 inline QueueHandle_t battery_queue;
 inline QueueHandle_t imu_queue;
 inline QueueHandle_t joint_state_queue;
 inline QueueHandle_t led_strip_queue;
-inline SemaphoreHandle_t shd_sem;
 
 inline constexpr uint8_t BATTERY_NUM_CELLS = 3;
 inline constexpr float BATTERY_CELL_CAPACITY = 2.6f;  // Ah
@@ -330,9 +336,12 @@ inline constexpr uint8_t PB_SHD_DETECT = PD4;
 inline constexpr uint8_t PB_SHD_CONFIRM = PD7;
 
 // ───────── SBC Interface ─────────
-inline constexpr SerialConfig FTDI_SERIAL_CONFIG = {.serial = &Serial1,
-                                                    .baudrate = 921600,
-                                                    .rxPin = PA10,
-                                                    .txPin = PA9,
-                                                    .timeout_ms = 1,
-                                                    .name = "FTDI_SERIAL"};
+// SBC has few seconds to shutdown after receiving shutdown command
+inline constexpr uint16_t SHUTDOWN_WAIT_MS = 7000;
+inline constexpr SerialConfig DIAGNOSTIC_SERIAL_CONFIG = {
+    .serial = &Serial1,
+    .baudrate = 921600,
+    .rxPin = PA10,
+    .txPin = PA9,
+    .timeout_ms = 1,
+    .name = "FTDI_SERIAL"};

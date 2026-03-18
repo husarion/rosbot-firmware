@@ -89,11 +89,11 @@ class BoardRevision {
     Revision rev;
   };
 
-  static constexpr Entry kRevisionTable[] = {
+  static inline constexpr Entry kRevisionTable[] = {
       {"v1.1", Revision::V1_1},
       {"v1.2", Revision::V1_2},
   };
 
-  static constexpr uint8_t kTableSize =
+  static inline constexpr uint8_t kTableSize =
       sizeof(kRevisionTable) / sizeof(kRevisionTable[0]);
 };

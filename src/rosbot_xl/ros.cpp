@@ -138,10 +138,7 @@ static std::vector<SubscriptionEntry> subscriptions = {
 };
 
 // CLIENTS
-void onShutdownResponse(const void* response) {
-  (void)response;
-  xSemaphoreGive(shd_sem);
-}
+void onShutdownResponse(const void* response) { (void)response; }
 
 TriggerClient shutdown_client("shutdown", onShutdownResponse);
 static std::vector<ClientInterface*> clients = {&shutdown_client};

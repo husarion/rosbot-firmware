@@ -15,6 +15,7 @@
 #include <Arduino.h>
 
 #include "battery_interface.hpp"
+#include "communication_manager.hpp"
 #include "config.hpp"
 #include "encoder_array.hpp"
 #include "hardware_encoder.hpp"
@@ -26,10 +27,6 @@
 #include "power_board.hpp"
 #include "ros/ros_node.hpp"
 #include "rtos.hpp"
-#include "serial_manager.hpp"
-
-// ───────── Battery ─────────
-// BatteryAdc battery_adc(battery_adc_config);
 
 // ───────── Board Revision ─────────
 static BoardRevision board_revision(board_revision_config);
@@ -51,7 +48,8 @@ static ImuBno055 imu_bno055(imu_bno055_config);
 // ───────── LED Strip ─────────
 static SpiTransport s_transport(spi_config);
 
-// ───────── Motors ─────────
+// ───────── Motors (compatible with MAX22205) ─────────
+// TODO: Can be improved and used tourque control
 static MotorDrv8848 motor_fl(motor_fl_config, &enc_fl,
                              PIDController(pid_config));
 static MotorDrv8848 motor_fr(motor_fr_config, &enc_fr,
@@ -76,7 +74,17 @@ LedIndicator g_indicator(led_status_config);
 LedStrip g_led_strip;
 MotorArray g_motors(motors, MOTOR_COUNT, driver_groups, DRIVER_GROUP_COUNT);
 
-SerialManager g_serialManager({.main = FTDI_SERIAL_CONFIG});
+bool useAlt() { return digitalRead(PUSH_BUTTON1) == LOW; }
+
+void confirmAlt() { digitalWrite(GRN_LED, HIGH); }
+
+CommunicationManagerConfig communication_config = {
+    .primary_type = TransportType::kEthernet,
+    .diagnostic_serial = DIAGNOSTIC_SERIAL_CONFIG,
+    .useDiagnosticCondition = useAlt,
+    .onDiagnosticSelected = confirmAlt};
+
+CommunicationManager g_comm_mgr(communication_config);
 
 void boardPheripheralsInit() {
   // Audio
@@ -112,24 +120,49 @@ void boardPheripheralsInit() {
   delay(50);
 }
 
+void setMaxMotorsCurrent(Revision rev) {
+  switch (rev) {
+    case Revision::V1_2:
+      pinMode(ILIM1, INPUT);
+      pinMode(ILIM2, INPUT);
+      pinMode(ILIM3, INPUT);
+      pinMode(ILIM4, INPUT);
+      break;
+
+    case Revision::V1_1:
+      pinMode(ILIM1, OUTPUT);
+      pinMode(ILIM2, OUTPUT);
+      pinMode(ILIM3, OUTPUT);
+      pinMode(ILIM4, OUTPUT);
+      digitalWrite(ILIM1, HIGH);
+      digitalWrite(ILIM2, HIGH);
+      digitalWrite(ILIM3, HIGH);
+      digitalWrite(ILIM4, HIGH);
+      break;
+
+    default:
+      break;
+  }
+}
+
 /*───────── Setup ─────────*/
 void setup() {
   boardPheripheralsInit();
 
   // Pre-communication
-  g_serialManager.init();
-  const auto& selected_serial = g_serialManager.selectCommunicationSerial(0);
-  g_serialManager.configureNamespace();
-  g_ros_node.setNamespace(g_serialManager.getNamespace());
+  g_comm_mgr.init();
+  const auto* transport = g_comm_mgr.selectTransport();
+  g_comm_mgr.configureNamespace();
+  g_ros_node.setNamespace(g_comm_mgr.getNamespace());
 
-  // Board revision detection
+  // Revision specific configuration
   board_revision.init();
   auto rev = board_revision.revision();
+  setMaxMotorsCurrent(rev);
   auto fan_config =
       (rev == Revision::V1_1) ? rev1_1_fan_config : rev1_2_fan_config;
 
   // Sensors initialization
-  // battery_adc.init();
   g_encoders.init();
   ntc.init();
   g_fan.init(fan_config);
@@ -138,7 +171,9 @@ void setup() {
   g_led_strip.init(strip_config, &s_transport);
   g_motors.init();
   power_board.init();
-  // g_ros_node.transportInit(selected_serial);
+  if (g_comm_mgr.isSerialTransport()) {
+    g_ros_node.transportInit(*transport);
+  }
 
   // RTOS
   createQueues();
