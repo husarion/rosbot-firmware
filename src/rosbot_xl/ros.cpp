@@ -196,6 +196,7 @@ RosNodeConfig ros_node_config = {.node_name = NODE_NAME,
                                  .client_count = clients.size(),
                                  .services = services.data(),
                                  .srv_count = services.size(),
+                                 .spin_time_ms = SPIN_TIME_MS,
                                  .ping_attempts = PING_ATTEMPTS,
                                  .ping_timeout_ms = PING_TIMEOUT_MS};
 

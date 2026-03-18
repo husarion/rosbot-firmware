@@ -124,7 +124,7 @@ void RosNode::loop() {
 void RosNode::publishLoop() {
   if (state_ != CONNECTED) return;
   for (uint8_t i = 0; i < cfg_.pub_count; ++i) cfg_.publishers[i]->publish();
-  rclc_executor_spin_some(&executor_, RCL_MS_TO_NS(0));
+  rclc_executor_spin_some(&executor_, RCL_MS_TO_NS(cfg_.spin_time_ms));
 }
 
 void RosNode::ethernetTransportInit(IPAddress agent_ip, uint16_t agent_port) {

@@ -42,6 +42,7 @@ struct RosNodeConfig {
   ServiceEntry* services;
   size_t srv_count;
 
+  uint16_t spin_time_ms = 1;
   uint8_t ping_attempts = 3;
   uint16_t ping_timeout_ms = 50;
 };

@@ -166,6 +166,7 @@ void ledAnimationTask(void* p) {
   TickType_t last_msg_time = xTaskGetTickCount();
   TickType_t last_idle_change = 0;
   int idle_state = 0;
+  bool reset = true;
 
   while (true) {
     TickType_t now = xTaskGetTickCount();
@@ -174,15 +175,18 @@ void ledAnimationTask(void* p) {
       g_led_strip.setFromRGB8(frame.rgb_data, frame.pixel_count);
       g_led_strip.show();
       last_msg_time = now;
+      idle_state = 0;
+      reset = true;
     }
 
     if ((now - last_msg_time) > timeout &&
         (now - last_idle_change) > idle_period) {
       if (idle_state == 0) {
-        idleAnimation(g_led_strip, 0xA0, 0xA0, 0xA0, interval);
+        idleAnimation(g_led_strip, 0xA0, 0xA0, 0xA0, interval, reset);
         idle_state = 1;
+        reset = false;
       } else {
-        idleAnimation(g_led_strip, 0xA0, 0x00, 0x00, interval);
+        idleAnimation(g_led_strip, 0xA0, 0x00, 0x00, interval, reset);
         idle_state = 0;
       }
 
@@ -209,7 +213,7 @@ void monitorTask(void* p) {
             uxTaskGetStackHighWaterMark(taskHandles[i].handle) *
                 sizeof(StackType_t));
       }
-      g_comm_mgr.debugSerial()->printf("\r\n Free heap memory: %u B\r\n",
+      g_comm_mgr.debugSerial()->printf("\r\nFree heap memory: %u B\r\n",
                                        (unsigned)xPortGetFreeHeapSize());
     }
 

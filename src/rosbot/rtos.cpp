@@ -152,7 +152,7 @@ void monitorTask(void* p) {
             uxTaskGetStackHighWaterMark(taskHandles[i].handle) *
                 sizeof(StackType_t));
       }
-      g_comm_mgr.debugSerial()->printf("\r\n Free heap memory: %u B\r\n",
+      g_comm_mgr.debugSerial()->printf("\r\nFree heap memory: %u B\r\n",
                                        (unsigned)xPortGetFreeHeapSize());
     }
 
