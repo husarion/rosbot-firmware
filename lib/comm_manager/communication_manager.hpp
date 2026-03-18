@@ -103,17 +103,23 @@ class CommunicationManager {
 
   /// Negotiate namespace over the active serial link (FW/NS/ACK handshake).
   /// For ethernet transport falls back to ns_default immediately.
-  bool configureNamespace(uint16_t timeout_ms = 1000) {
-    if (selected_type_ == TransportType::kSerial && selected_serial_) {
-      if (waitForHostConfig(*selected_serial_->serial, timeout_ms)) {
-        return true;
-      }
+bool configureNamespace(uint16_t timeout_ms = 1000) {
+    HardwareSerial* config_serial = nullptr;
+
+    if (selected_type_ == TransportType::kEthernet) {
+      config_serial = cfg_.diagnostic_serial.serial;
+    } else if (selected_serial_) {
+      config_serial = selected_serial_->serial;
     }
-    // Ethernet or handshake timeout → use default
+
+    if (config_serial && waitForHostConfig(*config_serial, timeout_ms)) {
+      return true;
+    }
+
     strncpy(namespace_, cfg_.ns_default, NS_MAX_LENGTH);
     namespace_[NS_MAX_LENGTH - 1] = '\0';
     return true;
-  }
+}
 
   // ============== Accessors ==============
 
