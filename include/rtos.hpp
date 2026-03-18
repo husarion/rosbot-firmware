@@ -34,11 +34,12 @@ void createTasks();
 // 7 - Highest (configMAX_PRIORITIES)
 // 0 - Idle (tskIDLE_PRIORITY)
 enum Priority : UBaseType_t {
-  OBSERVING = 1,
-  SENSORS = 2,
-  COMMUNICATION = 3,
-  CONTROL = 4,
-  SAFETY = 5
+  BLOCKING = 1,
+  OBSERVING = 2,
+  SENSORS = 3,
+  COMMUNICATION = 4,
+  CONTROL = 5,
+  SAFETY = 6
 };
 
 enum Stack : uint16_t {

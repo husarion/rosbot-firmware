@@ -65,12 +65,12 @@ TaskConfig tasks[] = {
     {"Imu", Priority::SENSORS, Stack::M, 100, imuTask},
     {"LedAnimation", Priority::OBSERVING, Stack::XS, 25, ledAnimationTask},
 #ifndef RELEASE
-    {"Monitor", Priority::OBSERVING, Stack::XL, 1, monitorTask},
+    {"Monitor", Priority::BLOCKING, Stack::XL, 1, monitorTask},
 #endif
     {"MotorControl", Priority::CONTROL, Stack::XXS, 200, motorControlTask},
     {"Shutdown", Priority::OBSERVING, Stack::M, 3, shutdownTask},
     {"uRos", Priority::COMMUNICATION, Stack::L, 100, uRosTask},
-    {"uRosPing", Priority::OBSERVING, Stack::XL, 2, uRosPingTask},
+    {"uRosPing", Priority::BLOCKING, Stack::XL, 2, uRosPingTask},
 };
 
 TaskHandleWrapper taskHandles[sizeof(tasks) / sizeof(tasks[0])];
