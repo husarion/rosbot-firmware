@@ -14,6 +14,7 @@
 
 #include "rtos.hpp"
 
+#include <STM32Ethernet.h>
 #include <STM32FreeRTOS.h>
 
 #include "animations/led_animations.hpp"
@@ -37,7 +38,6 @@
 // ───── Externs ─────
 extern FanController g_fan;
 extern PowerBoard power_board;
-extern TriggerClient shutdown_client;
 
 // ───── Queues ─────
 void createQueues() {
@@ -52,7 +52,7 @@ void encoderTask(void* p);
 void hwMonitorTask(
     void* p);  // Bat + Fan + Indicator: Merged due limited stack size
 void imuTask(void* p);
-void ledAnimationTask(void* p);
+void ledStripTask(void* p);
 void monitorTask(void* p);
 void motorControlTask(void* p);
 void shutdownTask(void* p);
@@ -63,7 +63,7 @@ TaskConfig tasks[] = {
     {"Encoder", Priority::CONTROL, Stack::XXS, 500, encoderTask},
     {"HwMonitor", Priority::OBSERVING, Stack::S, 10, hwMonitorTask},
     {"Imu", Priority::SENSORS, Stack::M, 100, imuTask},
-    {"LedAnimation", Priority::OBSERVING, Stack::XS, 25, ledAnimationTask},
+    {"LedStrip", Priority::OBSERVING, Stack::S, 25, ledStripTask},
 #ifndef RELEASE
     {"Monitor", Priority::BLOCKING, Stack::XL, 1, monitorTask},
 #endif
@@ -155,7 +155,7 @@ void imuTask(void* p) {
   }
 }
 
-void ledAnimationTask(void* p) {
+void ledStripTask(void* p) {
   TickType_t period = taskGetPeriod(p);
 
   LedFrameMsg frame;
@@ -186,7 +186,7 @@ void ledAnimationTask(void* p) {
         idle_state = 1;
         reset = false;
       } else {
-        idleAnimation(g_led_strip, 0xA0, 0x00, 0x00, interval, reset);
+        idleAnimation(g_led_strip, 0xA0, 0x00, 0x00, interval);
         idle_state = 0;
       }
 
@@ -236,10 +236,12 @@ void shutdownTask(void* p) {
   TickType_t period = taskGetPeriod(p);
   TickType_t wake_time = xTaskGetTickCount();
 
+  EthernetClient eth_client;
   while (true) {
     if (digitalRead(PB_SHD_DETECT) == HIGH) {
-      if (g_ros_node.isConnected()) {
-        shutdown_client.send();
+      if (eth_client.connect(AGENT_IP, 3000, 100)) {
+        eth_client.println("GET /shutdown HTTP/1.1");
+        eth_client.stop();
       }
 
       vTaskDelay(pdMS_TO_TICKS(SHUTDOWN_WAIT_MS));

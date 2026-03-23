@@ -177,6 +177,7 @@ void setup() {
   } else {
     g_ros_node.ethernetTransportInit(AGENT_IP, AGENT_PORT);
   }
+  g_ros_node.setDiagnosticSerial(g_comm_mgr.debugSerial());
 
   // RTOS
   createQueues();

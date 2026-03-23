@@ -17,7 +17,6 @@
 #include <micro_ros_utilities/string_utilities.h>
 #include <sensor_msgs/msg/imu.h>
 
-#include "../utils.hpp"
 #include "imu_interface.hpp"
 #include "publisher_interface.hpp"
 
@@ -44,14 +43,15 @@ class ImuPublisher : public PublisherInterface {
         topic_);
   }
 
-  void publish() override {
-    if (xQueueReceive(cfg_.queue, &data_, 0) != pdPASS) return;
+  rcl_ret_t publish() override {
+    if (xQueueReceive(cfg_.queue, &data_, 0) != pdPASS) return RCL_RET_OK;
     fillMsg(data_);
-    RC_SKIP(rcl_publish(&pub_, &msg_, NULL));
+    return rcl_publish(&pub_, &msg_, NULL);
   }
 
-  void fini(rcl_node_t& node) override {
-    RC_SKIP(rcl_publisher_fini(&pub_, &node));
+  rcl_ret_t fini(rcl_node_t& node) override {
+    sensor_msgs__msg__Imu__fini(&msg_);
+    return rcl_publisher_fini(&pub_, &node);
   }
 
  private:
@@ -61,8 +61,8 @@ class ImuPublisher : public PublisherInterface {
   ImuPublisherConfig cfg_;
 
   void initMsg() {
-    memset(&msg_, 0, sizeof(msg_));
-    msg_.header.frame_id = micro_ros_string_utilities_init(cfg_.frame_id);
+    sensor_msgs__msg__Imu__init(&msg_);
+    msg_.header.frame_id = micro_ros_string_utilities_set(msg_.header.frame_id, cfg_.frame_id);
   }
 
   void fillMsg(const ImuStamped& d) {

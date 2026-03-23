@@ -137,12 +137,6 @@ static std::vector<SubscriptionEntry> subscriptions = {
     makeLedSubscription({.pin = GRN_LED, .topic_name = "led"}, &s_led_state),
 };
 
-// CLIENTS
-void onShutdownResponse(const void* response) { (void)response; }
-
-TriggerClient shutdown_client("shutdown", onShutdownResponse);
-static std::vector<ClientInterface*> clients = {&shutdown_client};
-
 // SERVICES
 rcl_service_t mcu_id_service;
 std_srvs__srv__Trigger_Request mcu_id_req;
@@ -192,8 +186,6 @@ RosNodeConfig ros_node_config = {.node_name = NODE_NAME,
                                  .pub_count = publishers.size(),
                                  .subscriptions = subscriptions.data(),
                                  .sub_count = subscriptions.size(),
-                                 .clients = clients.data(),
-                                 .client_count = clients.size(),
                                  .services = services.data(),
                                  .srv_count = services.size(),
                                  .spin_time_ms = SPIN_TIME_MS,

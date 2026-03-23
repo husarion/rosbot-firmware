@@ -17,7 +17,6 @@
 #include <Arduino.h>
 #include <std_msgs/msg/u_int8.h>
 
-#include "../utils.hpp"
 #include "publisher_interface.hpp"
 
 struct ButtonsPublisherConfig {
@@ -32,13 +31,13 @@ class ButtonsPublisher : public PublisherInterface {
       : PublisherInterface(cfg.topic), cfg_(cfg) {}
 
   rcl_ret_t init(rcl_node_t& node, rcl_allocator_t& allocator) override {
-    memset(&msg_, 0, sizeof(msg_));
+    std_msgs__msg__UInt8__init(&msg_);
     return rclc_publisher_init_best_effort(
         &pub_, &node, ROSIDL_GET_MSG_TYPE_SUPPORT(std_msgs, msg, UInt8),
         topic_);
   }
 
-  void publish() override {
+  rcl_ret_t publish() override {
     uint8_t state = 0;
 
     for (uint8_t i = 0; i < cfg_.num_buttons; ++i) {
@@ -48,12 +47,14 @@ class ButtonsPublisher : public PublisherInterface {
     if (state != last_state_) {
       last_state_ = state;
       msg_.data = state;
-      RC_SKIP(rcl_publish(&pub_, &msg_, NULL));
+      return rcl_publish(&pub_, &msg_, NULL);
     }
+    return RCL_RET_OK;
   }
 
-  void fini(rcl_node_t& node) override {
-    RC_SKIP(rcl_publisher_fini(&pub_, &node));
+  rcl_ret_t fini(rcl_node_t& node) override {
+    std_msgs__msg__UInt8__fini(&msg_);  
+    return rcl_publisher_fini(&pub_, &node);
   }
 
  private:

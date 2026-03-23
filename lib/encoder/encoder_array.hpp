@@ -23,6 +23,7 @@
 struct EncodersData {
   float position[MAX_NUM_ENCODERS] = {};
   float velocity[MAX_NUM_ENCODERS] = {};
+  float effort[MAX_NUM_ENCODERS] = {};
   uint8_t count = 0;
 };
 

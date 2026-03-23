@@ -174,7 +174,7 @@ inline constexpr LedIndicatorConfig led_status_config = {
 
 // ───────── LED Strip ─────────
 inline constexpr uint16_t IDLE_ANIMATION_CHANGE_MS = 3500;
-inline constexpr uint16_t IDLE_ANIMATION_INTERVAL_MS = 40;
+inline constexpr uint16_t IDLE_ANIMATION_INTERVAL_MS = 35;
 inline constexpr uint16_t LED_STRIP_TIMEOUT_MS = 1000;
 
 inline constexpr SpiTransportConfig spi_config = {
@@ -338,7 +338,7 @@ inline constexpr uint8_t PB_SHD_CONFIRM = PD7;
 
 // ───────── SBC Interface ─────────
 // SBC has few seconds to shutdown after receiving shutdown command
-inline constexpr uint16_t SHUTDOWN_WAIT_MS = 7000;
+inline constexpr uint16_t SHUTDOWN_WAIT_MS = 5000;
 inline constexpr SerialConfig DIAGNOSTIC_SERIAL_CONFIG = {
     .serial = &Serial1,
     .baudrate = 921600,

@@ -14,6 +14,7 @@
 
 #pragma once
 
+#include <HardwareSerial.h>
 #include <micro_ros_arduino.h>
 #include <rcl/rcl.h>
 #include <rclc/executor.h>
@@ -24,25 +25,32 @@
 #include "communication_manager.hpp"
 #include "publishers/publisher_interface.hpp"
 #include "types.hpp"
-#include "utils.hpp"
+
+#define RC_CHECK(fn)                                                  \
+  {                                                                   \
+    rcl_ret_t rc = fn;                                                \
+    if (rc != RCL_RET_OK) {                                           \
+      log("[ERROR] %s:%d failed with rc=%d", __FILE__, __LINE__, rc); \
+    }                                                                 \
+  }
 
 struct RosNodeConfig {
   const char* node_name;
   uint8_t domain_id;  // 255 = inherit from agent
 
-  PublisherInterface** publishers;
-  size_t pub_count;
+  PublisherInterface** publishers = nullptr;
+  size_t pub_count = 0;
 
-  SubscriptionEntry* subscriptions;
-  size_t sub_count;
+  SubscriptionEntry* subscriptions = nullptr;
+  size_t sub_count = 0;
 
-  ClientInterface** clients;
-  size_t client_count;
+  ClientInterface** clients = nullptr;
+  size_t client_count = 0;
 
-  ServiceEntry* services;
-  size_t srv_count;
+  ServiceEntry* services = nullptr;
+  size_t srv_count = 0;
 
-  uint16_t spin_time_ms = 1;
+  uint32_t spin_time_ms = 1;
   uint8_t ping_attempts = 3;
   uint16_t ping_timeout_ms = 50;
 };
@@ -69,21 +77,30 @@ class RosNode {
   bool isConnected() const { return state_ == CONNECTED; }
 
   void setNamespace(const char* ns) { ns_ = ns; };
+  void setDiagnosticSerial(HardwareSerial* serial) { serial_ = serial; }
 
  private:
   bool createEntities();
   void destroyEntities();
+  template <typename... Args>
+  void log(const char* fmt, Args... args) {
+    if (!serial_) return;
+    char buf[128];
+    snprintf(buf, sizeof(buf), fmt, args...);
+    serial_->println(buf);
+  }
 
   RosNodeConfig cfg_ = {};
   State state_ = WAITING;
   const char* ns_ = {};
+  HardwareSerial* serial_ = nullptr;
 
   // ROS2 internals
-  rcl_init_options_t init_options_;
-  rclc_support_t support_;
-  rcl_allocator_t allocator_;
-  rcl_node_t node_;
-  rclc_executor_t executor_;
+  rcl_allocator_t allocator_ = {};
+  rclc_executor_t executor_ = {};
+  rcl_init_options_t init_options_ = {};
+  rcl_node_t node_ = {};
+  rclc_support_t support_ = {};
 };
 
 /// Global ROS node — defined in board-specific ros_entities.cpp

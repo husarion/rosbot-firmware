@@ -103,7 +103,7 @@ class CommunicationManager {
 
   /// Negotiate namespace over the active serial link (FW/NS/ACK handshake).
   /// For ethernet transport falls back to ns_default immediately.
-bool configureNamespace(uint16_t timeout_ms = 1000) {
+  bool configureNamespace(uint16_t timeout_ms = 1000) {
     HardwareSerial* config_serial = nullptr;
 
     if (selected_type_ == TransportType::kEthernet) {
@@ -119,7 +119,7 @@ bool configureNamespace(uint16_t timeout_ms = 1000) {
     strncpy(namespace_, cfg_.ns_default, NS_MAX_LENGTH);
     namespace_[NS_MAX_LENGTH - 1] = '\0';
     return true;
-}
+  }
 
   // ============== Accessors ==============
 

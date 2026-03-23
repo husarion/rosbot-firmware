@@ -27,10 +27,10 @@ class ClientInterface {
   virtual rcl_ret_t init(rcl_node_t& node, rcl_allocator_t& allocator) = 0;
 
   /// Send request. Returns true if rcl_send_request succeeded.
-  virtual bool send() = 0;
+  virtual rcl_ret_t send() = 0;
 
   /// Cleanup. Called during destroyEntities().
-  virtual void fini(rcl_node_t& node) = 0;
+  virtual rcl_ret_t fini(rcl_node_t& node) = 0;
 
   /// Executor needs these to register the client.
   virtual rcl_client_t* clientHandle() = 0;

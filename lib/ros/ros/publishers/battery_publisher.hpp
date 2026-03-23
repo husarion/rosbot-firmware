@@ -14,6 +14,7 @@
 
 #pragma once
 
+#include <STM32FreeRTOS.h>
 #include <micro_ros_utilities/string_utilities.h>
 #include <rcl/rcl.h>
 #include <rclc/rclc.h>
@@ -21,7 +22,6 @@
 #include <rosidl_runtime_c/primitives_sequence_functions.h>
 #include <sensor_msgs/msg/battery_state.h>
 
-#include "../utils.hpp"
 #include "battery_interface.hpp"
 #include "publisher_interface.hpp"
 
@@ -50,28 +50,29 @@ class BatteryPublisher : public PublisherInterface {
         ROSIDL_GET_MSG_TYPE_SUPPORT(sensor_msgs, msg, BatteryState), topic_);
   }
 
-  void publish() override {
-    if (xQueueReceive(cfg_.queue, &data_, 0) != pdPASS) return;
+  rcl_ret_t publish() override {
+    if (xQueueReceive(cfg_.queue, &data_, 0) != pdPASS) return RCL_RET_OK;
     fillMsg(data_);
-    RC_SKIP(rcl_publish(&pub_, &msg_, NULL));
+    return rcl_publish(&pub_, &msg_, NULL);
   }
 
-  void fini(rcl_node_t& node) override {
-    RC_SKIP(rcl_publisher_fini(&pub_, &node));
+  rcl_ret_t fini(rcl_node_t& node) override {  
+    sensor_msgs__msg__BatteryState__fini(&msg_);  
+    return rcl_publisher_fini(&pub_, &node);;
   }
 
   const char* topicName() const override { return topic_; }
 
  private:
-  rcl_publisher_t pub_;
-  sensor_msgs__msg__BatteryState msg_;
-  BatteryStamped data_;
+  rcl_publisher_t pub_ = {};
+  sensor_msgs__msg__BatteryState msg_ = {};
+  BatteryStamped data_ = {};
   BatteryPublisherConfig cfg_;
 
   void initMsg() {
-    memset(&msg_, 0, sizeof(msg_));
+    sensor_msgs__msg__BatteryState__init(&msg_);
 
-    msg_.header.frame_id = micro_ros_string_utilities_init(cfg_.frame_id);
+    msg_.header.frame_id = micro_ros_string_utilities_set(msg_.header.frame_id, cfg_.frame_id);
 
     msg_.voltage = NAN;
     msg_.temperature = NAN;

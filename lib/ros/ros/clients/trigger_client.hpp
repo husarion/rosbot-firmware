@@ -41,12 +41,14 @@ class TriggerClient : public ClientInterface {
         service_name_);
   }
 
-  bool send() override {
+  rcl_ret_t send() override {
     int64_t seq;
-    return rcl_send_request(&client_, &req_, &seq) == RCL_RET_OK;
+    return rcl_send_request(&client_, &req_, &seq);
   }
 
-  void fini(rcl_node_t& node) override { rcl_client_fini(&client_, &node); }
+  rcl_ret_t fini(rcl_node_t& node) override {
+    return rcl_client_fini(&client_, &node);
+  }
 
   rcl_client_t* clientHandle() override { return &client_; }
   void* responseMsg() override { return &res_; }
