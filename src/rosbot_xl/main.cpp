@@ -114,8 +114,8 @@ void boardPheripheralsInit() {
   digitalWrite(PB_SHD_CONFIRM, LOW);
 
   // I2C
-  imu_i2c.begin();
-  imu_i2c.setClock(400000);
+  i2c.begin();
+  i2c.setClock(400000);
 
   delay(50);
 }

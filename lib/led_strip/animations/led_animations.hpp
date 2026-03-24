@@ -19,7 +19,7 @@
 /// Idle animation: expand from center outward
 inline void idleAnimation(LedStrip& strip, uint8_t r, uint8_t g, uint8_t b,
                           TickType_t interval_ms, bool reset = false,
-                          uint8_t fade_steps = 4) {
+                          uint8_t fade_steps = 5) {
   uint8_t half = strip.size() / 2;
 
   static uint8_t prev_r = 0, prev_g = 0, prev_b = 0;

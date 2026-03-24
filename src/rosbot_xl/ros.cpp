@@ -68,10 +68,6 @@ static sensor_msgs__msg__Image s_img_msg = {
 };
 
 void ledStripCallback(const void* msg_in) {
-  if (uxQueueMessagesWaiting(led_strip_queue) != 0) {
-    return;  // If not empty, skip to avoid overwriting unprocessed frame
-  }
-
   const sensor_msgs__msg__Image* img =
       reinterpret_cast<const sensor_msgs__msg__Image*>(msg_in);
 
@@ -189,6 +185,7 @@ RosNodeConfig ros_node_config = {.node_name = NODE_NAME,
                                  .services = services.data(),
                                  .srv_count = services.size(),
                                  .spin_time_ms = SPIN_TIME_MS,
+                                 .timer_ms = TIMER_MS,
                                  .ping_attempts = PING_ATTEMPTS,
                                  .ping_timeout_ms = PING_TIMEOUT_MS};
 

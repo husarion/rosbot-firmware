@@ -109,7 +109,7 @@ inline constexpr ImuBno055Config imu_bno055_config = {
     .sensor_id = 0xA0,
     .int_pin = PA6,
     .axis_config = Adafruit_BNO055::REMAP_CONFIG_P0,
-    .axis_sign = Adafruit_BNO055::REMAP_SIGN_P4,
+    .axis_sign = Adafruit_BNO055::REMAP_SIGN_P3,
 };
 
 // ───────── LEDs ─────────
@@ -229,6 +229,7 @@ inline constexpr RangeVl53l0xConfig range_rr_config = {
 inline constexpr const char* NODE_NAME = "rosbot_mcu";
 inline constexpr uint16_t DOMAIN_ID = 255;  // 255 inherit from Micro ROS Agent
 inline constexpr uint32_t SPIN_TIME_MS = 1;
+inline constexpr uint32_t TIMER_MS = 10;
 inline constexpr uint32_t PING_TIMEOUT_MS = 50;
 inline constexpr uint8_t PING_ATTEMPTS = 4;
 

@@ -14,6 +14,8 @@
 
 #include "ros_node.hpp"
 
+RosNode* RosNode::instance_ = nullptr;
+
 bool RosNode::pingAgent() {
   return rmw_uros_ping_agent(cfg_.ping_timeout_ms, cfg_.ping_attempts) ==
          RMW_RET_OK;
@@ -25,6 +27,7 @@ bool RosNode::createEntities() {
   init_options_ = rcl_get_zero_initialized_init_options();
   node_ = rcl_get_zero_initialized_node();
   support_ = rclc_support_t{};
+  timer_ = rcl_get_zero_initialized_timer();
 
   RC_CHECK(rcl_init_options_init(&init_options_, allocator_));
   RC_CHECK(rcl_init_options_set_domain_id(&init_options_, cfg_.domain_id));
@@ -65,8 +68,13 @@ bool RosNode::createEntities() {
                                        s.service_name));
   }
 
+  // ── Timer ───────────────────────────────────────────────
+  RC_CHECK(rclc_timer_init_default(&timer_, &support_,
+                                   RCL_MS_TO_NS(cfg_.timer_ms), timerCallback));
+
   // ── Executor ─────────────────────────────────────────────
-  size_t exec_count = cfg_.sub_count + cfg_.srv_count + cfg_.client_count;
+  size_t exec_count = 1 + cfg_.sub_count + cfg_.srv_count +
+                      cfg_.client_count;  // timer + subs + srvs + clients
   RC_CHECK(rclc_executor_init(&executor_, &support_.context, exec_count,
                               &allocator_));
 
@@ -85,8 +93,10 @@ bool RosNode::createEntities() {
     RC_CHECK(rclc_executor_add_service(&executor_, &s.srv, s.request,
                                        s.response, s.callback));
   }
+  RC_CHECK(rclc_executor_add_timer(&executor_, &timer_));
 
   RC_CHECK(rmw_uros_sync_session(1000));
+  instance_ = this;
   return true;
 }
 
@@ -94,8 +104,7 @@ void RosNode::destroyEntities() {
   auto* ctx = rcl_context_get_rmw_context(&support_.context);
   RC_CHECK(rmw_uros_set_context_entity_destroy_session_timeout(ctx, 0));
 
-  RC_CHECK(rclc_executor_fini(&executor_));
-
+  RC_CHECK(rcl_timer_fini(&timer_));
   for (uint8_t i = 0; i < cfg_.pub_count; ++i) {
     RC_CHECK(cfg_.publishers[i]->fini(node_));
   }
@@ -109,8 +118,10 @@ void RosNode::destroyEntities() {
     RC_CHECK(cfg_.clients[i]->fini(node_));
   }
 
+  RC_CHECK(rclc_executor_fini(&executor_));
   RC_CHECK(rcl_node_fini(&node_));
   RC_CHECK(rclc_support_fini(&support_));
+  instance_ = nullptr;
 }
 
 void RosNode::loop() {
@@ -136,9 +147,13 @@ void RosNode::loop() {
   }
 }
 
-void RosNode::publishLoop() {
+void RosNode::publish() {
   if (state_ != CONNECTED) return;
   for (uint8_t i = 0; i < cfg_.pub_count; ++i) cfg_.publishers[i]->publish();
+}
+
+void RosNode::spin() {
+  if (state_ != CONNECTED) return;
   RC_CHECK(
       rclc_executor_spin_some(&executor_, RCL_MS_TO_NS(cfg_.spin_time_ms)));
 }

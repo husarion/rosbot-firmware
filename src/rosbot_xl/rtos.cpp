@@ -69,7 +69,7 @@ TaskConfig tasks[] = {
 #endif
     {"MotorControl", Priority::CONTROL, Stack::XXS, 200, motorControlTask},
     {"Shutdown", Priority::OBSERVING, Stack::M, 3, shutdownTask},
-    {"uRos", Priority::COMMUNICATION, Stack::L, 100, uRosTask},
+    {"uRos", Priority::COMMUNICATION, Stack::L, 1000, uRosTask},
     {"uRosPing", Priority::BLOCKING, Stack::XL, 2, uRosPingTask},
 };
 
@@ -144,14 +144,15 @@ void imuTask(void* p) {
   ImuStamped data = {};
 
   while (true) {
-    bool connected = rtos_get_timestamp_ns(data.timestamp_ns);
-    g_imu->update();  // TODO: DMA should be used
-    data.data = g_imu->getData();
+    if (rtos_get_timestamp_ns(data.timestamp_ns)) {
+      g_imu->update();  // TODO: DMA should be used
+      data.data = g_imu->getData();
 
-    if (connected) {
       xQueueOverwrite(imu_queue, &data);
+      vTaskDelayUntil(&wake_time, period);
+    } else {
+      vTaskDelayUntil(&wake_time, period);
     }
-    vTaskDelayUntil(&wake_time, period);
   }
 }
 
@@ -257,8 +258,8 @@ void uRosTask(void* p) {
   TickType_t wake_time = xTaskGetTickCount();
 
   while (true) {
-    g_ros_node.publishLoop();
-    vTaskDelayUntil(&wake_time, period);
+    g_ros_node.spin();
+    vTaskDelay(period);
   }
 }
 

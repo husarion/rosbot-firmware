@@ -58,7 +58,7 @@ inline TaskConfig tasks[] = {
 #endif
     {"MotorControl", Priority::CONTROL, Stack::M, 200, motorControlTask},
     {"Range", Priority::SENSORS, Stack::M, 10, rangeTask},
-    {"uRos", Priority::COMMUNICATION, Stack::L, 100, uRosTask},
+    {"uRos", Priority::COMMUNICATION, Stack::L, 1000, uRosTask},
     {"uRosPing", Priority::BLOCKING, Stack::XL, 2, uRosPingTask},
 };
 
@@ -192,8 +192,8 @@ void uRosTask(void* p) {
   TickType_t period = taskGetPeriod(p);
   TickType_t wake_time = xTaskGetTickCount();
   while (true) {
-    g_ros_node.publishLoop();
-    vTaskDelayUntil(&wake_time, period);
+    g_ros_node.spin();
+    vTaskDelay(period);
   }
 }
 

@@ -56,9 +56,10 @@ class BatteryPublisher : public PublisherInterface {
     return rcl_publish(&pub_, &msg_, NULL);
   }
 
-  rcl_ret_t fini(rcl_node_t& node) override {  
-    sensor_msgs__msg__BatteryState__fini(&msg_);  
-    return rcl_publisher_fini(&pub_, &node);;
+  rcl_ret_t fini(rcl_node_t& node) override {
+    sensor_msgs__msg__BatteryState__fini(&msg_);
+    return rcl_publisher_fini(&pub_, &node);
+    ;
   }
 
   const char* topicName() const override { return topic_; }
@@ -72,7 +73,8 @@ class BatteryPublisher : public PublisherInterface {
   void initMsg() {
     sensor_msgs__msg__BatteryState__init(&msg_);
 
-    msg_.header.frame_id = micro_ros_string_utilities_set(msg_.header.frame_id, cfg_.frame_id);
+    msg_.header.frame_id =
+        micro_ros_string_utilities_set(msg_.header.frame_id, cfg_.frame_id);
 
     msg_.voltage = NAN;
     msg_.temperature = NAN;

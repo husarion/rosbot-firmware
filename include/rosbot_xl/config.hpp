@@ -46,7 +46,7 @@ inline constexpr uint8_t EN_LOC_5V = PF13;
 
 inline constexpr uint8_t I2C_SDA = PF0;
 inline constexpr uint8_t I2C_SCL = PF1;
-inline TwoWire imu_i2c(I2C_SDA, I2C_SCL);
+inline TwoWire i2c(I2C_SDA, I2C_SCL);
 
 inline constexpr uint8_t PB_SERIAL_RX = PD6;
 inline constexpr uint8_t PB_SERIAL_TX = PD5;
@@ -58,7 +58,7 @@ inline constexpr uint8_t PUSH_BUTTON2 = PF12;  // MCU reset button
 
 // ───────── EEPROM ─────────
 inline constexpr EepromConfig eeprom_config = {
-    .i2c_bus = imu_i2c,
+    .i2c_bus = i2c,
     .dev_id = 0x50,
     .page_size = 16,
     .write_delay_ms = 5,
@@ -153,12 +153,12 @@ inline constexpr FanConfig rev1_1_fan_config{.pin = FAN_PP_PIN,
 
 // ───────── IMU ─────────
 inline constexpr ImuBno055Config imu_bno055_config = {
-    .bus = &imu_i2c,
+    .bus = &i2c,
     .i2c_addr = 0x29,
     .sensor_id = 0x37,
     .int_pin = PF2,
     .axis_config = Adafruit_BNO055::REMAP_CONFIG_P1,
-    .axis_sign = Adafruit_BNO055::REMAP_SIGN_P0,
+    .axis_sign = Adafruit_BNO055::REMAP_SIGN_P2,
 };
 
 // ───────── LEDs ─────────
@@ -275,7 +275,8 @@ inline constexpr PIDConfig pid_config = {
 // ───────── ROS ─────────
 inline constexpr const char* NODE_NAME = "rosbot_mcu";
 inline constexpr uint16_t DOMAIN_ID = 255;  // 255 inherit from Micro ROS Agent
-inline constexpr uint32_t SPIN_TIME_MS = 3;
+inline constexpr uint32_t SPIN_TIME_MS = 1;
+inline constexpr uint32_t TIMER_MS = 10;
 inline constexpr uint32_t PING_TIMEOUT_MS = 50;
 inline constexpr uint8_t PING_ATTEMPTS = 4;
 

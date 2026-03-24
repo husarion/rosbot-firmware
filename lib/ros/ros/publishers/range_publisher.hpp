@@ -52,8 +52,8 @@ class RangePublisher : public PublisherInterface {
     msg_.header.stamp.nanosec = data_.timestamp_ns % 1000000000LL;
 
     for (uint8_t i = 0; i < data_.data.count; i++) {
-      msg_.header.frame_id =
-          micro_ros_string_utilities_set(msg_.header.frame_id, data_.data.frame_id[i]);
+      msg_.header.frame_id = micro_ros_string_utilities_set(
+          msg_.header.frame_id, data_.data.frame_id[i]);
 
       float range = data_.data.range[i];
       if (range > msg_.max_range)

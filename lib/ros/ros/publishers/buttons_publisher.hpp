@@ -53,7 +53,7 @@ class ButtonsPublisher : public PublisherInterface {
   }
 
   rcl_ret_t fini(rcl_node_t& node) override {
-    std_msgs__msg__UInt8__fini(&msg_);  
+    std_msgs__msg__UInt8__fini(&msg_);
     return rcl_publisher_fini(&pub_, &node);
   }
 

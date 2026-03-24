@@ -51,6 +51,7 @@ struct RosNodeConfig {
   size_t srv_count = 0;
 
   uint32_t spin_time_ms = 1;
+  uint32_t timer_ms = 10;
   uint8_t ping_attempts = 3;
   uint16_t ping_timeout_ms = 50;
 };
@@ -61,6 +62,7 @@ class RosNode {
 
   RosNode() = default;
   explicit RosNode(const RosNodeConfig& cfg) : cfg_(cfg) {}
+  ~RosNode() { destroyEntities(); }
 
   void serialTransportInit(const SerialConfig& serial);
   void ethernetTransportInit(IPAddress agent_ip, uint16_t agent_port);
@@ -70,8 +72,16 @@ class RosNode {
   /// WAITING
   void loop();
 
-  /// Publish all registered publishers + spin executor.
-  void publishLoop();
+  void publish();
+  void spin();
+
+  static void timerCallback(rcl_timer_t* timer, int64_t last_call_time) {
+    (void)timer;
+    (void)last_call_time;
+    if (instance_) {
+      instance_->publish();
+    }
+  }
 
   State state() const { return state_; }
   bool isConnected() const { return state_ == CONNECTED; }
@@ -101,6 +111,8 @@ class RosNode {
   rcl_init_options_t init_options_ = {};
   rcl_node_t node_ = {};
   rclc_support_t support_ = {};
+  rcl_timer_t timer_ = {};
+  static RosNode* instance_;  // wskaźnik na aktywną instancję
 };
 
 /// Global ROS node — defined in board-specific ros_entities.cpp

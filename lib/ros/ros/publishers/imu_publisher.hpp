@@ -62,7 +62,8 @@ class ImuPublisher : public PublisherInterface {
 
   void initMsg() {
     sensor_msgs__msg__Imu__init(&msg_);
-    msg_.header.frame_id = micro_ros_string_utilities_set(msg_.header.frame_id, cfg_.frame_id);
+    msg_.header.frame_id =
+        micro_ros_string_utilities_set(msg_.header.frame_id, cfg_.frame_id);
   }
 
   void fillMsg(const ImuStamped& d) {

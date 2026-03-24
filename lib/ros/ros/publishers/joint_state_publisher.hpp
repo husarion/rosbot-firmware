@@ -14,8 +14,8 @@
 
 #pragma once
 
-#include <rosidl_runtime_c/string_functions.h>
 #include <micro_ros_utilities/string_utilities.h>
+#include <rosidl_runtime_c/string_functions.h>
 #include <sensor_msgs/msg/joint_state.h>
 
 #include "encoder_array.hpp"
@@ -64,17 +64,19 @@ class JointStatePublisher : public PublisherInterface {
   void initMsg(rcl_allocator_t& allocator) {
     sensor_msgs__msg__JointState__init(&msg_);
 
-    msg_.header.frame_id = micro_ros_string_utilities_set(msg_.header.frame_id, cfg_.frame_id);
+    msg_.header.frame_id =
+        micro_ros_string_utilities_set(msg_.header.frame_id, cfg_.frame_id);
 
     const uint8_t n = g_motors.count();
-    
+
     rosidl_runtime_c__String__Sequence__init(&msg_.name, n);
     rosidl_runtime_c__double__Sequence__init(&msg_.position, n);
     rosidl_runtime_c__double__Sequence__init(&msg_.velocity, n);
     rosidl_runtime_c__double__Sequence__init(&msg_.effort, n);
 
     for (uint8_t i = 0; i < n; ++i)
-      msg_.name.data[i] = micro_ros_string_utilities_set(msg_.name.data[i], g_motors[i]->name());
+      msg_.name.data[i] = micro_ros_string_utilities_set(msg_.name.data[i],
+                                                         g_motors[i]->name());
   }
 
   void fillMsg(const EncodersStamped& d) {
