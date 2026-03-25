@@ -1,0 +1,13 @@
+---
+name: CI
+on:
+  workflow_dispatch:
+  push:
+
+jobs:
+
+  pre-commit:
+    name: Pre-commit
+    uses: ros-controls/ros2_control_ci/.github/workflows/reusable-pre-commit.yml@master
+    with:
+      ros_distro: jazzy
