@@ -43,6 +43,28 @@ static std::vector<PublisherInterface*> s_publishers = {
 uint8_t pub_count = static_cast<uint8_t>(s_publishers.size());
 
 // SUBSCRIBERS
+// Rear Leds subscriber
+const LedConfig s_led_configs[] = {
+    {.pin = GRN_LED, .bit_mask = 0x01},
+    {.pin = GRN_LED2, .bit_mask = 0x02},
+};
+
+LedState s_leds_state = {
+    .msg = {},
+    .config = s_led_configs,
+    .config_count = sizeof(s_led_configs) / sizeof(s_led_configs[0]),
+};
+
+SubscriptionEntry leds_sub = {
+    .sub = rcl_get_zero_initialized_subscription(),
+    .msg = &s_leds_state.msg,
+    .type_support = ROSIDL_GET_MSG_TYPE_SUPPORT(std_msgs, msg, UInt8),
+    .topic_name = "leds",
+    .callback = ledsCallback,
+    .best_effort = false,
+};
+
+// Motor commands subscriber
 static std_msgs__msg__Float32MultiArray s_mot_msg = {
     .layout = {},
     .data =
@@ -63,22 +85,18 @@ void motorsCmdCallback(const void* msg_in) {
   }
 }
 
-static LedSubState s_led_left_state;
-static LedSubState s_led_right_state;
+SubscriptionEntry motors_sub = {
+    .msg = &s_mot_msg,
+    .type_support =
+        ROSIDL_GET_MSG_TYPE_SUPPORT(std_msgs, msg, Float32MultiArray),
+    .topic_name = "_motors_cmd",
+    .callback = motorsCmdCallback,
+    .best_effort = true,
+};
 
 static std::vector<SubscriptionEntry> s_subscriptions = {
-    {
-        .msg = &s_mot_msg,
-        .type_support =
-            ROSIDL_GET_MSG_TYPE_SUPPORT(std_msgs, msg, Float32MultiArray),
-        .topic_name = "_motors_cmd",
-        .callback = motorsCmdCallback,
-        .best_effort = true,
-    },
-    makeLedSubscription({.pin = GRN_LED, .topic_name = "led/left"},
-                        &s_led_left_state),
-    makeLedSubscription({.pin = GRN_LED2, .topic_name = "led/right"},
-                        &s_led_right_state),
+    leds_sub,
+    motors_sub,
 };
 
 // SERVICES
@@ -119,7 +137,7 @@ static std::vector<ServiceEntry> s_services = {
         .request = &mcu_id_req,
         .response = &mcu_id_res,
         .type_support = ROSIDL_GET_SRV_TYPE_SUPPORT(std_srvs, srv, Trigger),
-        .service_name = "mcu_id",
+        .service_name = "_mcu_id",
         .callback = mcuIdCallback,
     },
 };

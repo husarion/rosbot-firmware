@@ -45,9 +45,30 @@ static std::vector<PublisherInterface*> publishers = {
 uint8_t pub_count = static_cast<uint8_t>(publishers.size());
 
 // SUBSCRIBERS
-constexpr uint8_t MAX_ENCODING_SIZE = 16;
+
+// Rear Leds subscriber
+const LedConfig s_led_configs[] = {
+    {.pin = GRN_LED, .bit_mask = 0x01},
+};
+
+LedState s_leds_state = {
+    .msg = {},
+    .config = s_led_configs,
+    .config_count = sizeof(s_led_configs) / sizeof(s_led_configs[0]),
+};
+
+SubscriptionEntry leds_sub = {
+    .sub = rcl_get_zero_initialized_subscription(),
+    .msg = &s_leds_state.msg,
+    .type_support = ROSIDL_GET_MSG_TYPE_SUPPORT(std_msgs, msg, UInt8),
+    .topic_name = "leds",
+    .callback = ledsCallback,
+    .best_effort = false,
+};
 
 // LED strip subscriber
+constexpr uint8_t MAX_ENCODING_SIZE = 16;
+
 static sensor_msgs__msg__Image s_img_msg = {
     .height = 1,
     .width = MAX_NUM_LEDS,
@@ -125,12 +146,10 @@ SubscriptionEntry motor_sub = {
     .best_effort = true,
 };
 
-static LedSubState s_led_state;
-
 static std::vector<SubscriptionEntry> subscriptions = {
+    leds_sub,
     led_strip_sub,
     motor_sub,
-    makeLedSubscription({.pin = GRN_LED, .topic_name = "led"}, &s_led_state),
 };
 
 // SERVICES
@@ -171,7 +190,7 @@ static std::vector<ServiceEntry> services = {
         .request = &mcu_id_req,
         .response = &mcu_id_res,
         .type_support = ROSIDL_GET_SRV_TYPE_SUPPORT(std_srvs, srv, Trigger),
-        .service_name = "mcu_id",
+        .service_name = "_mcu_id",
         .callback = mcuIdCallback,
     },
 };

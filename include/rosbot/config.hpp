@@ -259,7 +259,7 @@ inline constexpr ButtonsPublisherConfig buttons_pub_config = {
 };
 
 inline constexpr ImuPublisherConfig imu_pub_config = {
-    .topic = "_imu/data_raw",
+    .topic = "_imu",
     .queue = imu_queue,
     .frame_id = "imu_link",
 };
