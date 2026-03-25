@@ -14,13 +14,28 @@
 
 #pragma once
 
-#define RC_RETURN(fn)                   \
-  {                                     \
-    rcl_ret_t rc = fn;                  \
-    if (rc != RCL_RET_OK) return false; \
-  }
+#include <SPI.h>
 
-#define RC_SKIP(fn)                     \
-  {                                     \
-    [[maybe_unused]] rcl_ret_t rc = fn; \
-  }
+#include "transport.hpp"
+
+struct SpiTransportConfig {
+  uint32_t mosi_pin;
+  uint32_t miso_pin;
+  uint32_t sck_pin;
+  uint32_t spi_speed;
+  BitOrder bit_order;
+  uint8_t spi_mode;
+};
+
+/// SPI transport implementation using STM32 HW SPI.
+class SpiTransport : public Transport {
+ public:
+  explicit SpiTransport(const SpiTransportConfig& cfg);
+
+  bool init() override;
+  void transfer(uint8_t byte) override;
+
+ private:
+  SpiTransportConfig cfg_;
+  SPIClass spi_;
+};

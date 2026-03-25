@@ -42,8 +42,8 @@ void MotorDrv8848::setMode(MotorMode movement) {
   if (movement == current_mode_) return;
   current_mode_ = movement;
 
-  uint8_t pin_a = cfg_.dir_cw ? cfg_.in_b_pin : cfg_.in_a_pin;
-  uint8_t pin_b = cfg_.dir_cw ? cfg_.in_a_pin : cfg_.in_b_pin;
+  uint8_t pin_a = cfg_.inv_dir ? cfg_.in_b_pin : cfg_.in_a_pin;
+  uint8_t pin_b = cfg_.inv_dir ? cfg_.in_a_pin : cfg_.in_b_pin;
 
   switch (movement) {
     case MotorMode::FORWARD:

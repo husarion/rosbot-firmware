@@ -17,6 +17,8 @@
 #include <STM32FreeRTOS.h>
 #include <micro_ros_arduino.h>
 
+#include "communication_manager.hpp"
+
 static inline bool rtos_get_timestamp_ns(int64_t& timestamp_ns) {
   if (rmw_uros_epoch_synchronized()) {
     timestamp_ns = rmw_uros_epoch_nanos();
@@ -32,20 +34,23 @@ void createTasks();
 // 7 - Highest (configMAX_PRIORITIES)
 // 0 - Idle (tskIDLE_PRIORITY)
 enum Priority : UBaseType_t {
-  OBSERVING = 1,
-  SENSORS = 2,
-  COMMUNICATION = 3,
-  CONTROL = 4,
-  SAFETY = 5
+  BLOCKING = 1,
+  OBSERVING = 2,
+  SENSORS = 3,
+  COMMUNICATION = 4,
+  CONTROL = 5,
+  SAFETY = 6
 };
 
 enum Stack : uint16_t {
   MINIMAL = 0,
-  XSMALL = 128,
-  SMALL = 256,
-  MEDIUM = 512,
-  LARGE = 1024,
-  XLARGE = 2048
+  XXS = 16,
+  XS = 32,
+  S = 64,
+  M = 128,
+  L = 256,
+  XL = 512,
+  XXL = 1024
 };
 
 struct TaskConfig {
@@ -77,6 +82,14 @@ struct TaskHandleWrapper {
     auto result = xTaskCreate(cfg.function, cfg.name,
                               configMINIMAL_STACK_SIZE + cfg.stack, freq_param,
                               cfg.priority, &handle);
+    if (g_comm_mgr.hasDebugSerial()) {
+      if (result != pdPASS) {
+        g_comm_mgr.debugSerial()->printf(
+            "Failed to create task %s, error code: %d\r\n", cfg.name, result);
+      } else {
+        g_comm_mgr.debugSerial()->printf("Created %s task\r\n", cfg.name);
+      }
+    }
   }
 
   void destroy() {

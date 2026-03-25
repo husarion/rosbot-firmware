@@ -16,6 +16,7 @@
 
 #include "battery_adc.hpp"
 #include "battery_interface.hpp"
+#include "communication_manager.hpp"
 #include "config.hpp"
 #include "encoder_array.hpp"
 #include "hardware_encoder.hpp"
@@ -27,7 +28,6 @@
 #include "range_vl53l0.hpp"
 #include "ros/ros_node.hpp"
 #include "rtos.hpp"
-#include "serial_manager.hpp"
 
 // ───────── Battery ─────────
 BatteryAdc battery_adc(battery_adc_config);
@@ -67,7 +67,7 @@ static RangeInterface* range_sensors[] = {&range_fl, &range_fr, &range_rl,
 static constexpr uint8_t RANGE_COUNT =
     sizeof(range_sensors) / sizeof(range_sensors[0]);
 
-// ─────────Extern variables─────────
+// ───────── Extern variables ─────────
 BatteryInterface* g_battery = &battery_adc;
 EncoderArray g_encoders(encoders, ENCODER_COUNT);
 ImuInterface* g_imu = &imu_bno055;
@@ -84,13 +84,15 @@ void confirmAlt() {
   digitalWrite(GRN_LED2, HIGH);
 }
 
-SerialManagerConfig serial_config = {.main = SBC_SERIAL_CONFIG,
-                                     .alt = &FTDI_SERIAL_CONFIG,
-                                     .useAltCondition = useAlt,
-                                     .confirmAlt = confirmAlt};
-SerialManager g_serialManager(serial_config);
+CommunicationManagerConfig communication_config = {
+    .primary_type = TransportType::kSerial,
+    .primary_serial = SBC_SERIAL_CONFIG,
+    .diagnostic_serial = DIAGNOSTIC_SERIAL_CONFIG,
+    .useDiagnosticCondition = useAlt,
+    .onDiagnosticSelected = confirmAlt};
+CommunicationManager g_comm_mgr(communication_config);
 
-void BoardPheripheralsInit() {
+void boardPheripheralsInit() {
   // Initialize Buttons
   pinMode(PUSH_BUTTON1, INPUT_PULLUP);
   pinMode(PUSH_BUTTON2, INPUT_PULLUP);
@@ -114,16 +116,16 @@ void BoardPheripheralsInit() {
   delay(20);
 }
 
-/*──────────────────── Setup ────────────────────────*/
+/*───────── Setup ─────────*/
 void setup() {
   // Peripherals initialization
-  BoardPheripheralsInit();
+  boardPheripheralsInit();
 
   // Pre-communication
-  g_serialManager.init();
-  const auto& selected_serial = g_serialManager.selectCommunicationSerial();
-  g_serialManager.configureNamespace();
-  g_ros_node.setNamespace(g_serialManager.getNamespace());
+  g_comm_mgr.init();
+  const auto& transport = g_comm_mgr.selectTransport();
+  g_comm_mgr.configureNamespace();
+  g_ros_node.setNamespace(g_comm_mgr.getNamespace());
 
   // Sensors initialization
   battery_adc.init();
@@ -132,7 +134,7 @@ void setup() {
   g_indicator.init();
   g_motors.init();
   g_ranges.init();
-  g_ros_node.transportInit(selected_serial);
+  g_ros_node.serialTransportInit(*transport);
 
   // RTOS
   createQueues();
@@ -140,10 +142,10 @@ void setup() {
   vTaskStartScheduler();
 }
 
-/*────────────── Loop ───────────────*/
+/*───────── Loop ─────────*/
 void loop() {}
 
-/*─────────── Runtime stats ────────────────────*/
+/*───────── Runtime stats ─────────*/
 HardwareTimer RunTimeStatsTimer(TIM5);
 
 void vConfigureTimerForRunTimeStats(void) {

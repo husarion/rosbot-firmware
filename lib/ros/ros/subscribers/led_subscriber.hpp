@@ -15,39 +15,28 @@
 #pragma once
 
 #include <Arduino.h>
-#include <std_msgs/msg/bool.h>
+#include <std_msgs/msg/u_int8.h>
 
 #include "../types.hpp"
 
-struct LedSubConfig {
+struct LedConfig {
   uint8_t pin;
-  const char* topic_name;
+  uint8_t bit_mask;
 };
 
-struct LedSubState {
-  std_msgs__msg__Bool msg = {};
-  uint8_t pin = 0;
+struct LedState {
+  std_msgs__msg__UInt8 msg = {};
+  const LedConfig* config;
+  size_t config_count;
 };
 
-/// Generic LED callback — reads pin from LedSubState stored alongside msg.
-inline void ledCallback(const void* msg_in) {
-  // msg_in points to LedSubState.msg, LedSubState.pin follows in memory
-  auto* state = reinterpret_cast<const LedSubState*>(msg_in);
-  digitalWrite(state->pin, state->msg.data ? HIGH : LOW);
-}
+inline void ledsCallback(const void* msg_in) {
+  auto* state = reinterpret_cast<const LedState*>(msg_in);
+  uint8_t led_states = state->msg.data;
 
-inline SubscriptionEntry makeLedSubscription(const LedSubConfig& cfg,
-                                             LedSubState* state) {
-  state->pin = cfg.pin;
-  pinMode(cfg.pin, OUTPUT);
-  digitalWrite(cfg.pin, LOW);
-
-  return SubscriptionEntry{
-      .sub = rcl_get_zero_initialized_subscription(),
-      .msg = &state->msg,
-      .type_support = ROSIDL_GET_MSG_TYPE_SUPPORT(std_msgs, msg, Bool),
-      .topic_name = cfg.topic_name,
-      .callback = ledCallback,
-      .best_effort = false,  // reliable for LED commands
-  };
+  for (size_t i = 0; i < state->config_count; i++) {
+    const LedConfig& cfg = state->config[i];
+    bool is_on = (led_states & cfg.bit_mask) != 0;
+    digitalWrite(cfg.pin, is_on ? HIGH : LOW);
+  }
 }

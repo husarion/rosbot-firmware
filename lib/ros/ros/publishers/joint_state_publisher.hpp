@@ -15,11 +15,11 @@
 #pragma once
 
 #include <micro_ros_utilities/string_utilities.h>
+#include <rosidl_runtime_c/string_functions.h>
 #include <sensor_msgs/msg/joint_state.h>
 
 #include "encoder_array.hpp"
 #include "publisher_interface.hpp"
-#include "../utils.hpp"
 
 struct EncodersStamped {
   EncodersData data;
@@ -44,13 +44,16 @@ class JointStatePublisher : public PublisherInterface {
         topic_);
   }
 
-  void publish() override {
-    if (xQueueReceive(cfg_.queue, &data_, 0) != pdPASS) return;
+  rcl_ret_t publish() override {
+    if (xQueueReceive(cfg_.queue, &data_, 0) != pdPASS) return RCL_RET_OK;
     fillMsg(data_);
-    RC_SKIP(rcl_publish(&pub_, &msg_, NULL));
+    return rcl_publish(&pub_, &msg_, NULL);
   }
 
-  void fini(rcl_node_t& node) override { RC_SKIP(rcl_publisher_fini(&pub_, &node)); }
+  rcl_ret_t fini(rcl_node_t& node) override {
+    sensor_msgs__msg__JointState__fini(&msg_);
+    return rcl_publisher_fini(&pub_, &node);
+  }
 
  private:
   rcl_publisher_t pub_;
@@ -59,30 +62,21 @@ class JointStatePublisher : public PublisherInterface {
   JointStatePublisherConfig cfg_;
 
   void initMsg(rcl_allocator_t& allocator) {
-    memset(&msg_, 0, sizeof(msg_));
     sensor_msgs__msg__JointState__init(&msg_);
 
-    msg_.header.frame_id = micro_ros_string_utilities_init(cfg_.frame_id);
+    msg_.header.frame_id =
+        micro_ros_string_utilities_set(msg_.header.frame_id, cfg_.frame_id);
 
     const uint8_t n = g_motors.count();
 
-    msg_.name.capacity = n;
-    msg_.name.size = n;
-    msg_.name.data = (rosidl_runtime_c__String*)allocator.allocate(
-        n * sizeof(rosidl_runtime_c__String), allocator.state);
-    for (uint8_t i = 0; i < n; ++i)
-      msg_.name.data[i] = micro_ros_string_utilities_init(g_motors[i]->name());
+    rosidl_runtime_c__String__Sequence__init(&msg_.name, n);
+    rosidl_runtime_c__double__Sequence__init(&msg_.position, n);
+    rosidl_runtime_c__double__Sequence__init(&msg_.velocity, n);
+    rosidl_runtime_c__double__Sequence__init(&msg_.effort, n);
 
-    auto alloc_doubles = [&](auto& seq) {
-      seq.capacity = n;
-      seq.size = n;
-      seq.data =
-          (double*)allocator.allocate(n * sizeof(double), allocator.state);
-      memset(seq.data, 0, n * sizeof(double));
-    };
-    alloc_doubles(msg_.position);
-    alloc_doubles(msg_.velocity);
-    // alloc_doubles(msg_.effort); not implemented
+    for (uint8_t i = 0; i < n; ++i)
+      msg_.name.data[i] = micro_ros_string_utilities_set(msg_.name.data[i],
+                                                         g_motors[i]->name());
   }
 
   void fillMsg(const EncodersStamped& d) {
@@ -93,7 +87,7 @@ class JointStatePublisher : public PublisherInterface {
     for (uint8_t i = 0; i < n; ++i) {
       msg_.position.data[i] = d.data.position[i];
       msg_.velocity.data[i] = d.data.velocity[i];
-      // msg_.effort.data[i] = d.data.effort[i]; not implemented
+      msg_.effort.data[i] = d.data.effort[i];
     }
   }
 };

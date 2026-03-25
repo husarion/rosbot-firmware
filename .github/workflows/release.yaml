@@ -1,0 +1,95 @@
+name: Release
+
+on:
+  workflow_dispatch:
+    inputs:
+      bump_type:
+        description: Version to bump (major, minor, patch)
+        default: patch
+        required: true
+
+jobs:
+
+  bump-tag:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v6
+        with:
+          fetch-depth: 0  # potrzebne do pobrania wszystkich tagów
+
+      - name: Get latest tag
+        id: get_tag
+        run: |
+          latest_tag=$(git describe --tags --abbrev=0 2>/dev/null || echo "v0.0.0")
+          echo "Latest tag: $latest_tag"
+          echo "latest=$latest_tag" >> $GITHUB_OUTPUT
+
+      - name: Bump version and create tag_name
+        id: bump
+        run: |
+          latest=${{ steps.get_tag.outputs.latest }}
+          bump_type=${{ github.event.inputs.bump_type }}
+          latest_num=${latest#v}
+          IFS='.' read -r major minor patch <<< "$latest_num"
+
+          if [ "$bump_type" = "major" ]; then
+            major=$((major + 1))
+            minor=0
+            patch=0
+          elif [ "$bump_type" = "minor" ]; then
+            minor=$((minor + 1))
+            patch=0
+          else
+            patch=$((patch + 1))
+          fi
+
+          version="v$major.$minor.$patch"
+          distro=$(echo "${GITHUB_REF_NAME}" | awk -F'/' '{print $NF}')
+          tag_name="${distro}-${version}"
+
+          echo "version=$version" >> $GITHUB_OUTPUT
+          echo "tag_name=$tag_name" >> $GITHUB_OUTPUT
+          echo "Tag name: $tag_name"
+
+      - name: Create and push new tag
+        uses: actions/github-script@v8
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          script: |
+            const tag = '${{ steps.bump.outputs.tag_name }}';
+            const ref = 'refs/tags/' + tag;
+            await github.git.createRef({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              ref,
+              sha: context.sha
+            });
+            console.log(`Created tag ${tag}`);
+
+  firmware-release:
+    name: Firmware release
+    needs: bump-tag
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v6
+
+      - name: Install PlatformIO
+        run: pip3 install -U platformio
+
+      - name: Build firmware for STM32
+        run: |
+          pio run -e rosbot_release -e rosbot_xl_release
+          tag_name=${{ needs.bump-tag.outputs.tag_name }}
+          mv .pio/build/rosbot_release/firmware.bin .pio/build/rosbot_release/${tag_name}.bin
+          mv .pio/build/rosbot_xl_release/firmware.bin .pio/build/rosbot_xl_release/${tag_name}.bin
+
+      - name: Release firmware
+        uses: softprops/action-gh-release@v1
+        with:
+          files: |
+            .pio/build/rosbot_release/${{ needs.bump-tag.outputs.tag_name }}.bin
+            .pio/build/rosbot_xl_release/${{ needs.bump-tag.outputs.tag_name }}.bin
+            LICENSE
+          tag_name: ${{ needs.bump-tag.outputs.tag_name }}

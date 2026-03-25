@@ -24,7 +24,10 @@ struct ImuBno055Config {
   uint8_t i2c_addr;
   int32_t sensor_id;
   uint16_t int_pin;
-  Adafruit_BNO055::adafruit_bno055_axis_remap_config_t axis_config;
+  Adafruit_BNO055::adafruit_bno055_axis_remap_config_t axis_config =
+      Adafruit_BNO055::REMAP_CONFIG_P0;
+  Adafruit_BNO055::adafruit_bno055_axis_remap_sign_t axis_sign =
+      Adafruit_BNO055::REMAP_SIGN_P0;
 };
 
 class ImuBno055 : public ImuInterface {

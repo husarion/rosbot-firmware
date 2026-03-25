@@ -17,7 +17,6 @@
 #include <micro_ros_utilities/string_utilities.h>
 #include <sensor_msgs/msg/range.h>
 
-#include "../utils.hpp"
 #include "publisher_interface.hpp"
 #include "range_array.hpp"
 
@@ -46,15 +45,15 @@ class RangePublisher : public PublisherInterface {
         topic_);
   }
 
-  void publish() override {
-    if (xQueueReceive(cfg_.queue, &data_, 0) != pdPASS) return;
+  rcl_ret_t publish() override {
+    if (xQueueReceive(cfg_.queue, &data_, 0) != pdPASS) return RCL_RET_OK;
 
     msg_.header.stamp.sec = data_.timestamp_ns / 1000000000LL;
     msg_.header.stamp.nanosec = data_.timestamp_ns % 1000000000LL;
 
     for (uint8_t i = 0; i < data_.data.count; i++) {
-      msg_.header.frame_id =
-          micro_ros_string_utilities_init(data_.data.frame_id[i]);
+      msg_.header.frame_id = micro_ros_string_utilities_set(
+          msg_.header.frame_id, data_.data.frame_id[i]);
 
       float range = data_.data.range[i];
       if (range > msg_.max_range)
@@ -64,12 +63,15 @@ class RangePublisher : public PublisherInterface {
       else
         msg_.range = range;
 
-      RC_SKIP(rcl_publish(&pub_, &msg_, NULL));
+      rcl_ret_t ret = rcl_publish(&pub_, &msg_, NULL);
+      if (ret != RCL_RET_OK) return ret;
     }
+    return RCL_RET_OK;
   }
 
-  void fini(rcl_node_t& node) override {
-    RC_SKIP(rcl_publisher_fini(&pub_, &node));
+  rcl_ret_t fini(rcl_node_t& node) override {
+    sensor_msgs__msg__Range__fini(&msg_);
+    return rcl_publisher_fini(&pub_, &node);
   }
 
  private:
@@ -79,7 +81,7 @@ class RangePublisher : public PublisherInterface {
   RangePublisherConfig cfg_;
 
   void initMsg() {
-    memset(&msg_, 0, sizeof(msg_));
+    sensor_msgs__msg__Range__init(&msg_);
     msg_.radiation_type = sensor_msgs__msg__Range__INFRARED;
 
     msg_.field_of_view = cfg_.fov;

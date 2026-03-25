@@ -17,6 +17,7 @@
 #include <STM32FreeRTOS.h>
 
 #include "battery_interface.hpp"
+#include "communication_manager.hpp"
 #include "config.hpp"
 #include "encoder_array.hpp"
 #include "imu_interface.hpp"
@@ -27,10 +28,8 @@
 #include "ros/publishers/joint_state_publisher.hpp"
 #include "ros/publishers/range_publisher.hpp"
 #include "ros/ros_node.hpp"
-#include "serial_manager.hpp"
 
-
-// ===== Queues =====
+// ──── Queues ────
 void createQueues() {
   battery_queue = xQueueCreate(1, sizeof(BatteryStamped));
   imu_queue = xQueueCreate(1, sizeof(ImuStamped));
@@ -38,7 +37,7 @@ void createQueues() {
   ranges_queue = xQueueCreate(1, sizeof(RangesStamped));
 }
 
-// ===== Create all tasks =====
+// ──── Create all tasks ────
 void batteryTask(void* p);
 void encoderTask(void* p);
 void imuTask(void* p);
@@ -50,15 +49,17 @@ void uRosTask(void* p);
 void uRosPingTask(void* p);
 
 inline TaskConfig tasks[] = {
-    {"Battery", Priority::SENSORS, Stack::SMALL, 10, batteryTask},
-    {"Encoder", Priority::CONTROL, Stack::SMALL, 500, encoderTask},
-    {"Imu", Priority::SENSORS, Stack::SMALL, 50, imuTask},
-    {"LedIndicator", Priority::OBSERVING, Stack::XSMALL, 20, ledIndicatorTask},
-    {"Monitor", Priority::OBSERVING, Stack::MEDIUM, 1, monitorTask},
-    {"MotorControl", Priority::CONTROL, Stack::MEDIUM, 200, motorControlTask},
-    {"Range", Priority::SENSORS, Stack::SMALL, 10, rangeTask},
-    {"uRos", Priority::COMMUNICATION, Stack::LARGE, 100, uRosTask},
-    {"uRosPing", Priority::OBSERVING, Stack::MEDIUM, 2, uRosPingTask},
+    {"Battery", Priority::SENSORS, Stack::XS, 10, batteryTask},
+    {"Encoder", Priority::CONTROL, Stack::S, 500, encoderTask},
+    {"Imu", Priority::SENSORS, Stack::M, 50, imuTask},
+    {"LedIndicator", Priority::OBSERVING, Stack::XS, 20, ledIndicatorTask},
+#ifndef RELEASE
+    {"Monitor", Priority::BLOCKING, Stack::XL, 1, monitorTask},
+#endif
+    {"MotorControl", Priority::CONTROL, Stack::M, 200, motorControlTask},
+    {"Range", Priority::SENSORS, Stack::M, 10, rangeTask},
+    {"uRos", Priority::COMMUNICATION, Stack::L, 1000, uRosTask},
+    {"uRosPing", Priority::BLOCKING, Stack::XL, 2, uRosPingTask},
 };
 
 inline TaskHandleWrapper taskHandles[sizeof(tasks) / sizeof(tasks[0])];
@@ -69,7 +70,7 @@ void createTasks() {
   }
 }
 
-// ===== Task functions =====
+// ──── Task functions ────
 void batteryTask(void* p) {
   TickType_t period = taskGetPeriod(p);
   TickType_t wake_time = xTaskGetTickCount();
@@ -137,11 +138,23 @@ void ledIndicatorTask(void* p) {
 void monitorTask(void* p) {
   TickType_t period = taskGetPeriod(p);
   TickType_t wake_time = xTaskGetTickCount();
-  char buf[1000];
+  char buf[768];
 
   while (true) {
     vTaskGetRunTimeStats(buf);
-    g_serialManager.debug().printf("%s\r\n", buf);
+    if (g_comm_mgr.hasDebugSerial()) {
+      g_comm_mgr.debugSerial()->printf("%s\r\n", buf);
+
+      for (size_t i = 0; i < sizeof(taskHandles) / sizeof(taskHandles[0]);
+           i++) {
+        g_comm_mgr.debugSerial()->printf(
+            "%-16s %-6u B\r\n", tasks[i].name,
+            uxTaskGetStackHighWaterMark(taskHandles[i].handle) *
+                sizeof(StackType_t));
+      }
+      g_comm_mgr.debugSerial()->printf("\r\nFree heap memory: %u B\r\n",
+                                       (unsigned)xPortGetFreeHeapSize());
+    }
 
     vTaskDelayUntil(&wake_time, period);
   }
@@ -179,8 +192,8 @@ void uRosTask(void* p) {
   TickType_t period = taskGetPeriod(p);
   TickType_t wake_time = xTaskGetTickCount();
   while (true) {
-    g_ros_node.publishLoop();
-    vTaskDelayUntil(&wake_time, period);
+    g_ros_node.spin();
+    vTaskDelay(period);
   }
 }
 

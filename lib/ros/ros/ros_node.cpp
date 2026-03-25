@@ -14,6 +14,8 @@
 
 #include "ros_node.hpp"
 
+RosNode* RosNode::instance_ = nullptr;
+
 bool RosNode::pingAgent() {
   return rmw_uros_ping_agent(cfg_.ping_timeout_ms, cfg_.ping_attempts) ==
          RMW_RET_OK;
@@ -21,73 +23,105 @@ bool RosNode::pingAgent() {
 
 bool RosNode::createEntities() {
   allocator_ = rcl_get_default_allocator();
+  executor_ = rclc_executor_get_zero_initialized_executor();
   init_options_ = rcl_get_zero_initialized_init_options();
+  node_ = rcl_get_zero_initialized_node();
+  support_ = rclc_support_t{};
+  timer_ = rcl_get_zero_initialized_timer();
 
-  RC_RETURN(rcl_init_options_init(&init_options_, allocator_));
-  RC_RETURN(rcl_init_options_set_domain_id(&init_options_, cfg_.domain_id));
-  rclc_support_init_with_options(&support_, 0, NULL, &init_options_,
-                                 &allocator_);
-  rclc_node_init_default(&node_, cfg_.node_name, ns_, &support_);
+  RC_CHECK(rcl_init_options_init(&init_options_, allocator_));
+  RC_CHECK(rcl_init_options_set_domain_id(&init_options_, cfg_.domain_id));
+  RC_CHECK(rclc_support_init_with_options(&support_, 0, NULL, &init_options_,
+                                          &allocator_));
+  RC_CHECK(rcl_init_options_fini(&init_options_));
 
-  // ── Register all publishers ──────────────────────────────
-  for (uint8_t i = 0; i < cfg_.pub_count; ++i) {
-    RC_RETURN(cfg_.publishers[i]->init(node_, allocator_));
+  RC_CHECK(rclc_node_init_default(&node_, cfg_.node_name, ns_, &support_));
+
+  // ── Publishers ───────────────────────────────────────────
+  for (size_t i = 0; i < cfg_.pub_count; ++i) {
+    RC_CHECK(cfg_.publishers[i]->init(node_, allocator_));
   }
 
-  // ── Register all subscriptions ──────────────────────────
-  for (uint8_t i = 0; i < cfg_.sub_count; ++i) {
+  // ── Subscriptions ────────────────────────────────────────
+  for (size_t i = 0; i < cfg_.sub_count; ++i) {
     auto& s = cfg_.subscriptions[i];
+    s.sub = rcl_get_zero_initialized_subscription();
     if (s.best_effort) {
-      rclc_subscription_init_best_effort(&s.sub, &node_, s.type_support,
-                                         s.topic_name);
+      RC_CHECK(rclc_subscription_init_best_effort(
+          &s.sub, &node_, s.type_support, s.topic_name));
     } else {
-      rclc_subscription_init_default(&s.sub, &node_, s.type_support,
-                                     s.topic_name);
+      RC_CHECK(rclc_subscription_init_default(&s.sub, &node_, s.type_support,
+                                              s.topic_name));
     }
   }
 
-  // ── Register all services ────────────────────────────────
-  for (uint8_t i = 0; i < cfg_.srv_count; ++i) {
-    auto& s = cfg_.services[i];
-    rclc_service_init_default(&s.srv, &node_, s.type_support, s.topic_name);
+  // ── Service Clients ─────────────────────────────────────
+  for (size_t i = 0; i < cfg_.client_count; ++i) {
+    RC_CHECK(cfg_.clients[i]->init(node_, allocator_));
   }
 
-  // ── Count executor handles ───────────────────────────────
-  uint8_t exec_count = cfg_.sub_count + cfg_.srv_count;
+  // ── Services Server ───────────────────────────────────
+  for (size_t i = 0; i < cfg_.srv_count; ++i) {
+    auto& s = cfg_.services[i];
+    s.srv = rcl_get_zero_initialized_service();  // ← KLUCZOWE
+    RC_CHECK(rclc_service_init_default(&s.srv, &node_, s.type_support,
+                                       s.service_name));
+  }
 
-  // ── Create executor ──────────────────────────────────────
-  executor_ = rclc_executor_get_zero_initialized_executor();
-  rclc_executor_init(&executor_, &support_.context, exec_count, &allocator_);
+  // ── Timer ───────────────────────────────────────────────
+  RC_CHECK(rclc_timer_init_default(&timer_, &support_,
+                                   RCL_MS_TO_NS(cfg_.timer_ms), timerCallback));
 
-  for (uint8_t i = 0; i < cfg_.sub_count; ++i) {
+  // ── Executor ─────────────────────────────────────────────
+  size_t exec_count = 1 + cfg_.sub_count + cfg_.srv_count +
+                      cfg_.client_count;  // timer + subs + srvs + clients
+  RC_CHECK(rclc_executor_init(&executor_, &support_.context, exec_count,
+                              &allocator_));
+
+  for (size_t i = 0; i < cfg_.sub_count; ++i) {
     auto& s = cfg_.subscriptions[i];
-    rclc_executor_add_subscription(&executor_, &s.sub, s.msg, s.callback,
-                                   ON_NEW_DATA);
+    RC_CHECK(rclc_executor_add_subscription(&executor_, &s.sub, s.msg,
+                                            s.callback, ON_NEW_DATA));
   }
-  for (uint8_t i = 0; i < cfg_.srv_count; ++i) {
+  for (size_t i = 0; i < cfg_.client_count; ++i) {
+    auto* c = cfg_.clients[i];
+    RC_CHECK(rclc_executor_add_client(&executor_, c->clientHandle(),
+                                      c->responseMsg(), c->responseCallback()));
+  }
+  for (size_t i = 0; i < cfg_.srv_count; ++i) {
     auto& s = cfg_.services[i];
-    rclc_executor_add_service(&executor_, &s.srv, s.request, s.response,
-                              s.callback);
+    RC_CHECK(rclc_executor_add_service(&executor_, &s.srv, s.request,
+                                       s.response, s.callback));
   }
+  RC_CHECK(rclc_executor_add_timer(&executor_, &timer_));
 
-  rmw_uros_sync_session(1000);
+  RC_CHECK(rmw_uros_sync_session(1000));
+  instance_ = this;
   return true;
 }
 
 void RosNode::destroyEntities() {
   auto* ctx = rcl_context_get_rmw_context(&support_.context);
-  rmw_uros_set_context_entity_destroy_session_timeout(ctx, 0);
+  RC_CHECK(rmw_uros_set_context_entity_destroy_session_timeout(ctx, 0));
 
-  for (uint8_t i = 0; i < cfg_.pub_count; ++i) cfg_.publishers[i]->fini(node_);
-  for (uint8_t i = 0; i < cfg_.sub_count; ++i)
-    RC_SKIP(rcl_subscription_fini(&cfg_.subscriptions[i].sub, &node_));
-  for (uint8_t i = 0; i < cfg_.srv_count; ++i)
-    RC_SKIP(rcl_service_fini(&cfg_.services[i].srv, &node_));
+  RC_CHECK(rcl_timer_fini(&timer_));
+  for (uint8_t i = 0; i < cfg_.pub_count; ++i) {
+    RC_CHECK(cfg_.publishers[i]->fini(node_));
+  }
+  for (uint8_t i = 0; i < cfg_.sub_count; ++i) {
+    RC_CHECK(rcl_subscription_fini(&cfg_.subscriptions[i].sub, &node_));
+  }
+  for (uint8_t i = 0; i < cfg_.srv_count; ++i) {
+    RC_CHECK(rcl_service_fini(&cfg_.services[i].srv, &node_));
+  }
+  for (uint8_t i = 0; i < cfg_.client_count; ++i) {
+    RC_CHECK(cfg_.clients[i]->fini(node_));
+  }
 
-  rclc_executor_fini(&executor_);
-  RC_SKIP(rcl_node_fini(&node_));
-  rclc_support_fini(&support_);
-  RC_SKIP(rcl_init_options_fini(&init_options_));
+  RC_CHECK(rclc_executor_fini(&executor_));
+  RC_CHECK(rcl_node_fini(&node_));
+  RC_CHECK(rclc_support_fini(&support_));
+  instance_ = nullptr;
 }
 
 void RosNode::loop() {
@@ -113,14 +147,32 @@ void RosNode::loop() {
   }
 }
 
-void RosNode::publishLoop() {
+void RosNode::publish() {
   if (state_ != CONNECTED) return;
   for (uint8_t i = 0; i < cfg_.pub_count; ++i) cfg_.publishers[i]->publish();
-  rclc_executor_spin_some(&executor_, RCL_MS_TO_NS(0));
 }
 
-void RosNode::transportInit(const SerialConfig& config) {
-  rmw_uros_set_custom_transport(
+void RosNode::spin() {
+  if (state_ != CONNECTED) return;
+  RC_CHECK(
+      rclc_executor_spin_some(&executor_, RCL_MS_TO_NS(cfg_.spin_time_ms)));
+}
+
+void RosNode::ethernetTransportInit(IPAddress agent_ip, uint16_t agent_port) {
+  static struct micro_ros_agent_locator locator;
+
+  locator.address = agent_ip;
+  locator.port = agent_port;
+
+  RC_CHECK(rmw_uros_set_custom_transport(
+      false, (void*)&locator, arduino_native_ethernet_udp_transport_open,
+      arduino_native_ethernet_udp_transport_close,
+      arduino_native_ethernet_udp_transport_write,
+      arduino_native_ethernet_udp_transport_read));
+}
+
+void RosNode::serialTransportInit(const SerialConfig& config) {
+  RC_CHECK(rmw_uros_set_custom_transport(
       /* Enable XRCE framing */
       true,
       /* Arguments for callbacks - pass config pointer */
@@ -156,5 +208,5 @@ void RosNode::transportInit(const SerialConfig& config) {
         const SerialConfig* cfg = (const SerialConfig*)transport->args;
         cfg->serial->setTimeout(timeout);
         return cfg->serial->readBytes((char*)buf, len);
-      });
+      }));
 }

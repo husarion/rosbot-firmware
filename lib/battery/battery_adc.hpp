@@ -23,6 +23,7 @@ struct BatteryAdcConfig {
   float v_max;
   float divider;
   float correction = 1.0f;
+  float adc_resolution_scale;  // 1/ADC resolution (e.g. 1023 for 10-bit)
 };
 
 class BatteryAdc : public BatteryInterface {

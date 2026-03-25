@@ -25,10 +25,10 @@ class PublisherInterface {
   virtual rcl_ret_t init(rcl_node_t& node, rcl_allocator_t& allocator) = 0;
 
   /// Publish one message. Called every publishLoop() cycle.
-  virtual void publish() = 0;
+  virtual rcl_ret_t publish() = 0;
 
   /// Cleanup. Called during destroyEntities().
-  virtual void fini(rcl_node_t& node) = 0;
+  virtual rcl_ret_t fini(rcl_node_t& node) = 0;
 
   /// Topic name for logging / debug.
   virtual const char* topicName() const { return topic_; }

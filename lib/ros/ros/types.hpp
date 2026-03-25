@@ -21,9 +21,7 @@
 #include <rmw_microros/rmw_microros.h>
 
 #include "publishers/publisher_interface.hpp"
-#include "serial_manager.hpp"
 
-/// One ROS subscription for dynamic registration.
 struct SubscriptionEntry {
   rcl_subscription_t sub = {};
   void* msg;
@@ -33,12 +31,19 @@ struct SubscriptionEntry {
   bool best_effort;
 };
 
-/// One ROS service for dynamic registration.
+struct ClientEntry {
+  rcl_client_t client;
+  void* response;
+  const rosidl_service_type_support_t* type_support;
+  const char* service_name;
+  rclc_client_callback_t callback;
+};
+
 struct ServiceEntry {
   rcl_service_t srv;
   void* request;
   void* response;
   const rosidl_service_type_support_t* type_support;
-  const char* topic_name;
+  const char* service_name;
   rclc_service_callback_t callback;
 };

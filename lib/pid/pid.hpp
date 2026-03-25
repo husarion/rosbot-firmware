@@ -22,7 +22,7 @@ struct PIDConfig {
   float max_output = 1.0f;         // Default output limits
   float min_power_to_move = 0.0f;  // Minimum output to overcome
   float compensation_up_to_speed =
-      2.0f;  // Speed up to which inertia compensation is applied
+      0.0f;  // Speed up to which inertia compensation is applied
   float max_integral =
       0.0f;  // Will be set to 1/ki if ki > 0, otherwise no integral action
   float max_accel = 0.0f;  // No acceleration limit by default
