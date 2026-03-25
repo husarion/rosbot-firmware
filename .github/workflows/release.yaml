@@ -24,7 +24,6 @@ jobs:
       - name: Resolve distro from branch name
         id: distro
         run: |
-          # np. branch "release/humble" → distro = "humble"
           distro=$(echo "${GITHUB_REF_NAME}" | awk -F'/' '{print $NF}')
           echo "distro=$distro" >> $GITHUB_OUTPUT
           echo "Distro: $distro"
@@ -84,6 +83,8 @@ jobs:
     name: Firmware release
     needs: bump-tag
     runs-on: ubuntu-latest
+    env:
+      TAG_NAME: ${{ needs.bump-tag.outputs.tag_name }}
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -91,23 +92,30 @@ jobs:
       - name: Install PlatformIO
         run: pip3 install -U platformio
 
+      - name: Update FW_VERSION in platformio.ini
+        run: |
+          echo "Setting FW_VERSION to ${TAG_NAME}"
+          sed -i "s/-D FW_VERSION=\\\\\"[^\"]*\\\\\"/-D FW_VERSION=\\\\\"${TAG_NAME}\\\\\"/" platformio.ini
+          echo "--- Verify change ---"
+          grep "FW_VERSION" platformio.ini
+
       - name: Build firmware
         run: pio run -e rosbot_release -e rosbot_xl_release
 
       - name: Rename binaries
         run: |
-          tag="${{ needs.bump-tag.outputs.tag_name }}"
-
-          mkdir -p release/rosbot release/rosbot_xl
-          cp .pio/build/rosbot_release/firmware.bin    "release/rosbot/${tag}.bin"
-          cp .pio/build/rosbot_xl_release/firmware.bin  "release/rosbot_xl/${tag}.bin"
+          mkdir -p release
+          cp .pio/build/rosbot_release/firmware.bin    "release/rosbot_${TAG_NAME}.bin"
+          cp .pio/build/rosbot_xl_release/firmware.bin  "release/rosbot_xl_${TAG_NAME}.bin"
+          echo "--- Release artifacts ---"
+          ls -la release/
 
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: ${{ needs.bump-tag.outputs.tag_name }}
+          tag_name: ${{ env.TAG_NAME }}
           generate_release_notes: true
           files: |
-            release/rosbot/${{ needs.bump-tag.outputs.tag_name }}.bin
-            release/rosbot_xl/${{ needs.bump-tag.outputs.tag_name }}.bin
+            release/rosbot_${{ env.TAG_NAME }}.bin
+            release/rosbot_xl_${{ env.TAG_NAME }}.bin
             LICENSE
