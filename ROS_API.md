@@ -24,9 +24,9 @@
 | ❌  | ✅    | **`led_strip`**        | LED strip command. <br /> _[sensor_msgs/Image]_             |
 | ✅  | ✅    | **`leds`**             | Rear panel LEDs command. <br /> _[std_msgs/UInt8]_          |
 | ✅  | ❌    | **`ranges`**           | Range sensor data. <br /> _[sensor_msgs/Range]_             |
-| ✅  | ✅    | **`_imu`**             | Raw IMU data. <br /> _[sensor_msgs/Imu]_                    |
-| ✅  | ✅    | **`_motors_cmd`**      | Wheel speed commands. <br /> _[std_msgs/Float32MultiArray]_ |
-| ✅  | ✅    | **`_motors_response`** | Wheel feedback. <br /> _[sensor_msgs/JointState]_           |
+| ✅  | ✅    | **`_imu/data`**        | Raw IMU data. <br /> _[sensor_msgs/Imu]_                    |
+| ✅  | ✅    | **`_motors/cmd`**      | Wheel speed commands. <br /> _[std_msgs/Float32MultiArray]_ |
+| ✅  | ✅    | **`_motors/feedback`** | Wheel feedback. <br /> _[sensor_msgs/JointState]_           |
 
 ## Services
 

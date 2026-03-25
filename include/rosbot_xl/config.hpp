@@ -311,13 +311,13 @@ inline constexpr ButtonsPublisherConfig buttons_pub_config = {
 };
 
 inline constexpr ImuPublisherConfig imu_pub_config = {
-    .topic = "_imu",
+    .topic = "_imu/data",
     .queue = imu_queue,
     .frame_id = "imu_link",
 };
 
 inline constexpr JointStatePublisherConfig joint_state_pub_config = {
-    .topic = "_motors_response",
+    .topic = "_motors/feedback",
     .queue = joint_state_queue,
     .frame_id = "base_link",
 };
