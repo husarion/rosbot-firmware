@@ -9,60 +9,73 @@ on:
         required: true
 
 jobs:
-
   bump-tag:
     runs-on: ubuntu-latest
+    outputs:
+      tag_name: ${{ steps.bump.outputs.tag_name }}
+      version: ${{ steps.bump.outputs.version }}
+      distro: ${{ steps.bump.outputs.distro }}
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v6
+        uses: actions/checkout@v4
         with:
-          fetch-depth: 0  # potrzebne do pobrania wszystkich tagów
+          fetch-depth: 0
 
-      - name: Get latest tag
+      - name: Resolve distro from branch name
+        id: distro
+        run: |
+          # np. branch "release/humble" → distro = "humble"
+          distro=$(echo "${GITHUB_REF_NAME}" | awk -F'/' '{print $NF}')
+          echo "distro=$distro" >> $GITHUB_OUTPUT
+          echo "Distro: $distro"
+
+      - name: Get latest tag for distro
         id: get_tag
         run: |
-          latest_tag=$(git describe --tags --abbrev=0 2>/dev/null || echo "v0.0.0")
+          distro=${{ steps.distro.outputs.distro }}
+          latest_tag=$(git tag -l "${distro}-v*" --sort=-v:refname | head -n1)
+          if [ -z "$latest_tag" ]; then
+            latest_tag="${distro}-v0.0.0"
+          fi
           echo "Latest tag: $latest_tag"
           echo "latest=$latest_tag" >> $GITHUB_OUTPUT
 
-      - name: Bump version and create tag_name
+      - name: Bump version
         id: bump
         run: |
-          latest=${{ steps.get_tag.outputs.latest }}
-          bump_type=${{ github.event.inputs.bump_type }}
-          latest_num=${latest#v}
+          latest="${{ steps.get_tag.outputs.latest }}"
+          bump_type="${{ github.event.inputs.bump_type }}"
+          distro="${{ steps.distro.outputs.distro }}"
+
+          latest_num=$(echo "$latest" | sed "s/^${distro}-v//")
           IFS='.' read -r major minor patch <<< "$latest_num"
 
           if [ "$bump_type" = "major" ]; then
-            major=$((major + 1))
-            minor=0
-            patch=0
+            major=$((major + 1)); minor=0; patch=0
           elif [ "$bump_type" = "minor" ]; then
-            minor=$((minor + 1))
-            patch=0
+            minor=$((minor + 1)); patch=0
           else
             patch=$((patch + 1))
           fi
 
-          version="v$major.$minor.$patch"
-          distro=$(echo "${GITHUB_REF_NAME}" | awk -F'/' '{print $NF}')
+          version="v${major}.${minor}.${patch}"
           tag_name="${distro}-${version}"
 
-          echo "version=$version" >> $GITHUB_OUTPUT
+          echo "version=$version"   >> $GITHUB_OUTPUT
           echo "tag_name=$tag_name" >> $GITHUB_OUTPUT
-          echo "Tag name: $tag_name"
+          echo "distro=$distro"     >> $GITHUB_OUTPUT
+          echo "New tag: $tag_name"
 
       - name: Create and push new tag
-        uses: actions/github-script@v8
+        uses: actions/github-script@v7
         with:
           github-token: ${{ secrets.GITHUB_TOKEN }}
           script: |
             const tag = '${{ steps.bump.outputs.tag_name }}';
-            const ref = 'refs/tags/' + tag;
-            await github.git.createRef({
+            await github.rest.git.createRef({
               owner: context.repo.owner,
               repo: context.repo.repo,
-              ref,
+              ref: 'refs/tags/' + tag,
               sha: context.sha
             });
             console.log(`Created tag ${tag}`);
@@ -73,23 +86,28 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v6
+        uses: actions/checkout@v4
 
       - name: Install PlatformIO
         run: pip3 install -U platformio
 
-      - name: Build firmware for STM32
-        run: |
-          pio run -e rosbot_release -e rosbot_xl_release
-          tag_name=${{ needs.bump-tag.outputs.tag_name }}
-          mv .pio/build/rosbot_release/firmware.bin .pio/build/rosbot_release/${tag_name}.bin
-          mv .pio/build/rosbot_xl_release/firmware.bin .pio/build/rosbot_xl_release/${tag_name}.bin
+      - name: Build firmware
+        run: pio run -e rosbot_release -e rosbot_xl_release
 
-      - name: Release firmware
-        uses: softprops/action-gh-release@v1
+      - name: Rename binaries
+        run: |
+          tag="${{ needs.bump-tag.outputs.tag_name }}"
+
+          mkdir -p release/rosbot release/rosbot_xl
+          cp .pio/build/rosbot_release/firmware.bin    "release/rosbot/${tag}.bin"
+          cp .pio/build/rosbot_xl_release/firmware.bin  "release/rosbot_xl/${tag}.bin"
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
         with:
-          files: |
-            .pio/build/rosbot_release/${{ needs.bump-tag.outputs.tag_name }}.bin
-            .pio/build/rosbot_xl_release/${{ needs.bump-tag.outputs.tag_name }}.bin
-            LICENSE
           tag_name: ${{ needs.bump-tag.outputs.tag_name }}
+          generate_release_notes: true
+          files: |
+            release/rosbot/${{ needs.bump-tag.outputs.tag_name }}.bin
+            release/rosbot_xl/${{ needs.bump-tag.outputs.tag_name }}.bin
+            LICENSE
