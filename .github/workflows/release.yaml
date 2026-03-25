@@ -105,8 +105,8 @@ jobs:
       - name: Rename binaries
         run: |
           mkdir -p release
-          cp .pio/build/rosbot_release/firmware.bin    "release/rosbot_${TAG_NAME}.bin"
-          cp .pio/build/rosbot_xl_release/firmware.bin  "release/rosbot_xl_${TAG_NAME}.bin"
+          cp .pio/build/rosbot_release/firmware.bin    "release/rosbot-${TAG_NAME}.bin"
+          cp .pio/build/rosbot_xl_release/firmware.bin  "release/rosbot_xl-${TAG_NAME}.bin"
           echo "--- Release artifacts ---"
           ls -la release/
 
