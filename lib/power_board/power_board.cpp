@@ -64,7 +64,7 @@ void PowerBoard::requestBatteryState() {
 // ═══════════════════════════════════════════════════════════════════
 
 bool PowerBoard::hasBatteryUpdate() {
-  if (!battery_updated_) return false;
+  if (!battery_updated_ || data_.voltage == 0.0f) return false;
   battery_updated_ = false;
   return true;
 }

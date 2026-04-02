@@ -188,8 +188,6 @@ inline constexpr PIDConfig pid_config = {
     .kd = 0.002f,
     .min_output = -1.0f,
     .max_output = 1.0f,
-    .min_power_to_move = 0.4f,
-    .compensation_up_to_speed = 4.0f,
 };
 
 // ───────── Ranges ─────────
@@ -286,7 +284,7 @@ inline constexpr uint8_t RPI_BTN = PG7;
 
 // Primary: SBC Serial (SBC connection)
 inline constexpr SerialConfig SBC_SERIAL_CONFIG = {.serial = &Serial1,
-                                                   .baudrate = 921600,
+                                                   .baudrate = 460800,
                                                    .rxPin = PA10,
                                                    .txPin = PA9,
                                                    .timeout_ms = 1,
@@ -295,7 +293,7 @@ inline constexpr SerialConfig SBC_SERIAL_CONFIG = {.serial = &Serial1,
 // Secondary: FTDI Serial (Rear panel USB connection)
 inline constexpr SerialConfig DIAGNOSTIC_SERIAL_CONFIG = {
     .serial = &Serial3,
-    .baudrate = 921600,
+    .baudrate = 460800,
     .rxPin = PB11,
     .txPin = PB10,
     .timeout_ms = 1,
