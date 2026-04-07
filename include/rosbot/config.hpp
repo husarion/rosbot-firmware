@@ -183,8 +183,8 @@ inline constexpr MotorDrv8848Config motor_rr_config = {
 // ───────── PID ─────────
 // PID configuration is the same for all motors
 inline constexpr PIDConfig pid_config = {
-    .kp = 0.07f,
-    .ki = 0.4f,
+    .kp = 0.18f,
+    .ki = 1.0f,
     .kd = 0.002f,
     .min_output = -1.0f,
     .max_output = 1.0f,
@@ -226,10 +226,11 @@ inline constexpr RangeVl53l0xConfig range_rr_config = {
 // ───────── ROS ─────────
 inline constexpr const char* NODE_NAME = "rosbot_mcu";
 inline constexpr uint16_t DOMAIN_ID = 255;  // 255 inherit from Micro ROS Agent
-inline constexpr uint32_t SPIN_TIME_MS = 1;
+inline constexpr uint32_t SPIN_TIME_MS = 5;
 inline constexpr uint32_t TIMER_MS = 10;
-inline constexpr uint32_t PING_TIMEOUT_MS = 50;
-inline constexpr uint8_t PING_ATTEMPTS = 4;
+inline constexpr uint16_t PING_WATCHDOG_MS = 200;
+inline constexpr uint16_t PING_TIMEOUT_MS = 100;
+inline constexpr uint8_t PING_ATTEMPTS = 1;
 
 // ───────── Publishers ─────────
 inline QueueHandle_t battery_queue;
@@ -284,7 +285,7 @@ inline constexpr uint8_t RPI_BTN = PG7;
 
 // Primary: SBC Serial (SBC connection)
 inline constexpr SerialConfig SBC_SERIAL_CONFIG = {.serial = &Serial1,
-                                                   .baudrate = 460800,
+                                                   .baudrate = 921600,
                                                    .rxPin = PA10,
                                                    .txPin = PA9,
                                                    .timeout_ms = 1,
@@ -293,7 +294,7 @@ inline constexpr SerialConfig SBC_SERIAL_CONFIG = {.serial = &Serial1,
 // Secondary: FTDI Serial (Rear panel USB connection)
 inline constexpr SerialConfig DIAGNOSTIC_SERIAL_CONFIG = {
     .serial = &Serial3,
-    .baudrate = 460800,
+    .baudrate = 921600,
     .rxPin = PB11,
     .txPin = PB10,
     .timeout_ms = 1,

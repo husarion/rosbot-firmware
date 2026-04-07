@@ -265,9 +265,9 @@ inline constexpr MotorDrv8848Config motor_rr_config = {
 // ───────── PID ─────────
 // PID configuration is the same for all motors
 inline constexpr PIDConfig pid_config = {
-    .kp = 0.15f,
-    .ki = 0.55f,
-    .kd = 0.007f,
+    .kp = 0.5f,
+    .ki = 0.75f,
+    .kd = 0.008f,
     .min_output = -1.0f,
     .max_output = 1.0f,
 };
@@ -275,10 +275,11 @@ inline constexpr PIDConfig pid_config = {
 // ───────── ROS ─────────
 inline constexpr const char* NODE_NAME = "rosbot_mcu";
 inline constexpr uint16_t DOMAIN_ID = 255;  // 255 inherit from Micro ROS Agent
-inline constexpr uint32_t SPIN_TIME_MS = 1;
+inline constexpr uint32_t SPIN_TIME_MS = 5;
 inline constexpr uint32_t TIMER_MS = 10;
-inline constexpr uint32_t PING_TIMEOUT_MS = 50;
-inline constexpr uint8_t PING_ATTEMPTS = 4;
+inline constexpr uint16_t PING_WATCHDOG_MS = 200;
+inline constexpr uint16_t PING_TIMEOUT_MS = 100;
+inline constexpr uint8_t PING_ATTEMPTS = 1;
 
 inline byte MAC[6] = {0x02, 0x47, 0x00, 0x00, 0x00, 0x01};
 inline IPAddress CLIENT_IP = {192, 168, 77, 3};
@@ -342,7 +343,7 @@ inline constexpr uint8_t PB_SHD_CONFIRM = PD7;
 inline constexpr uint16_t SHUTDOWN_WAIT_MS = 5000;
 inline constexpr SerialConfig DIAGNOSTIC_SERIAL_CONFIG = {
     .serial = &Serial1,
-    .baudrate = 460800,
+    .baudrate = 921600,
     .rxPin = PA10,
     .txPin = PA9,
     .timeout_ms = 1,

@@ -69,8 +69,7 @@ TaskConfig tasks[] = {
 #endif
     {"MotorControl", Priority::CONTROL, Stack::XXS, 200, motorControlTask},
     {"Shutdown", Priority::OBSERVING, Stack::M, 3, shutdownTask},
-    {"uRos", Priority::COMMUNICATION, Stack::L, 1000, uRosTask},
-    {"uRosPing", Priority::BLOCKING, Stack::XL, 2, uRosPingTask},
+    {"uRos", Priority::COMMUNICATION, Stack::XXL, 200, uRosTask},
 };
 
 TaskHandleWrapper taskHandles[sizeof(tasks) / sizeof(tasks[0])];
@@ -149,10 +148,8 @@ void imuTask(void* p) {
       data.data = g_imu->getData();
 
       xQueueOverwrite(imu_queue, &data);
-      vTaskDelayUntil(&wake_time, period);
-    } else {
-      vTaskDelayUntil(&wake_time, period);
     }
+    vTaskDelayUntil(&wake_time, period);
   }
 }
 
@@ -254,16 +251,6 @@ void shutdownTask(void* p) {
 }
 
 void uRosTask(void* p) {
-  TickType_t period = taskGetPeriod(p);
-  TickType_t wake_time = xTaskGetTickCount();
-
-  while (true) {
-    g_ros_node.spin();
-    vTaskDelay(period);
-  }
-}
-
-void uRosPingTask(void* p) {
   TickType_t period = taskGetPeriod(p);
   TickType_t wake_time = xTaskGetTickCount();
 

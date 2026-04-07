@@ -125,9 +125,15 @@ void RosNode::destroyEntities() {
 }
 
 void RosNode::loop() {
+  const TickType_t  now = xTaskGetTickCount();
+  if ((now - last_ping_) >= pdMS_TO_TICKS(cfg_.ping_watchdog_ms)) {
+      last_ping_ = now;
+      ping_ = pingAgent();
+  }
+
   switch (state_) {
     case WAITING:
-      if (pingAgent()) state_ = AGENT_AVAILABLE;
+      if (ping_) state_ = AGENT_AVAILABLE;
       break;
     case AGENT_AVAILABLE:
       if (createEntities())
@@ -138,11 +144,17 @@ void RosNode::loop() {
       }
       break;
     case CONNECTED:
-      if (!pingAgent()) state_ = DISCONNECTED;
+      if (!ping_) {
+        state_ = DISCONNECTED;
+      } else {
+        spin();
+      }
       break;
     case DISCONNECTED:
       destroyEntities();
       state_ = WAITING;
+      break;
+    default:
       break;
   }
 }
