@@ -173,7 +173,7 @@ inline constexpr LedIndicatorConfig led_status_config = {
 };
 
 // ───────── LED Strip ─────────
-inline constexpr uint16_t IDLE_ANIMATION_CHANGE_MS = 3500;
+inline constexpr uint16_t IDLE_ANIMATION_CHANGE_MS = 3000;
 inline constexpr uint16_t IDLE_ANIMATION_INTERVAL_MS = 35;
 inline constexpr uint16_t LED_STRIP_TIMEOUT_MS = 1000;
 
@@ -275,7 +275,7 @@ inline constexpr PIDConfig pid_config = {
 // ───────── ROS ─────────
 inline constexpr const char* NODE_NAME = "rosbot_mcu";
 inline constexpr uint16_t DOMAIN_ID = 255;  // 255 inherit from Micro ROS Agent
-inline constexpr uint32_t SPIN_TIME_MS = 5;
+inline constexpr uint32_t SPIN_TIME_MS = 3;
 inline constexpr uint32_t TIMER_MS = 10;
 inline constexpr uint16_t PING_WATCHDOG_MS = 200;
 inline constexpr uint16_t PING_TIMEOUT_MS = 100;

@@ -125,10 +125,10 @@ void RosNode::destroyEntities() {
 }
 
 void RosNode::loop() {
-  const TickType_t  now = xTaskGetTickCount();
+  const TickType_t now = xTaskGetTickCount();
   if ((now - last_ping_) >= pdMS_TO_TICKS(cfg_.ping_watchdog_ms)) {
-      last_ping_ = now;
-      ping_ = pingAgent();
+    last_ping_ = now;
+    ping_ = pingAgent();
   }
 
   switch (state_) {

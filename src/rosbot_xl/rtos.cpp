@@ -63,7 +63,7 @@ TaskConfig tasks[] = {
     {"Encoder", Priority::CONTROL, Stack::XXS, 500, encoderTask},
     {"HwMonitor", Priority::OBSERVING, Stack::S, 10, hwMonitorTask},
     {"Imu", Priority::SENSORS, Stack::M, 100, imuTask},
-    {"LedStrip", Priority::OBSERVING, Stack::S, 25, ledStripTask},
+    {"LedStrip", Priority::COMMUNICATION, Stack::M, 30, ledStripTask},
 #ifndef RELEASE
     {"Monitor", Priority::BLOCKING, Stack::XL, 1, monitorTask},
 #endif
@@ -155,13 +155,14 @@ void imuTask(void* p) {
 
 void ledStripTask(void* p) {
   TickType_t period = taskGetPeriod(p);
+  TickType_t wake_time = xTaskGetTickCount();
 
   LedFrameMsg frame;
   const TickType_t timeout = pdMS_TO_TICKS(LED_STRIP_TIMEOUT_MS);
   const TickType_t idle_period = pdMS_TO_TICKS(IDLE_ANIMATION_CHANGE_MS);
   const TickType_t interval = pdMS_TO_TICKS(IDLE_ANIMATION_INTERVAL_MS);
 
-  TickType_t last_msg_time = xTaskGetTickCount();
+  TickType_t last_msg_time = 0;
   TickType_t last_idle_change = 0;
   int idle_state = 0;
   bool reset = true;
@@ -175,10 +176,8 @@ void ledStripTask(void* p) {
       last_msg_time = now;
       idle_state = 0;
       reset = true;
-    }
-
-    if ((now - last_msg_time) > timeout &&
-        (now - last_idle_change) > idle_period) {
+    } else if (((now - last_msg_time) > timeout &&
+                (now - last_idle_change) > idle_period)) {
       if (idle_state == 0) {
         idleAnimation(g_led_strip, 0xA0, 0xA0, 0xA0, interval, reset);
         idle_state = 1;
@@ -190,7 +189,7 @@ void ledStripTask(void* p) {
 
       last_idle_change = now;
     }
-    vTaskDelay(period);
+    vTaskDelayUntil(&wake_time, period);
   }
 }
 
