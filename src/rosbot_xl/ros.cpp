@@ -63,7 +63,7 @@ SubscriptionEntry leds_sub = {
     .type_support = ROSIDL_GET_MSG_TYPE_SUPPORT(std_msgs, msg, UInt8),
     .topic_name = "leds",
     .callback = ledsCallback,
-    .best_effort = false,
+    .best_effort = true,
 };
 
 // LED strip subscriber
@@ -205,6 +205,7 @@ RosNodeConfig ros_node_config = {.node_name = NODE_NAME,
                                  .srv_count = services.size(),
                                  .spin_time_ms = SPIN_TIME_MS,
                                  .timer_ms = TIMER_MS,
+                                 .ping_watchdog_ms = PING_WATCHDOG_MS,
                                  .ping_attempts = PING_ATTEMPTS,
                                  .ping_timeout_ms = PING_TIMEOUT_MS};
 

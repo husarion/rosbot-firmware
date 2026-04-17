@@ -46,8 +46,12 @@ float PIDController::compute(float setpoint, float measurement, float dt) {
   const float p = cfg_.kp * error;
 
   // Integral with anti-windup
-  integral_ += error * dt;
-  integral_ = constrain(integral_, -cfg_.max_integral, cfg_.max_integral);
+  if (setpoint == 0.0f) {
+    integral_ = 0.0f;
+  } else {
+    integral_ += error * dt;
+    integral_ = constrain(integral_, -cfg_.max_integral, cfg_.max_integral);
+  }
   const float i = cfg_.ki * integral_;
 
   // Derivative

@@ -10,12 +10,13 @@
 
 ## Topics
 
-[sensor_msgs/BatteryState]: https://docs.ros2.org/foxy/api/sensor_msgs/msg/BatteryState.html
-[sensor_msgs/Image]: https://docs.ros2.org/foxy/api/sensor_msgs/msg/Image.html
-[sensor_msgs/Imu]: https://docs.ros2.org/foxy/api/sensor_msgs/msg/Imu.html
-[sensor_msgs/JointState]: https://docs.ros2.org/foxy/api/sensor_msgs/msg/JointState.html
-[std_msgs/Float32MultiArray]: https://docs.ros2.org/foxy/api/std_msgs/msg/Float32MultiArray.html
-[std_msgs/UInt8]: https://docs.ros2.org/foxy/api/std_msgs/msg/UInt8.html
+[sensor_msgs/BatteryState]: https://docs.ros.org/en/jazzy/p/sensor_msgs/msg/BatteryState.html
+[sensor_msgs/Image]: https://docs.ros.org/en/jazzy/p/sensor_msgs/msg/Image.html
+[sensor_msgs/Imu]: https://docs.ros.org/en/jazzy/p/sensor_msgs/msg/Imu.html
+[sensor_msgs/JointState]: https://docs.ros.org/en/jazzy/p/sensor_msgs/msg/JointState.html
+[sensor_msgs/Range]: https://docs.ros.org/en/jazzy/p/sensor_msgs/msg/Range.html
+[std_msgs/Float32MultiArray]: https://docs.ros.org/en/jazzy/p/std_msgs/msg/Float32MultiArray.html
+[std_msgs/UInt8]: https://docs.ros.org/en/jazzy/p/std_msgs/msg/UInt8.html
 
 | Rb  | Rb XL | TOPIC                  | DESCRIPTION                                                 |
 | --- | ----- | ---------------------- | ----------------------------------------------------------- |
@@ -30,7 +31,7 @@
 
 ## Services
 
-[std_srvs/Trigger]: https://docs.ros2.org/foxy/api/std_srvs/srv/Trigger.html
+[std_srvs/Trigger]: https://docs.ros.org/en/jazzy/p/std_srvs/srv/Trigger.html
 
 | SERVICE       | DESCRIPTION                             |
 | ------------- | --------------------------------------- |

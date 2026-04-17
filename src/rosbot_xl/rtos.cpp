@@ -62,15 +62,14 @@ void uRosPingTask(void* p);
 TaskConfig tasks[] = {
     {"Encoder", Priority::CONTROL, Stack::XXS, 500, encoderTask},
     {"HwMonitor", Priority::OBSERVING, Stack::S, 10, hwMonitorTask},
-    {"Imu", Priority::SENSORS, Stack::M, 100, imuTask},
-    {"LedStrip", Priority::OBSERVING, Stack::S, 25, ledStripTask},
+    {"Imu", Priority::SENSORS, Stack::M, 50, imuTask},
+    {"LedStrip", Priority::COMMUNICATION, Stack::M, 30, ledStripTask},
 #ifndef RELEASE
     {"Monitor", Priority::BLOCKING, Stack::XL, 1, monitorTask},
 #endif
     {"MotorControl", Priority::CONTROL, Stack::XXS, 200, motorControlTask},
     {"Shutdown", Priority::OBSERVING, Stack::M, 3, shutdownTask},
-    {"uRos", Priority::COMMUNICATION, Stack::L, 1000, uRosTask},
-    {"uRosPing", Priority::BLOCKING, Stack::XL, 2, uRosPingTask},
+    {"uRos", Priority::COMMUNICATION, Stack::XXL, 1000, uRosTask},
 };
 
 TaskHandleWrapper taskHandles[sizeof(tasks) / sizeof(tasks[0])];
@@ -149,22 +148,21 @@ void imuTask(void* p) {
       data.data = g_imu->getData();
 
       xQueueOverwrite(imu_queue, &data);
-      vTaskDelayUntil(&wake_time, period);
-    } else {
-      vTaskDelayUntil(&wake_time, period);
     }
+    vTaskDelayUntil(&wake_time, period);
   }
 }
 
 void ledStripTask(void* p) {
   TickType_t period = taskGetPeriod(p);
+  TickType_t wake_time = xTaskGetTickCount();
 
   LedFrameMsg frame;
   const TickType_t timeout = pdMS_TO_TICKS(LED_STRIP_TIMEOUT_MS);
   const TickType_t idle_period = pdMS_TO_TICKS(IDLE_ANIMATION_CHANGE_MS);
   const TickType_t interval = pdMS_TO_TICKS(IDLE_ANIMATION_INTERVAL_MS);
 
-  TickType_t last_msg_time = xTaskGetTickCount();
+  TickType_t last_msg_time = 0;
   TickType_t last_idle_change = 0;
   int idle_state = 0;
   bool reset = true;
@@ -178,10 +176,8 @@ void ledStripTask(void* p) {
       last_msg_time = now;
       idle_state = 0;
       reset = true;
-    }
-
-    if ((now - last_msg_time) > timeout &&
-        (now - last_idle_change) > idle_period) {
+    } else if (((now - last_msg_time) > timeout &&
+                (now - last_idle_change) > idle_period)) {
       if (idle_state == 0) {
         idleAnimation(g_led_strip, 0xA0, 0xA0, 0xA0, interval, reset);
         idle_state = 1;
@@ -254,16 +250,6 @@ void shutdownTask(void* p) {
 }
 
 void uRosTask(void* p) {
-  TickType_t period = taskGetPeriod(p);
-  TickType_t wake_time = xTaskGetTickCount();
-
-  while (true) {
-    g_ros_node.spin();
-    vTaskDelay(period);
-  }
-}
-
-void uRosPingTask(void* p) {
   TickType_t period = taskGetPeriod(p);
   TickType_t wake_time = xTaskGetTickCount();
 

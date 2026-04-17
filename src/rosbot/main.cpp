@@ -135,6 +135,7 @@ void setup() {
   g_motors.init();
   g_ranges.init();
   g_ros_node.serialTransportInit(*transport);
+  g_ros_node.setDiagnosticSerial(g_comm_mgr.debugSerial());
 
   // RTOS
   createQueues();

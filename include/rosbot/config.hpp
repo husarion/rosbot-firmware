@@ -183,13 +183,11 @@ inline constexpr MotorDrv8848Config motor_rr_config = {
 // ───────── PID ─────────
 // PID configuration is the same for all motors
 inline constexpr PIDConfig pid_config = {
-    .kp = 0.07f,
-    .ki = 0.4f,
+    .kp = 0.18f,
+    .ki = 1.0f,
     .kd = 0.002f,
     .min_output = -1.0f,
     .max_output = 1.0f,
-    .min_power_to_move = 0.4f,
-    .compensation_up_to_speed = 4.0f,
 };
 
 // ───────── Ranges ─────────
@@ -228,10 +226,11 @@ inline constexpr RangeVl53l0xConfig range_rr_config = {
 // ───────── ROS ─────────
 inline constexpr const char* NODE_NAME = "rosbot_mcu";
 inline constexpr uint16_t DOMAIN_ID = 255;  // 255 inherit from Micro ROS Agent
-inline constexpr uint32_t SPIN_TIME_MS = 1;
+inline constexpr uint32_t SPIN_TIME_MS = 5;
 inline constexpr uint32_t TIMER_MS = 10;
-inline constexpr uint32_t PING_TIMEOUT_MS = 50;
-inline constexpr uint8_t PING_ATTEMPTS = 4;
+inline constexpr uint16_t PING_WATCHDOG_MS = 200;
+inline constexpr uint16_t PING_TIMEOUT_MS = 100;
+inline constexpr uint8_t PING_ATTEMPTS = 1;
 
 // ───────── Publishers ─────────
 inline QueueHandle_t battery_queue;

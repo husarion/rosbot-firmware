@@ -15,6 +15,7 @@
 #pragma once
 
 #include <HardwareSerial.h>
+#include <STM32FreeRTOS.h>
 #include <micro_ros_arduino.h>
 #include <rcl/rcl.h>
 #include <rclc/executor.h>
@@ -50,10 +51,12 @@ struct RosNodeConfig {
   ServiceEntry* services = nullptr;
   size_t srv_count = 0;
 
-  uint32_t spin_time_ms = 1;
+  uint32_t spin_time_ms = 10;
   uint32_t timer_ms = 10;
-  uint8_t ping_attempts = 3;
-  uint16_t ping_timeout_ms = 50;
+
+  uint16_t ping_watchdog_ms = 200;
+  uint8_t ping_attempts = 1;
+  uint16_t ping_timeout_ms = 100;
 };
 
 class RosNode {
@@ -68,12 +71,9 @@ class RosNode {
   void ethernetTransportInit(IPAddress agent_ip, uint16_t agent_port);
   bool pingAgent();
 
-  /// State machine: WAITING → AGENT_AVAILABLE → CONNECTED → DISCONNECTED →
-  /// WAITING
+  /// State machine + spin.
   void loop();
-
   void publish();
-  void spin();
 
   static void timerCallback(rcl_timer_t* timer, int64_t last_call_time) {
     (void)timer;
@@ -92,6 +92,7 @@ class RosNode {
  private:
   bool createEntities();
   void destroyEntities();
+  void spin();
   template <typename... Args>
   void log(const char* fmt, Args... args) {
     if (!serial_) return;
@@ -104,6 +105,8 @@ class RosNode {
   State state_ = WAITING;
   const char* ns_ = {};
   HardwareSerial* serial_ = nullptr;
+  TickType_t last_ping_ = 0;
+  bool ping_ = false;
 
   // ROS2 internals
   rcl_allocator_t allocator_ = {};

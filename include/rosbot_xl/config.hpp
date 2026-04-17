@@ -173,7 +173,7 @@ inline constexpr LedIndicatorConfig led_status_config = {
 };
 
 // ───────── LED Strip ─────────
-inline constexpr uint16_t IDLE_ANIMATION_CHANGE_MS = 3500;
+inline constexpr uint16_t IDLE_ANIMATION_CHANGE_MS = 3000;
 inline constexpr uint16_t IDLE_ANIMATION_INTERVAL_MS = 35;
 inline constexpr uint16_t LED_STRIP_TIMEOUT_MS = 1000;
 
@@ -265,9 +265,9 @@ inline constexpr MotorDrv8848Config motor_rr_config = {
 // ───────── PID ─────────
 // PID configuration is the same for all motors
 inline constexpr PIDConfig pid_config = {
-    .kp = 0.15f,
-    .ki = 0.55f,
-    .kd = 0.007f,
+    .kp = 0.5f,
+    .ki = 0.75f,
+    .kd = 0.008f,
     .min_output = -1.0f,
     .max_output = 1.0f,
 };
@@ -277,8 +277,9 @@ inline constexpr const char* NODE_NAME = "rosbot_mcu";
 inline constexpr uint16_t DOMAIN_ID = 255;  // 255 inherit from Micro ROS Agent
 inline constexpr uint32_t SPIN_TIME_MS = 1;
 inline constexpr uint32_t TIMER_MS = 10;
-inline constexpr uint32_t PING_TIMEOUT_MS = 50;
-inline constexpr uint8_t PING_ATTEMPTS = 4;
+inline constexpr uint16_t PING_WATCHDOG_MS = 200;
+inline constexpr uint16_t PING_TIMEOUT_MS = 100;
+inline constexpr uint8_t PING_ATTEMPTS = 1;
 
 inline byte MAC[6] = {0x02, 0x47, 0x00, 0x00, 0x00, 0x01};
 inline IPAddress CLIENT_IP = {192, 168, 77, 3};
