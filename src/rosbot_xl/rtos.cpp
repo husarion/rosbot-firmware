@@ -62,14 +62,14 @@ void uRosPingTask(void* p);
 TaskConfig tasks[] = {
     {"Encoder", Priority::CONTROL, Stack::XXS, 500, encoderTask},
     {"HwMonitor", Priority::OBSERVING, Stack::S, 10, hwMonitorTask},
-    {"Imu", Priority::SENSORS, Stack::M, 100, imuTask},
+    {"Imu", Priority::SENSORS, Stack::M, 50, imuTask},
     {"LedStrip", Priority::COMMUNICATION, Stack::M, 30, ledStripTask},
 #ifndef RELEASE
     {"Monitor", Priority::BLOCKING, Stack::XL, 1, monitorTask},
 #endif
     {"MotorControl", Priority::CONTROL, Stack::XXS, 200, motorControlTask},
     {"Shutdown", Priority::OBSERVING, Stack::M, 3, shutdownTask},
-    {"uRos", Priority::COMMUNICATION, Stack::XXL, 200, uRosTask},
+    {"uRos", Priority::COMMUNICATION, Stack::XXL, 1000, uRosTask},
 };
 
 TaskHandleWrapper taskHandles[sizeof(tasks) / sizeof(tasks[0])];
@@ -189,7 +189,7 @@ void ledStripTask(void* p) {
 
       last_idle_change = now;
     }
-    vTaskDelayUntil(&wake_time, period);
+    vTaskDelay(period);
   }
 }
 

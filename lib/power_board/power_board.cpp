@@ -64,7 +64,8 @@ void PowerBoard::requestBatteryState() {
 // ═══════════════════════════════════════════════════════════════════
 
 bool PowerBoard::hasBatteryUpdate() {
-  if (!battery_updated_ || data_.voltage == 0.0f) return false;
+  if (!battery_updated_ || data_.voltage <= 4.0f)
+    return false;  // BUG: Sometimes PB sends ~3.39V
   battery_updated_ = false;
   return true;
 }
