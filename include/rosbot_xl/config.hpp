@@ -266,7 +266,7 @@ inline constexpr MotorDrv8848Config motor_rr_config = {
 // PID configuration is the same for all motors
 inline constexpr PIDConfig pid_config = {
     .kp = 0.5f,
-    .ki = 0.75f,
+    .ki = 0.85f,
     .kd = 0.008f,
     .min_output = -1.0f,
     .max_output = 1.0f,

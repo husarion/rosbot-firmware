@@ -61,6 +61,13 @@ float PIDController::compute(float setpoint, float measurement, float dt) {
 
   float output = p + i + d;
 
+  // Prevent output from fighting against the current direction of motion
+  if (measurement > 0.0f && setpoint >= 0.0f) {
+    output = std::max(output, 0.0f);
+  } else if (measurement < 0.0f && setpoint <= 0.0f) {
+    output = std::min(output, 0.0f);
+  }
+
   // Inertia compensation to overcome static friction at low speeds
   if (fabs(setpoint) > 0.01f && fabs(output) < cfg_.min_power_to_move) {
     output += ((output > 0) ? 1 : -1) * inertiaCompensation(measurement);
