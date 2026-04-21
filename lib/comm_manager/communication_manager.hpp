@@ -73,7 +73,7 @@ class CommunicationManager {
   ///         ON.
   /// @return Pointer to SerialConfig when serial transport chosen;
   ///         nullptr when ethernet is the selected transport.
-  const SerialConfig* selectTransport(uint32_t timeout_ms = 2000) {
+  const SerialConfig* selectTransport(uint32_t timeout_ms = 1500) {
     uint32_t start = millis();
 
     while ((millis() - start) < timeout_ms) {
@@ -103,7 +103,7 @@ class CommunicationManager {
 
   /// Negotiate namespace over the active serial link (FW/NS/ACK handshake).
   /// For ethernet transport falls back to ns_default immediately.
-  bool configureNamespace(uint16_t timeout_ms = 1000) {
+  bool configureNamespace(uint16_t timeout_ms = 2500) {
     HardwareSerial* config_serial = nullptr;
 
     if (selected_type_ == TransportType::kEthernet) {
