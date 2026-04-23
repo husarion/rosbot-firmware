@@ -45,27 +45,39 @@ float PIDController::compute(float setpoint, float measurement, float dt) {
   // Proportional
   const float p = cfg_.kp * error;
 
-  // Integral with anti-windup
-  if (setpoint == 0.0f) {
-    integral_ = 0.0f;
-  } else {
-    integral_ += error * dt;
-    integral_ = constrain(integral_, -cfg_.max_integral, cfg_.max_integral);
-  }
-  const float i = cfg_.ki * integral_;
-
   // Derivative
   const float derivative = (error - prev_error_) / dt;
   const float d = cfg_.kd * derivative;
   prev_error_ = error;
 
-  float output = p + i + d;
+  // Velocity feedforward
+  const float ff = cfg_.kv * target;
 
-  // Prevent output from fighting against the current direction of motion
+  // Integral with conditional anti-windup: freeze integration when total
+  // output is already saturating in the same direction as the error.
+  const float output_without_integration = ff + p + cfg_.ki * integral_ + d;
+  const bool saturating_high =
+      output_without_integration >= cfg_.max_output && error > 0.0f;
+  const bool saturating_low =
+      output_without_integration <= cfg_.min_output && error < 0.0f;
+
+  if (setpoint == 0.0f) {
+    integral_ = 0.0f;
+  } else if (!saturating_high && !saturating_low) {
+    integral_ += error * dt;
+    integral_ = constrain(integral_, -cfg_.max_integral, cfg_.max_integral);
+  }
+  const float i = cfg_.ki * integral_;
+
+  float output = ff + p + i + d;
+
+  // Limit active braking against the current direction of motion.
+  // Prevents violent jerks on stop/slow-down commands while still allowing
+  // controlled deceleration and overshoot recovery.
   if (measurement > 0.0f && setpoint >= 0.0f) {
-    output = std::max(output, 0.0f);
+    output = std::max(output, -cfg_.max_brake_output);
   } else if (measurement < 0.0f && setpoint <= 0.0f) {
-    output = std::min(output, 0.0f);
+    output = std::min(output, cfg_.max_brake_output);
   }
 
   // Inertia compensation to overcome static friction at low speeds

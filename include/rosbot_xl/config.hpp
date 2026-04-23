@@ -78,7 +78,7 @@ inline constexpr float GEAR_RATIO = 50.0f;
 inline constexpr uint16_t ENCODER_CPR = 64;
 inline constexpr float TICKS_PER_REVOLUTION = ENCODER_CPR * GEAR_RATIO;
 inline constexpr float RAD_PER_TICK = (2.0f * PI) / TICKS_PER_REVOLUTION;
-inline constexpr float LOW_PASS_ALPHA = 0.05f;
+inline constexpr float LOW_PASS_ALPHA = 0.25f;
 
 inline constexpr HardwareEncoderConfig enc_fl_config = {
     .pin_a = PD12,
@@ -202,7 +202,7 @@ inline constexpr LedStripConfig strip_config = {
 // ───────── Motors ─────────
 inline constexpr uint32_t MOTOR_PWM_FREQ = 20000;  // 20 kHz
 inline constexpr float MAX_VELOCITY = 22.0f;
-inline constexpr float MIN_VELOCITY = 0.5f;
+inline constexpr float MIN_VELOCITY = 0.0f;
 
 // Table 2:
 // https://www.analog.com/media/en/technical-documentation/data-sheets/max22205.pdf
@@ -265,11 +265,13 @@ inline constexpr MotorDrv8848Config motor_rr_config = {
 // ───────── PID ─────────
 // PID configuration is the same for all motors
 inline constexpr PIDConfig pid_config = {
-    .kp = 0.5f,
-    .ki = 0.85f,
-    .kd = 0.008f,
+    .kp = 0.3f,
+    .ki = 0.4f,
+    .kd = 0.0f,
+    .kv = 0.04,  // 1.0f / MAX_VELOCITY velocity feedforward (~0.045)
     .min_output = -1.0f,
     .max_output = 1.0f,
+    .max_brake_output = 0.3f,  // allow up to 30% reverse PWM for braking
 };
 
 // ───────── ROS ─────────

@@ -39,7 +39,6 @@ void createQueues() {
 
 // ──── Create all tasks ────
 void batteryTask(void* p);
-void encoderTask(void* p);
 void imuTask(void* p);
 void ledIndicatorTask(void* p);
 void monitorTask(void* p);
@@ -50,7 +49,6 @@ void uRosPingTask(void* p);
 
 inline TaskConfig tasks[] = {
     {"Battery", Priority::SENSORS, Stack::XS, 10, batteryTask},
-    {"Encoder", Priority::CONTROL, Stack::S, 500, encoderTask},
     {"Imu", Priority::SENSORS, Stack::M, 50, imuTask},
     {"LedIndicator", Priority::OBSERVING, Stack::XS, 20, ledIndicatorTask},
 #ifndef RELEASE
@@ -82,23 +80,6 @@ void batteryTask(void* p) {
 
     if (connected) {
       xQueueOverwrite(battery_queue, &data);
-    }
-    vTaskDelayUntil(&wake_time, period);
-  }
-}
-
-void encoderTask(void* p) {
-  TickType_t period = taskGetPeriod(p);
-  TickType_t wake_time = xTaskGetTickCount();
-  EncodersStamped data = {};
-
-  while (true) {
-    bool connected = rtos_get_timestamp_ns(data.timestamp_ns);
-    g_encoders.update();
-    data.data = g_encoders.getData();
-
-    if (connected) {
-      xQueueOverwrite(joint_state_queue, &data);
     }
     vTaskDelayUntil(&wake_time, period);
   }
@@ -162,9 +143,19 @@ void monitorTask(void* p) {
 void motorControlTask(void* p) {
   TickType_t period = taskGetPeriod(p);
   TickType_t wake_time = xTaskGetTickCount();
+  EncodersStamped data = {};
 
   while (true) {
+    // Sample encoders immediately before PID so control loop always
+    // sees the freshest measurement with a fixed-phase dt.
+    bool connected = rtos_get_timestamp_ns(data.timestamp_ns);
+    g_encoders.update();
     g_motors.update();
+
+    data.data = g_encoders.getData();
+    if (connected) {
+      xQueueOverwrite(joint_state_queue, &data);
+    }
 
     vTaskDelayUntil(&wake_time, period);
   }

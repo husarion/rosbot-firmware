@@ -55,7 +55,7 @@ inline constexpr float GEAR_RATIO = 34.0f;
 inline constexpr uint16_t ENCODER_CPR = 48;
 inline constexpr float TICKS_PER_REVOLUTION = ENCODER_CPR * GEAR_RATIO;
 inline constexpr float RAD_PER_TICK = (2.0f * PI) / TICKS_PER_REVOLUTION;
-inline constexpr float LOW_PASS_ALPHA = 0.1f;
+inline constexpr float LOW_PASS_ALPHA = 0.2f;
 
 inline constexpr HardwareEncoderConfig enc_fl_config = {
     .pin_a = PB6,
@@ -127,7 +127,7 @@ inline constexpr LedIndicatorConfig led_status_config = {
 // ───────── Motors ─────────
 inline constexpr uint32_t MOTOR_PWM_FREQ = 20000;  // 20 kHz
 inline constexpr float MAX_VELOCITY = 25.0f;
-inline constexpr float MIN_VELOCITY = 1.0f;
+inline constexpr float MIN_VELOCITY = 0.0f;
 
 inline constexpr DriverGroupConfig right_motors_driver = {PC13, PE0};
 inline constexpr DriverGroupConfig left_motors_driver = {PC14, PE1};
@@ -183,11 +183,16 @@ inline constexpr MotorDrv8848Config motor_rr_config = {
 // ───────── PID ─────────
 // PID configuration is the same for all motors
 inline constexpr PIDConfig pid_config = {
-    .kp = 0.18f,
-    .ki = 1.0f,
-    .kd = 0.002f,
+    .kp = 0.3f,
+    .ki = 0.4f,
+    .kd = 0.0f,
+    .kv = 0.03f,  // velocity feedforward (slightly below 1/MAX_VELOCITY=0.04)
     .min_output = -1.0f,
     .max_output = 1.0f,
+    .max_brake_output = 0.3f,    // allow up to 30% reverse PWM for braking
+    .min_power_to_move = 0.3f,  // boost low outputs to overcome motor dead zone
+    .compensation_up_to_speed =
+        2.0f,  // boost decays linearly to 0 at this speed [rad/s]
 };
 
 // ───────── Ranges ─────────

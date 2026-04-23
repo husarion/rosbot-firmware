@@ -48,7 +48,6 @@ void createQueues() {
 }
 
 // ───── Create all tasks ─────
-void encoderTask(void* p);
 void hwMonitorTask(
     void* p);  // Bat + Fan + Indicator: Merged due limited stack size
 void imuTask(void* p);
@@ -60,7 +59,6 @@ void uRosTask(void* p);
 void uRosPingTask(void* p);
 
 TaskConfig tasks[] = {
-    {"Encoder", Priority::CONTROL, Stack::XXS, 500, encoderTask},
     {"HwMonitor", Priority::OBSERVING, Stack::S, 10, hwMonitorTask},
     {"Imu", Priority::SENSORS, Stack::M, 50, imuTask},
     {"LedStrip", Priority::COMMUNICATION, Stack::M, 30, ledStripTask},
@@ -81,22 +79,6 @@ void createTasks() {
 }
 
 // ───── Task functions ─────
-void encoderTask(void* p) {
-  TickType_t period = taskGetPeriod(p);
-  TickType_t wake_time = xTaskGetTickCount();
-  EncodersStamped data = {};
-
-  while (true) {
-    bool connected = rtos_get_timestamp_ns(data.timestamp_ns);
-    g_encoders.update();
-    data.data = g_encoders.getData();
-
-    if (connected) {
-      xQueueOverwrite(joint_state_queue, &data);
-    }
-    vTaskDelayUntil(&wake_time, period);
-  }
-}
 
 void hwMonitorTask(void* p) {
   TickType_t period = taskGetPeriod(p);
@@ -221,9 +203,19 @@ void monitorTask(void* p) {
 void motorControlTask(void* p) {
   TickType_t period = taskGetPeriod(p);
   TickType_t wake_time = xTaskGetTickCount();
+  EncodersStamped data = {};
 
   while (true) {
+    // Sample encoders immediately before PID so control loop always
+    // sees the freshest measurement with a fixed-phase dt.
+    bool connected = rtos_get_timestamp_ns(data.timestamp_ns);
+    g_encoders.update();
     g_motors.update();
+
+    data.data = g_encoders.getData();
+    if (connected) {
+      xQueueOverwrite(joint_state_queue, &data);
+    }
 
     vTaskDelayUntil(&wake_time, period);
   }
