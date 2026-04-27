@@ -60,7 +60,7 @@ void uRosPingTask(void* p);
 
 TaskConfig tasks[] = {
     {"HwMonitor", Priority::OBSERVING, Stack::S, 10, hwMonitorTask},
-    {"Imu", Priority::SENSORS, Stack::M, 50, imuTask},
+    {"Imu", Priority::SENSORS, Stack::M, 100, imuTask},
     {"LedStrip", Priority::COMMUNICATION, Stack::M, 30, ledStripTask},
 #ifndef RELEASE
     {"Monitor", Priority::BLOCKING, Stack::XL, 1, monitorTask},
@@ -126,7 +126,7 @@ void imuTask(void* p) {
 
   while (true) {
     if (rtos_get_timestamp_ns(data.timestamp_ns)) {
-      g_imu->update();  // TODO: DMA should be used
+      g_imu->update();
       data.data = g_imu->getData();
 
       xQueueOverwrite(imu_queue, &data);

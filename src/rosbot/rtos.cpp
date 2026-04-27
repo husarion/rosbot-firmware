@@ -49,7 +49,7 @@ void uRosPingTask(void* p);
 
 inline TaskConfig tasks[] = {
     {"Battery", Priority::SENSORS, Stack::XS, 10, batteryTask},
-    {"Imu", Priority::SENSORS, Stack::M, 50, imuTask},
+    {"Imu", Priority::SENSORS, Stack::M, 100, imuTask},
     {"LedIndicator", Priority::OBSERVING, Stack::XS, 20, ledIndicatorTask},
 #ifndef RELEASE
     {"Monitor", Priority::BLOCKING, Stack::XL, 1, monitorTask},
@@ -92,7 +92,7 @@ void imuTask(void* p) {
 
   while (true) {
     bool connected = rtos_get_timestamp_ns(data.timestamp_ns);
-    g_imu->update();  // TODO: DMA should be used
+    g_imu->update();
     data.data = g_imu->getData();
 
     if (connected) {
