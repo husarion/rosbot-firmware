@@ -86,6 +86,8 @@ CommunicationManagerConfig communication_config = {
 
 CommunicationManager g_comm_mgr(communication_config);
 
+static float supplyVoltage() { return g_battery->getData().voltage; }
+
 void boardPheripheralsInit() {
   // Audio
   pinMode(AUDIO_SHDN, OUTPUT);
@@ -138,6 +140,11 @@ void setMaxMotorsCurrent(Revision rev) {
       digitalWrite(ILIM2, HIGH);
       digitalWrite(ILIM3, HIGH);
       digitalWrite(ILIM4, HIGH);
+      // V1_1 uses DRV8870 do not have a real current sensor.
+      motor_fl.disableCurrentSensor();
+      motor_fr.disableCurrentSensor();
+      motor_rl.disableCurrentSensor();
+      motor_rr.disableCurrentSensor();
       break;
 
     default:
@@ -170,6 +177,9 @@ void setup() {
   imu_bno055.init();
   g_indicator.init();
   g_led_strip.init(strip_config, &s_transport);
+  for (auto* m : {&motor_fl, &motor_fr, &motor_rl, &motor_rr}) {
+    m->setSupplyVoltageProvider(supplyVoltage);
+  }
   g_motors.init();
   power_board.init();
   if (g_comm_mgr.isSerialTransport()) {

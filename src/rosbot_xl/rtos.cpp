@@ -43,7 +43,7 @@ extern PowerBoard power_board;
 void createQueues() {
   battery_queue = xQueueCreate(1, sizeof(BatteryStamped));
   imu_queue = xQueueCreate(1, sizeof(ImuStamped));
-  joint_state_queue = xQueueCreate(1, sizeof(EncodersStamped));
+  joint_state_queue = xQueueCreate(1, sizeof(JointStateStamped));
   led_strip_queue = xQueueCreate(1, sizeof(LedFrameMsg));
 }
 
@@ -56,7 +56,6 @@ void monitorTask(void* p);
 void motorControlTask(void* p);
 void shutdownTask(void* p);
 void uRosTask(void* p);
-void uRosPingTask(void* p);
 
 TaskConfig tasks[] = {
     {"HwMonitor", Priority::OBSERVING, Stack::S, 10, hwMonitorTask},
@@ -203,16 +202,17 @@ void monitorTask(void* p) {
 void motorControlTask(void* p) {
   TickType_t period = taskGetPeriod(p);
   TickType_t wake_time = xTaskGetTickCount();
-  EncodersStamped data = {};
+  JointStateStamped data = {};
 
   while (true) {
     // Sample encoders immediately before PID so control loop always
     // sees the freshest measurement with a fixed-phase dt.
     bool connected = rtos_get_timestamp_ns(data.timestamp_ns);
+
     g_encoders.update();
     g_motors.update();
 
-    data.data = g_encoders.getData();
+    data.data = g_motors.getData();
     if (connected) {
       xQueueOverwrite(joint_state_queue, &data);
     }

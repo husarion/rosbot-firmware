@@ -33,7 +33,7 @@
 void createQueues() {
   battery_queue = xQueueCreate(1, sizeof(BatteryStamped));
   imu_queue = xQueueCreate(1, sizeof(ImuStamped));
-  joint_state_queue = xQueueCreate(1, sizeof(EncodersStamped));
+  joint_state_queue = xQueueCreate(1, sizeof(JointStateStamped));
   ranges_queue = xQueueCreate(1, sizeof(RangesStamped));
 }
 
@@ -45,7 +45,6 @@ void monitorTask(void* p);
 void motorControlTask(void* p);
 void rangeTask(void* p);
 void uRosTask(void* p);
-void uRosPingTask(void* p);
 
 inline TaskConfig tasks[] = {
     {"Battery", Priority::SENSORS, Stack::XS, 10, batteryTask},
@@ -143,7 +142,7 @@ void monitorTask(void* p) {
 void motorControlTask(void* p) {
   TickType_t period = taskGetPeriod(p);
   TickType_t wake_time = xTaskGetTickCount();
-  EncodersStamped data = {};
+  JointStateStamped data = {};
 
   while (true) {
     // Sample encoders immediately before PID so control loop always
@@ -152,7 +151,7 @@ void motorControlTask(void* p) {
     g_encoders.update();
     g_motors.update();
 
-    data.data = g_encoders.getData();
+    data.data = g_motors.getData();
     if (connected) {
       xQueueOverwrite(joint_state_queue, &data);
     }

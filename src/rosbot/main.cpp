@@ -92,6 +92,8 @@ CommunicationManagerConfig communication_config = {
     .onDiagnosticSelected = confirmAlt};
 CommunicationManager g_comm_mgr(communication_config);
 
+static float supplyVoltage() { return g_battery->getData().voltage; }
+
 void boardPheripheralsInit() {
   // Initialize Buttons
   pinMode(PUSH_BUTTON1, INPUT_PULLUP);
@@ -132,6 +134,9 @@ void setup() {
   g_encoders.init();
   imu_bno055.init();
   g_indicator.init();
+  for (auto* m : {&motor_fl, &motor_fr, &motor_rl, &motor_rr}) {
+    m->setSupplyVoltageProvider(supplyVoltage);
+  }
   g_motors.init();
   g_ranges.init();
   g_ros_node.serialTransportInit(*transport);

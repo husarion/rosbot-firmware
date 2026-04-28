@@ -18,11 +18,11 @@
 #include <rosidl_runtime_c/string_functions.h>
 #include <sensor_msgs/msg/joint_state.h>
 
-#include "encoder_array.hpp"
+#include "motor_array.hpp"
 #include "publisher_interface.hpp"
 
-struct EncodersStamped {
-  EncodersData data;
+struct JointStateStamped {
+  MotorsData data;
   int64_t timestamp_ns;
 };
 
@@ -58,7 +58,7 @@ class JointStatePublisher : public PublisherInterface {
  private:
   rcl_publisher_t pub_;
   sensor_msgs__msg__JointState msg_;
-  EncodersStamped data_;
+  JointStateStamped data_;
   JointStatePublisherConfig cfg_;
 
   void initMsg(rcl_allocator_t& allocator) {
@@ -79,7 +79,7 @@ class JointStatePublisher : public PublisherInterface {
                                                          g_motors[i]->name());
   }
 
-  void fillMsg(const EncodersStamped& d) {
+  void fillMsg(const JointStateStamped& d) {
     msg_.header.stamp.sec = d.timestamp_ns / 1000000000LL;
     msg_.header.stamp.nanosec = d.timestamp_ns % 1000000000LL;
 

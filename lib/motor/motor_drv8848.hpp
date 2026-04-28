@@ -34,6 +34,18 @@ struct MotorDrv8848Config {
   float min_velocity;  // [rad/s] deadband
   uint32_t pwm_freq;   // [Hz]
   const char* frame_id;
+  uint8_t current_sense_pin = 0xFF;   // 0xFF = no analog current sensor
+  float current_per_volt = 0.0f;      // [A/V] — I_motor = V_isen * this
+  float current_filter_alpha = 0.2f;  // EMA on current: 1 = raw, 0 = frozen
+  float torque_constant = 1.0f;       // Output-shaft torque per ampere of motor
+                                      // current (Kt_motor × N × η).
+  // Back-EMF model: I = (duty * supply_voltage - back_emf_constant *
+  // omega_motor) / winding_resistance, used as a fallback when no analog
+  // current sensor is available. Set winding_resistance to 0 to disable.
+  float gear_ratio = 1.0f;          // [motor:output reduction]
+  float winding_resistance = 0.0f;  // R [Ω], 0 = disable estimator
+  float back_emf_constant = 0.0f;   // Ke [V·s/rad] motor shaft
+  float supply_voltage = 0.0f;      // [V] nominal supply
 };
 
 /// DRV8848-based motor with Hi-Z control scheme.
@@ -56,9 +68,22 @@ class MotorDrv8848 : public MotorInterface {
   MotorData getData() const override;
   const char* name() const override { return cfg_.frame_id; }
 
+  // Disable the analog current sensor at runtime
+  // (e.g. some board revisions lack the MAX22205 CSO).
+  // After this is called, effort falls back to commanded PWM duty.
+  void disableCurrentSensor() { current_sense_disabled_ = true; }
+
+  /// Source of dynamic supply voltage for the back-EMF estimator. When
+  /// unset (nullptr) the estimator falls back to cfg_.supply_voltage.
+  /// Free function pointer — no std::function (avoids heap on MCU).
+  void setSupplyVoltageProvider(float (*fn)()) { supply_v_fn_ = fn; }
+
  private:
   void setMode(MotorMode mode);
   void applyPWM(float duty);
+  void sampleCurrent();
+  void estimateCurrent(float duty);
+  void applyCurrentSample(float i_motor);
 
   MotorDrv8848Config cfg_ = {};
   EncoderInterface* encoder_ = nullptr;
@@ -71,4 +96,7 @@ class MotorDrv8848 : public MotorInterface {
   std::atomic<float> current_effort_{0.0f};
   MotorMode current_mode_ = MotorMode::NEUTRAL;
   bool enabled_ = false;
+  bool current_sense_disabled_ = false;
+  float current_filtered_ = 0.0f;  // EMA state for I_motor [A]
+  float (*supply_v_fn_)() = nullptr;
 };

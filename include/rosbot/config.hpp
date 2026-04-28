@@ -129,6 +129,16 @@ inline constexpr uint32_t MOTOR_PWM_FREQ = 20000;  // 20 kHz
 inline constexpr float MAX_VELOCITY = 25.0f;
 inline constexpr float MIN_VELOCITY = 0.0f;
 
+// Gear-motor spec sheet: 12 V, 285 RPM no-load, 275 mA no-load, 4.3 kg·cm
+// stall, 34:1 gearbox. Derived (assuming η ≈ 0.75):
+//   I_stall ≈ 1.67 A,  R ≈ 7.2 Ω,  Ke ≈ 0.00989 V·s/rad
+//   Kt_total = Ke × N × η ≈ 0.25 Nm/A  (sanity: 0.25 × 1.67 ≈ 0.42 Nm)
+// DRV8848 has no current sense, so effort comes from the back-EMF model.
+inline constexpr float MOTOR_TORQUE_CONSTANT = 0.25f;  // [Nm/A]
+inline constexpr float MOTOR_RESISTANCE = 7.2f;        // [Ω]
+inline constexpr float MOTOR_BACK_EMF = 0.00989f;      // [V·s/rad]
+inline constexpr float MOTOR_SUPPLY_VOLTAGE = 12.0f;   // [V] nominal
+
 inline constexpr DriverGroupConfig right_motors_driver = {PC13, PE0};
 inline constexpr DriverGroupConfig left_motors_driver = {PC14, PE1};
 inline constexpr DriverGroupConfig driver_groups[] = {
@@ -145,6 +155,11 @@ inline constexpr MotorDrv8848Config motor_fl_config = {
     .min_velocity = MIN_VELOCITY,
     .pwm_freq = MOTOR_PWM_FREQ,
     .frame_id = "fl_wheel_joint",
+    .torque_constant = MOTOR_TORQUE_CONSTANT,
+    .gear_ratio = GEAR_RATIO,
+    .winding_resistance = MOTOR_RESISTANCE,
+    .back_emf_constant = MOTOR_BACK_EMF,
+    .supply_voltage = MOTOR_SUPPLY_VOLTAGE,
 };
 
 inline constexpr MotorDrv8848Config motor_fr_config = {
@@ -156,6 +171,11 @@ inline constexpr MotorDrv8848Config motor_fr_config = {
     .min_velocity = MIN_VELOCITY,
     .pwm_freq = MOTOR_PWM_FREQ,
     .frame_id = "fr_wheel_joint",
+    .torque_constant = MOTOR_TORQUE_CONSTANT,
+    .gear_ratio = GEAR_RATIO,
+    .winding_resistance = MOTOR_RESISTANCE,
+    .back_emf_constant = MOTOR_BACK_EMF,
+    .supply_voltage = MOTOR_SUPPLY_VOLTAGE,
 };
 
 inline constexpr MotorDrv8848Config motor_rl_config = {
@@ -167,6 +187,11 @@ inline constexpr MotorDrv8848Config motor_rl_config = {
     .min_velocity = MIN_VELOCITY,
     .pwm_freq = MOTOR_PWM_FREQ,
     .frame_id = "rl_wheel_joint",
+    .torque_constant = MOTOR_TORQUE_CONSTANT,
+    .gear_ratio = GEAR_RATIO,
+    .winding_resistance = MOTOR_RESISTANCE,
+    .back_emf_constant = MOTOR_BACK_EMF,
+    .supply_voltage = MOTOR_SUPPLY_VOLTAGE,
 };
 
 inline constexpr MotorDrv8848Config motor_rr_config = {
@@ -178,6 +203,11 @@ inline constexpr MotorDrv8848Config motor_rr_config = {
     .min_velocity = MIN_VELOCITY,
     .pwm_freq = MOTOR_PWM_FREQ,
     .frame_id = "rr_wheel_joint",
+    .torque_constant = MOTOR_TORQUE_CONSTANT,
+    .gear_ratio = GEAR_RATIO,
+    .winding_resistance = MOTOR_RESISTANCE,
+    .back_emf_constant = MOTOR_BACK_EMF,
+    .supply_voltage = MOTOR_SUPPLY_VOLTAGE,
 };
 
 // ───────── PID ─────────
