@@ -18,7 +18,6 @@
 #include "battery_interface.hpp"
 #include "communication_manager.hpp"
 #include "config.hpp"
-#include "encoder_array.hpp"
 #include "hardware_encoder.hpp"
 #include "imu_bno055.hpp"
 #include "led_indicator.hpp"
@@ -37,8 +36,6 @@ static HardwareEncoder enc_fl(enc_fl_config);
 static HardwareEncoder enc_fr(enc_fr_config);
 static HardwareEncoder enc_rl(enc_rl_config);
 static HardwareEncoder enc_rr(enc_rr_config);
-static EncoderInterface* encoders[] = {&enc_fl, &enc_fr, &enc_rl, &enc_rr};
-static constexpr uint8_t ENCODER_COUNT = sizeof(encoders) / sizeof(encoders[0]);
 
 // ───────── IMU ─────────
 ImuBno055 imu_bno055(imu_bno055_config);
@@ -65,7 +62,6 @@ static constexpr uint8_t RANGE_COUNT =
 
 // ───────── Extern variables ─────────
 BatteryInterface* g_battery = &battery_adc;
-EncoderArray g_encoders(encoders, ENCODER_COUNT);
 ImuInterface* g_imu = &imu_bno055;
 LedIndicator g_indicator(led_status_config);
 MotorArray g_motors(motors, MOTOR_COUNT, driver_groups, DRIVER_GROUP_COUNT);
@@ -127,13 +123,12 @@ void setup() {
 
   // Sensors initialization
   battery_adc.init();
-  g_encoders.init();
   imu_bno055.init();
   g_indicator.init();
   for (auto* m : {&motor_fl, &motor_fr, &motor_rl, &motor_rr}) {
     m->setSupplyVoltageProvider(supplyVoltage);
   }
-  g_motors.init();
+  g_motors.init();  // motors own encoders → enc init happens here
   g_ranges.init();
   g_ros_node.serialTransportInit(*transport);
   g_ros_node.setDiagnosticSerial(g_comm_mgr.debugSerial());

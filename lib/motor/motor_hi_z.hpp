@@ -23,8 +23,6 @@
 #include "motor_interface.hpp"
 #include "pid.hpp"
 
-enum MotorMode : uint8_t { FORWARD, REVERSE, BRAKE, NEUTRAL };
-
 struct MotorHiZConfig {
   uint8_t pwm_pin;     // PWM output
   uint8_t in_a_pin;    // direction input A
@@ -63,7 +61,6 @@ class MotorHiZ : public MotorInterface {
   void setVelocity(float vel) override;
   void brake() override;
   void setNeutral() override;
-  void setEnabled(bool en) override { enabled_ = en; }
 
   MotorData getData() const override;
   const char* name() const override { return cfg_.frame_id; }
@@ -79,7 +76,9 @@ class MotorHiZ : public MotorInterface {
   void setSupplyVoltageProvider(float (*fn)()) { supply_v_fn_ = fn; }
 
  private:
-  void setMode(MotorMode mode);
+  enum class Mode : uint8_t { Forward, Reverse, Brake, Neutral };
+
+  void setMode(Mode mode);
   void applyPWM(float duty);
   void sampleCurrent();
   void estimateCurrent(float duty);
@@ -94,8 +93,7 @@ class MotorHiZ : public MotorInterface {
 
   std::atomic<float> target_velocity_{0.0f};
   std::atomic<float> current_effort_{0.0f};
-  MotorMode current_mode_ = MotorMode::NEUTRAL;
-  bool enabled_ = false;
+  Mode current_mode_ = Mode::Neutral;
   bool current_sense_disabled_ = false;
   float current_filtered_ = 0.0f;  // EMA state for I_motor [A]
   float (*supply_v_fn_)() = nullptr;

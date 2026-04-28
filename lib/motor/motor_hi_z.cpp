@@ -21,7 +21,11 @@ static constexpr float kAdcCounts = 1023.0f;
 static constexpr float kAdcToVolt = kAdcVref / kAdcCounts;
 
 void MotorHiZ::init() {
-  setMode(MotorMode::NEUTRAL);
+  setMode(Mode::Neutral);
+
+  // Motor owns its encoder's lifecycle: init it here so the control task
+  // doesn't need to coordinate a separate g_encoders.init() pass.
+  if (encoder_) encoder_->init();
 
   PinName pwm_pn = digitalPinToPinName(cfg_.pwm_pin);
   TIM_TypeDef* tim = (TIM_TypeDef*)pinmap_peripheral(pwm_pn, PinMap_PWM);
@@ -48,7 +52,7 @@ MotorData MotorHiZ::getData() const {
   return d;
 }
 
-void MotorHiZ::setMode(MotorMode movement) {
+void MotorHiZ::setMode(Mode movement) {
   if (movement == current_mode_) return;
   current_mode_ = movement;
 
@@ -56,19 +60,19 @@ void MotorHiZ::setMode(MotorMode movement) {
   uint8_t pin_b = cfg_.inv_dir ? cfg_.in_a_pin : cfg_.in_b_pin;
 
   switch (movement) {
-    case MotorMode::FORWARD:
+    case Mode::Forward:
       pinMode(pin_a, INPUT);  // Hi-Z → receives PWM
       pinMode(pin_b, OUTPUT);
       digitalWrite(pin_b, LOW);
       break;
 
-    case MotorMode::REVERSE:
+    case Mode::Reverse:
       pinMode(pin_a, OUTPUT);
       digitalWrite(pin_a, LOW);
       pinMode(pin_b, INPUT);  // Hi-Z → receives PWM
       break;
 
-    case MotorMode::BRAKE:
+    case Mode::Brake:
       pinMode(cfg_.in_a_pin, OUTPUT);
       pinMode(cfg_.in_b_pin, OUTPUT);
       digitalWrite(cfg_.in_a_pin, HIGH);
@@ -76,7 +80,7 @@ void MotorHiZ::setMode(MotorMode movement) {
       pwm_timer_->setCaptureCompare(pwm_channel_, pwm_arr_);
       break;
 
-    case MotorMode::NEUTRAL:
+    case Mode::Neutral:
     default:
       pinMode(cfg_.in_a_pin, OUTPUT);
       pinMode(cfg_.in_b_pin, OUTPUT);
@@ -94,11 +98,11 @@ void MotorHiZ::applyPWM(float duty) {
   current_effort_.store(duty, std::memory_order_relaxed);
 
   if (fabs(duty) < 0.01f) {
-    setMode(MotorMode::BRAKE);
+    setMode(Mode::Brake);
     return;
   }
 
-  setMode(duty > 0 ? MotorMode::FORWARD : MotorMode::REVERSE);
+  setMode(duty > 0 ? Mode::Forward : Mode::Reverse);
 
   uint16_t pwm_value = static_cast<uint16_t>(fabs(duty) * pwm_arr_);
   pwm_timer_->setCaptureCompare(pwm_channel_, pwm_value);
@@ -118,7 +122,7 @@ void MotorHiZ::sampleCurrent() {
   float i = raw * kAdcToVolt * cfg_.current_per_volt;
   // ISEN output (e.g. MAX22205 CSO) is unipolar — sign comes from the
   // commanded direction.
-  if (current_mode_ == MotorMode::REVERSE) i = -i;
+  if (current_mode_ == Mode::Reverse) i = -i;
   applyCurrentSample(i);
 }
 
@@ -157,7 +161,7 @@ void MotorHiZ::setVelocity(float vel) {
 void MotorHiZ::setNeutral() {
   target_velocity_.store(0.0f, std::memory_order_relaxed);
   current_filtered_ = 0.0f;
-  setMode(MotorMode::NEUTRAL);
+  setMode(Mode::Neutral);
   pid_.reset();
 }
 
@@ -165,11 +169,15 @@ void MotorHiZ::brake() {
   target_velocity_.store(0.0f, std::memory_order_relaxed);
   current_effort_.store(0.0f, std::memory_order_relaxed);
   current_filtered_ = 0.0f;
-  setMode(MotorMode::BRAKE);
+  setMode(Mode::Brake);
   pid_.reset();
 }
 
 void MotorHiZ::update(float dt, bool move) {
+  // Sample the encoder right before PID so the control loop always sees
+  // the freshest reading and a fixed-phase dt.
+  if (encoder_) encoder_->update();
+
   if (!move) {
     brake();
     return;

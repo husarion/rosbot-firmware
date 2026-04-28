@@ -17,7 +17,6 @@
 #include "battery_interface.hpp"
 #include "communication_manager.hpp"
 #include "config.hpp"
-#include "encoder_array.hpp"
 #include "hardware_encoder.hpp"
 #include "imu_bno055.hpp"
 #include "led_indicator.hpp"
@@ -36,8 +35,6 @@ static HardwareEncoder enc_fl(enc_fl_config);
 static HardwareEncoder enc_fr(enc_fr_config);
 static HardwareEncoder enc_rl(enc_rl_config);
 static HardwareEncoder enc_rr(enc_rr_config);
-static EncoderInterface* encoders[] = {&enc_fl, &enc_fr, &enc_rl, &enc_rr};
-static constexpr uint8_t ENCODER_COUNT = sizeof(encoders) / sizeof(encoders[0]);
 
 // ───────── Fan ─────────
 FanController g_fan;
@@ -64,7 +61,6 @@ PowerBoard power_board(power_board_config);
 
 // ─────────Extern variables─────────
 BatteryInterface* g_battery = &power_board;
-EncoderArray g_encoders(encoders, ENCODER_COUNT);
 ImuInterface* g_imu = &imu_bno055;
 LedIndicator g_indicator(led_status_config);
 LedStrip g_led_strip;
@@ -167,7 +163,6 @@ void setup() {
 
   // Components initialization
   Ethernet.begin(MAC, CLIENT_IP);
-  g_encoders.init();
   ntc.init();
   g_fan.init(fan_config);
   imu_bno055.init();

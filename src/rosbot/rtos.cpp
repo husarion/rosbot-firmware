@@ -19,7 +19,6 @@
 #include "battery_interface.hpp"
 #include "communication_manager.hpp"
 #include "config.hpp"
-#include "encoder_array.hpp"
 #include "imu_interface.hpp"
 #include "led_indicator.hpp"
 #include "motor_array.hpp"
@@ -145,12 +144,9 @@ void motorControlTask(void* p) {
   JointStateStamped data = {};
 
   while (true) {
-    // Sample encoders immediately before PID so control loop always
-    // sees the freshest measurement with a fixed-phase dt.
     bool connected = rtos_get_timestamp_ns(data.timestamp_ns);
-    g_encoders.update();
-    g_motors.update();
 
+    g_motors.update();  // updates all motors, including encoders
     data.data = g_motors.getData();
     if (connected) {
       xQueueOverwrite(joint_state_queue, &data);
