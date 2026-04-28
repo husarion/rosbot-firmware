@@ -120,6 +120,34 @@ inline constexpr HardwareEncoderConfig enc_rr_config = {
     .alpha = LOW_PASS_ALPHA,
 };
 
+// ───────── Extra GPIO ─────────
+inline constexpr uint8_t CAN1_TX = PD1;  // External transceiver needed
+inline constexpr uint8_t CAN1_RX = PD0;  // External transceiver needed
+
+inline constexpr uint8_t EXT_ADC1 = PF3;
+inline constexpr uint8_t EXT_ADC2 = PF4;
+inline constexpr uint8_t EXT_ADC3 = PF5;
+
+inline constexpr uint8_t EXT_GPIO1 = PG2;
+inline constexpr uint8_t EXT_GPIO2 = PG3;
+inline constexpr uint8_t EXT_GPIO3 = PG4;
+
+inline constexpr uint8_t EXT_PWM1 = PE5;
+inline constexpr uint8_t EXT_PWM2 = PE6;
+inline constexpr uint8_t EXT_PWM3 = PB14;
+
+inline constexpr uint8_t I2C1_SDA = PB7;  // External pull-up needed
+inline constexpr uint8_t I2C1_SCL = PB6;  // External pull-up needed
+inline constexpr uint8_t I2C3_SDA = PC9;  // External pull-up needed
+inline constexpr uint8_t I2C3_SCL = PA8;  // External pull-up needed
+
+inline constexpr uint8_t SPI1_MOSI = PB5;
+inline constexpr uint8_t SPI1_MISO = PA6;
+inline constexpr uint8_t SPI1_SCK = PA5;
+
+inline constexpr uint8_t USART6_RX = PG9;
+inline constexpr uint8_t USART6_TX = PG14;
+
 // ───────── Fan and temperature ─────────
 inline constexpr NtcConfig ntc_cfg{
     .pin = PB1,

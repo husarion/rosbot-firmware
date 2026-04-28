@@ -189,7 +189,7 @@ inline constexpr PIDConfig pid_config = {
     .kv = 0.03f,  // velocity feedforward (slightly below 1/MAX_VELOCITY=0.04)
     .min_output = -1.0f,
     .max_output = 1.0f,
-    .max_brake_output = 0.3f,    // allow up to 30% reverse PWM for braking
+    .max_brake_output = 0.3f,   // allow up to 30% reverse PWM for braking
     .min_power_to_move = 0.3f,  // boost low outputs to overcome motor dead zone
     .compensation_up_to_speed =
         2.0f,  // boost decays linearly to 0 at this speed [rad/s]

@@ -22,9 +22,9 @@ namespace {
 // BNO055 has acceleration, magnetometer, gyroscope, euler and quaternion
 // data laid out contiguously starting at register 0x08. We DMA-read the
 // whole 32-byte block in one transaction and ignore mag/euler bytes.
-constexpr uint8_t kStartReg = 0x08;          // ACC_DATA_X_LSB
-constexpr uint16_t kBlockLen = 32;           // 0x08..0x27 inclusive
-constexpr uint16_t kReadTimeoutMs = 4;       // 32 B @ 400 kHz takes ~0.7 ms
+constexpr uint8_t kStartReg = 0x08;     // ACC_DATA_X_LSB
+constexpr uint16_t kBlockLen = 32;      // 0x08..0x27 inclusive
+constexpr uint16_t kReadTimeoutMs = 4;  // 32 B @ 400 kHz takes ~0.7 ms
 
 // FreeRTOS-safe NVIC priority. Must be numerically >=
 // configLIBRARY_MAX_SYSCALL_INTERRUPT_PRIORITY (5) so ISRs can call the
