@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#include "motor_drv8848.hpp"
+#include "motor_hi_z.hpp"
 
 // 10-bit ADC, Vref = 3.3V. Matches ADC_MAX_VALUE used elsewhere on the
 // board (e.g. battery_adc).
@@ -20,7 +20,7 @@ static constexpr float kAdcVref = 3.3f;
 static constexpr float kAdcCounts = 1023.0f;
 static constexpr float kAdcToVolt = kAdcVref / kAdcCounts;
 
-void MotorDrv8848::init() {
+void MotorHiZ::init() {
   setMode(MotorMode::NEUTRAL);
 
   PinName pwm_pn = digitalPinToPinName(cfg_.pwm_pin);
@@ -36,7 +36,7 @@ void MotorDrv8848::init() {
   }
 }
 
-MotorData MotorDrv8848::getData() const {
+MotorData MotorHiZ::getData() const {
   MotorData d;
   if (encoder_) {
     const auto enc = encoder_->getData();
@@ -48,7 +48,7 @@ MotorData MotorDrv8848::getData() const {
   return d;
 }
 
-void MotorDrv8848::setMode(MotorMode movement) {
+void MotorHiZ::setMode(MotorMode movement) {
   if (movement == current_mode_) return;
   current_mode_ = movement;
 
@@ -87,7 +87,7 @@ void MotorDrv8848::setMode(MotorMode movement) {
   }
 }
 
-void MotorDrv8848::applyPWM(float duty) {
+void MotorHiZ::applyPWM(float duty) {
   duty = constrain(duty, -1.0f, 1.0f);
   // Default effort = commanded duty. Overridden below if a current sensor
   // or a back-EMF model is available (then it becomes a torque value).
@@ -113,7 +113,7 @@ void MotorDrv8848::applyPWM(float duty) {
   }
 }
 
-void MotorDrv8848::sampleCurrent() {
+void MotorHiZ::sampleCurrent() {
   const uint16_t raw = analogRead(cfg_.current_sense_pin);
   float i = raw * kAdcToVolt * cfg_.current_per_volt;
   // ISEN output (e.g. MAX22205 CSO) is unipolar — sign comes from the
@@ -122,7 +122,7 @@ void MotorDrv8848::sampleCurrent() {
   applyCurrentSample(i);
 }
 
-void MotorDrv8848::estimateCurrent(float duty) {
+void MotorHiZ::estimateCurrent(float duty) {
   if (cfg_.winding_resistance <= 0.0f) return;
   // Use live supply voltage when a provider is registered (battery sags
   // under load — assuming a fixed 12 V makes back-EMF estimate go negative
@@ -141,27 +141,27 @@ void MotorDrv8848::estimateCurrent(float duty) {
   applyCurrentSample(i);
 }
 
-void MotorDrv8848::applyCurrentSample(float i_motor) {
+void MotorHiZ::applyCurrentSample(float i_motor) {
   const float a = cfg_.current_filter_alpha;
   current_filtered_ = a * i_motor + (1.0f - a) * current_filtered_;
   current_effort_.store(current_filtered_ * cfg_.torque_constant,
                         std::memory_order_relaxed);
 }
 
-void MotorDrv8848::setVelocity(float vel) {
+void MotorHiZ::setVelocity(float vel) {
   float v = constrain(vel, -cfg_.max_velocity, cfg_.max_velocity);
   if (fabs(v) < cfg_.min_velocity) v = 0.0f;
   target_velocity_.store(v, std::memory_order_relaxed);
 }
 
-void MotorDrv8848::setNeutral() {
+void MotorHiZ::setNeutral() {
   target_velocity_.store(0.0f, std::memory_order_relaxed);
   current_filtered_ = 0.0f;
   setMode(MotorMode::NEUTRAL);
   pid_.reset();
 }
 
-void MotorDrv8848::brake() {
+void MotorHiZ::brake() {
   target_velocity_.store(0.0f, std::memory_order_relaxed);
   current_effort_.store(0.0f, std::memory_order_relaxed);
   current_filtered_ = 0.0f;
@@ -169,7 +169,7 @@ void MotorDrv8848::brake() {
   pid_.reset();
 }
 
-void MotorDrv8848::update(float dt, bool move) {
+void MotorHiZ::update(float dt, bool move) {
   if (!move) {
     brake();
     return;
@@ -182,7 +182,7 @@ void MotorDrv8848::update(float dt, bool move) {
   applyPWM(output);
 }
 
-void MotorDrv8848::reset() {
+void MotorHiZ::reset() {
   brake();
   target_velocity_.store(0.0f, std::memory_order_relaxed);
   current_effort_.store(0.0f, std::memory_order_relaxed);

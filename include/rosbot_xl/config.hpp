@@ -25,7 +25,7 @@
 #include "led_indicator.hpp"
 #include "led_strip.hpp"
 #include "motor_array.hpp"
-#include "motor_drv8848.hpp"
+#include "motor_hi_z.hpp"
 #include "ntc.hpp"
 #include "pid.hpp"
 #include "power_board.hpp"
@@ -266,7 +266,7 @@ inline constexpr DriverGroupConfig driver_groups[] = {
     left_motors_driver,
 };
 
-inline constexpr MotorDrv8848Config motor_fl_config = {
+inline constexpr MotorHiZConfig motor_fl_config = {
     .pwm_pin = PF9,
     .in_a_pin = PD10,
     .in_b_pin = PD11,
@@ -284,7 +284,7 @@ inline constexpr MotorDrv8848Config motor_fl_config = {
     .supply_voltage = MOTOR_SUPPLY_VOLTAGE,
 };
 
-inline constexpr MotorDrv8848Config motor_fr_config = {
+inline constexpr MotorHiZConfig motor_fr_config = {
     .pwm_pin = PF8,
     .in_a_pin = PG5,
     .in_b_pin = PG6,
@@ -302,7 +302,7 @@ inline constexpr MotorDrv8848Config motor_fr_config = {
     .supply_voltage = MOTOR_SUPPLY_VOLTAGE,
 };
 
-inline constexpr MotorDrv8848Config motor_rl_config = {
+inline constexpr MotorHiZConfig motor_rl_config = {
     .pwm_pin = PF7,
     .in_a_pin = PG11,
     .in_b_pin = PG12,
@@ -320,7 +320,7 @@ inline constexpr MotorDrv8848Config motor_rl_config = {
     .supply_voltage = MOTOR_SUPPLY_VOLTAGE,
 };
 
-inline constexpr MotorDrv8848Config motor_rr_config = {
+inline constexpr MotorHiZConfig motor_rr_config = {
     .pwm_pin = PF6,
     .in_a_pin = PE12,
     .in_b_pin = PE13,

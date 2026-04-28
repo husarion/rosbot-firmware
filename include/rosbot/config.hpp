@@ -22,7 +22,7 @@
 #include "imu_bno055.hpp"
 #include "led_indicator.hpp"
 #include "motor_array.hpp"
-#include "motor_drv8848.hpp"
+#include "motor_hi_z.hpp"
 #include "pid.hpp"
 #include "range_vl53l0.hpp"
 #include "ros/publishers/battery_publisher.hpp"
@@ -146,7 +146,7 @@ inline constexpr DriverGroupConfig driver_groups[] = {
     left_motors_driver,
 };
 
-inline constexpr MotorDrv8848Config motor_fl_config = {
+inline constexpr MotorHiZConfig motor_fl_config = {
     .pwm_pin = PF9,
     .in_a_pin = PE5,
     .in_b_pin = PE6,
@@ -162,7 +162,7 @@ inline constexpr MotorDrv8848Config motor_fl_config = {
     .supply_voltage = MOTOR_SUPPLY_VOLTAGE,
 };
 
-inline constexpr MotorDrv8848Config motor_fr_config = {
+inline constexpr MotorHiZConfig motor_fr_config = {
     .pwm_pin = PF6,
     .in_a_pin = PG10,
     .in_b_pin = PG11,
@@ -178,7 +178,7 @@ inline constexpr MotorDrv8848Config motor_fr_config = {
     .supply_voltage = MOTOR_SUPPLY_VOLTAGE,
 };
 
-inline constexpr MotorDrv8848Config motor_rl_config = {
+inline constexpr MotorHiZConfig motor_rl_config = {
     .pwm_pin = PF8,
     .in_a_pin = PC15,
     .in_b_pin = PF2,
@@ -194,7 +194,7 @@ inline constexpr MotorDrv8848Config motor_rl_config = {
     .supply_voltage = MOTOR_SUPPLY_VOLTAGE,
 };
 
-inline constexpr MotorDrv8848Config motor_rr_config = {
+inline constexpr MotorHiZConfig motor_rr_config = {
     .pwm_pin = PF7,
     .in_a_pin = PD3,
     .in_b_pin = PD4,

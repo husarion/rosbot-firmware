@@ -23,7 +23,7 @@
 #include "led_indicator.hpp"
 #include "led_strip.hpp"
 #include "motor_array.hpp"
-#include "motor_drv8848.hpp"
+#include "motor_hi_z.hpp"
 #include "power_board.hpp"
 #include "ros/ros_node.hpp"
 #include "rtos.hpp"
@@ -50,14 +50,10 @@ static SpiTransport s_transport(spi_config);
 
 // ───────── Motors (compatible with MAX22205) ─────────
 // TODO: Can be improved and used tourque control
-static MotorDrv8848 motor_fl(motor_fl_config, &enc_fl,
-                             PIDController(pid_config));
-static MotorDrv8848 motor_fr(motor_fr_config, &enc_fr,
-                             PIDController(pid_config));
-static MotorDrv8848 motor_rl(motor_rl_config, &enc_rl,
-                             PIDController(pid_config));
-static MotorDrv8848 motor_rr(motor_rr_config, &enc_rr,
-                             PIDController(pid_config));
+static MotorHiZ motor_fl(motor_fl_config, &enc_fl, PIDController(pid_config));
+static MotorHiZ motor_fr(motor_fr_config, &enc_fr, PIDController(pid_config));
+static MotorHiZ motor_rl(motor_rl_config, &enc_rl, PIDController(pid_config));
+static MotorHiZ motor_rr(motor_rr_config, &enc_rr, PIDController(pid_config));
 static MotorInterface* motors[] = {&motor_fl, &motor_fr, &motor_rl, &motor_rr};
 static constexpr uint8_t MOTOR_COUNT = sizeof(motors) / sizeof(motors[0]);
 static constexpr uint8_t DRIVER_GROUP_COUNT =

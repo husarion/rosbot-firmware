@@ -25,7 +25,7 @@
 
 enum MotorMode : uint8_t { FORWARD, REVERSE, BRAKE, NEUTRAL };
 
-struct MotorDrv8848Config {
+struct MotorHiZConfig {
   uint8_t pwm_pin;     // PWM output
   uint8_t in_a_pin;    // direction input A
   uint8_t in_b_pin;    // direction input B
@@ -50,11 +50,11 @@ struct MotorDrv8848Config {
 
 /// DRV8848-based motor with Hi-Z control scheme.
 /// PWM applied to nSLEEP/EN, direction via IN_A / IN_B pins.
-class MotorDrv8848 : public MotorInterface {
+class MotorHiZ : public MotorInterface {
  public:
-  MotorDrv8848() = default;
-  explicit MotorDrv8848(const MotorDrv8848Config& cfg,
-                        EncoderInterface* encoder, PIDController pid)
+  MotorHiZ() = default;
+  explicit MotorHiZ(const MotorHiZConfig& cfg, EncoderInterface* encoder,
+                    PIDController pid)
       : cfg_(cfg), encoder_(encoder), pid_(pid) {}
 
   void init() override;
@@ -85,7 +85,7 @@ class MotorDrv8848 : public MotorInterface {
   void estimateCurrent(float duty);
   void applyCurrentSample(float i_motor);
 
-  MotorDrv8848Config cfg_ = {};
+  MotorHiZConfig cfg_ = {};
   EncoderInterface* encoder_ = nullptr;
   PIDController pid_;
   HardwareTimer* pwm_timer_ = nullptr;
