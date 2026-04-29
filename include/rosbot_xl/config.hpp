@@ -229,7 +229,7 @@ inline constexpr LedStripConfig strip_config = {
 
 // ───────── Motors ─────────
 inline constexpr uint32_t MOTOR_PWM_FREQ = 20000;  // 20 kHz
-inline constexpr float MAX_VELOCITY = 22.0f;
+inline constexpr float MAX_VELOCITY = 23.0f;
 inline constexpr float MIN_VELOCITY = 0.0f;
 
 // Table 2:

@@ -126,7 +126,7 @@ inline constexpr LedIndicatorConfig led_status_config = {
 
 // ───────── Motors ─────────
 inline constexpr uint32_t MOTOR_PWM_FREQ = 20000;  // 20 kHz
-inline constexpr float MAX_VELOCITY = 25.0f;
+inline constexpr float MAX_VELOCITY = 30.0f;
 inline constexpr float MIN_VELOCITY = 0.0f;
 
 // Gear-motor spec sheet: 12 V, 285 RPM no-load, 275 mA no-load, 4.3 kg·cm
@@ -136,7 +136,7 @@ inline constexpr float MIN_VELOCITY = 0.0f;
 // DRV8848 has no current sense, so effort comes from the back-EMF model.
 inline constexpr float MOTOR_TORQUE_CONSTANT = 0.25f;  // [Nm/A]
 inline constexpr float MOTOR_RESISTANCE = 7.2f;        // [Ω]
-inline constexpr float MOTOR_BACK_EMF = 0.00989f;      // [V·s/rad]
+inline constexpr float MOTOR_BACK_EMF = 0.008f;        // [V·s/rad]
 inline constexpr float MOTOR_SUPPLY_VOLTAGE = 12.0f;   // [V] nominal
 
 inline constexpr DriverGroupConfig right_motors_driver = {PC13, PE0};
