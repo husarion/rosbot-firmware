@@ -287,8 +287,7 @@ both with blocking primitives:
     xrce-dds framing). DMA stream + channel resolved at runtime from the
     Serial pointer — see "USART → DMA mapping" below.
 
-Measured impact: rosbot_xl `uRos` 69 % → 8 %. rosbot `uRos` 32 % → ~10 %
-(approximate, pending fresh measurement after DMA TX landed).
+Measured impact: rosbot_xl `uRos` 69 % → 8 %. rosbot `uRos` 32 % → 7 %.
 
 `SPIN_TIME_MS` in `RosNodeConfig` is the timeout passed to
 `rclc_executor_spin_some`. With event-driven transports, this is "max
