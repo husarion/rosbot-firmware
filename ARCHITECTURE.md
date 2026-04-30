@@ -269,18 +269,26 @@ both with blocking primitives:
   `udp_sendto()` (LwIP TX is already DMA-driven). Local bind port =
   agent port (matches the prior Arduino convention so the agent setup
   stays the same).
-- **`serial_transport`** (rosbot) — replaces `Stream::readBytes`'s
-  busy-poll with an `available()`-based loop that calls `vTaskDelay(1)`
-  when the ring buffer is empty. Uses `vTaskSetTimeOutState` /
-  `xTaskCheckForTimeOut` for tick-wraparound-safe timing. **Not fully
-  event-driven** — `HardwareSerial::_serial` is private in the framework
-  and `HAL_UART_RxCpltCallback` is a strong symbol, so we cannot register
-  a per-byte semaphore signal without patching the framework. The
-  yielding poll buys most of the win at zero invasion.
+- **`serial_transport`** (rosbot) —
+  - **RX**: replaces `Stream::readBytes`'s busy-poll with an
+    `available()`-based loop that calls `vTaskDelay(1)` when the ring
+    buffer is empty. Uses `vTaskSetTimeOutState` /
+    `xTaskCheckForTimeOut` for tick-wraparound-safe timing. **Not fully
+    event-driven** — `HardwareSerial::_serial` is private in the
+    framework and `HAL_UART_RxCpltCallback` is a strong symbol, so we
+    cannot register a per-byte semaphore signal without patching the
+    framework. The yielding poll buys most of the win at zero invasion.
+  - **TX**: DMA-driven. `write()` pushes bytes into a 2 KB
+    `xStreamBuffer`; the DMA TC IRQ chains the next 256 B chunk
+    autonomously and only marks idle when the buffer drains. Replaces
+    the per-byte TX IRQ that previously dominated uRos CPU. Backpressure:
+    `xStreamBufferSend` blocks the caller for up to 5 ms when the buffer
+    is full, then returns the partial count (silent drops would corrupt
+    xrce-dds framing). DMA stream + channel resolved at runtime from the
+    Serial pointer — see "USART → DMA mapping" below.
 
-Measured impact: rosbot_xl `uRos` 69 % → 8 %. rosbot `uRos` ~32 % (still
-limited by Stream-API yield granularity and lack of TX DMA — see "Open
-work").
+Measured impact: rosbot_xl `uRos` 69 % → 8 %. rosbot `uRos` 32 % → ~10 %
+(approximate, pending fresh measurement after DMA TX landed).
 
 `SPIN_TIME_MS` in `RosNodeConfig` is the timeout passed to
 `rclc_executor_spin_some`. With event-driven transports, this is "max
@@ -341,6 +349,72 @@ Workaround: re-apply `bus->setClock(400000)` in your driver's `init()`
 turn out to be the dominant cost on this hardware — the BNO055 also has
 its own clock-stretch behavior — but it's a real footgun.
 
+### USART → DMA mapping (and IRQ-handler symbol collisions)
+
+`serial_transport` resolves the DMA stream / channel for each Serial at
+runtime via `findTxMap(HardwareSerial*)`. Currently mapped: `&Serial1`
+(USART1) and `&Serial3` (USART3). To extend to another Serial, add an
+entry in the function plus an IRQ handler symbol — but check the table
+below first for stream-IRQ collisions, since `lib/` is shared across
+variants and IRQ handlers are link-time strong symbols.
+
+STM32F4 USART/UART TX → DMA mapping (RM0090 Table 43):
+
+| Serial | UART | TX DMA primary | TX DMA alt |
+|---|---|---|---|
+| Serial1 | USART1 | DMA2 Stream 7 Ch4 | — |
+| Serial2 | USART2 | DMA1 Stream 6 Ch4 | — |
+| Serial3 | USART3 | DMA1 Stream 3 Ch4 | DMA1 Stream 4 Ch7 |
+| Serial4 | UART4 | DMA1 Stream 4 Ch4 | — |
+| Serial5 | UART5 | DMA1 Stream 7 Ch4 | — |
+| Serial6 | USART6 | DMA2 Stream 6 Ch5 | DMA2 Stream 7 Ch5 |
+| Serial7 | UART7 | DMA1 Stream 1 Ch5 | — |
+| Serial8 | UART8 | DMA1 Stream 0 Ch5 | — |
+
+Already-defined `DMAx_StreamY_IRQHandler` symbols in `lib/`:
+
+| Symbol | Defined by | Reason |
+|---|---|---|
+| `DMA1_Stream0_IRQHandler` | `imu_bno055.cpp` | I2C1_RX (placeholder, not used today) |
+| `DMA1_Stream2_IRQHandler` | `imu_bno055.cpp` | I2C3_RX — rosbot IMU |
+| `DMA1_Stream3_IRQHandler` | `imu_bno055.cpp` | I2C2_RX — rosbot_xl IMU |
+| `DMA1_Stream4_IRQHandler` | `serial_transport.cpp` | USART3_TX (alt mapping) |
+| `DMA2_Stream7_IRQHandler` | `serial_transport.cpp` | USART1_TX |
+
+Picking the alt mapping for USART3_TX (Stream 4 Ch7 instead of the
+primary Stream 3 Ch4) was deliberate: the primary collides with
+`imu_bno055.cpp`'s `DMA1_Stream3_IRQHandler` symbol, which is in the
+link on both variants even though only rosbot_xl uses it.
+
+Recipe for adding a new Serial to `serial_transport`:
+
+1. Pick a stream (primary or alt) that does not collide with any symbol
+   in the table above.
+2. Add a `findTxMap` entry guarded by `defined(USARTx_BASE) &&
+   defined(ENABLE_HWSERIALx)`:
+   ```cpp
+   if (serial == &SerialN) {
+     static const UartTxDmaMap kMap = {USARTN, DMAx, DMAx_StreamY,
+                                       DMA_CHANNEL_z, DMAx_StreamY_IRQn};
+     return &kMap;
+   }
+   ```
+3. Add the matching IRQ handler at namespace scope:
+   ```cpp
+   extern "C" void DMAx_StreamY_IRQHandler(void) {
+     if (s_hdma_tx.Instance == DMAx_StreamY) HAL_DMA_IRQHandler(&s_hdma_tx);
+   }
+   ```
+4. Add `-D ENABLE_HWSERIALx` to the relevant `[env:...]` in
+   `platformio.ini` if the framework hasn't enabled it already.
+5. Add the new symbol to the "already-defined" table in this section so
+   the next person picking a stream sees it.
+
+If you ever need 4+ DMA-driven peripherals on shared streams, consider
+refactoring the IRQ handlers into a central dispatcher (`dma_dispatch.cpp`)
+where each module registers its own callback; current code keeps it
+simple because the conflict surface is small.
+
 ### Variant universality in `lib/`
 
 Library code must not assume which variant compiled it. Patterns that
@@ -378,8 +452,8 @@ concrete envs select variant + debug/release:
 workflow (`.github/workflows/release.yaml`) bumps it before tagging.
 
 Build output sizes (representative, debug):
-- rosbot ~185 KB Flash, ~67 KB RAM
-- rosbot_xl ~225 KB Flash, ~92 KB RAM
+- rosbot ~188 KB Flash, ~50 KB RAM
+- rosbot_xl ~226 KB Flash, ~93 KB RAM
 
 CCM RAM usage is implicit (compiler may place stack/BSS there). DMA
 buffers are explicitly declared with `alignas(4)` at file scope to land
@@ -391,21 +465,17 @@ in regular SRAM.
 
 These are documented to avoid re-discovery:
 
-- **uRos task on rosbot is at ~32 % CPU.** The yielding-poll serial
-  transport is not fully event-driven (framework limitation — see
-  "Patterns: micro-ROS transport"). Path to event-driven requires either
-  patching the stm32duino fork (expose `serial_t*` from
-  `HardwareSerial`) or bypassing it with a standalone HAL UART driver.
-  Standalone driver conflicts with `USART1_IRQHandler` being a strong
-  symbol in the framework.
-- **Serial TX is not DMA-driven.** `HardwareSerial::write` uses TX
-  ring buffer + per-byte IRQ. At 921600 baud and ~400 B per 10 ms timer
-  fire, this consumes a non-trivial slice of uRos time. DMA TX would
-  free that.
-- **IMU publish rate on rosbot is ~85 Hz**, not the 100 Hz queued by the
-  IMU task. The cause is uRos timer-callback jitter — when uRos can't
-  meet the 10 ms tick, samples in the depth-1 queue get coalesced before
-  publish.
+- **uRos RX path on rosbot is still polling.** TX is now DMA-driven, but
+  RX uses a yielding `vTaskDelay(1)` poll because `HardwareSerial::_serial`
+  is private in the framework and `HAL_UART_RxCpltCallback` is a strong
+  symbol — neither lets us register a per-byte semaphore signal without
+  patching the stm32duino fork (or replacing `USARTx_IRQHandler`, also a
+  strong symbol). The current poll buys most of the win at zero invasion
+  but leaves uRos with a CPU floor proportional to read activity.
+- **IMU publish rate on rosbot was ~85 Hz** (not the 100 Hz queued by the
+  IMU task) due to uRos timer-callback jitter — when uRos couldn't meet
+  the 10 ms tick, samples in the depth-1 queue got coalesced before
+  publish. Should improve after DMA TX landed; pending fresh measurement.
 - **No agent IP auto-discovery.** `AGENT_IP` is hardcoded in
   `include/rosbot_xl/config.hpp`. `CLIENT_IP` is auto-derived from it
   (same /24, last octet = agent + 1). True auto-discovery options were
