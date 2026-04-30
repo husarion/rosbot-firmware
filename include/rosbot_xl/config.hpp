@@ -353,7 +353,7 @@ inline constexpr PIDConfig pid_config = {
 // ───────── ROS ─────────
 inline constexpr const char* NODE_NAME = "rosbot_mcu";
 inline constexpr uint16_t DOMAIN_ID = 255;  // 255 inherit from Micro ROS Agent
-inline constexpr uint32_t SPIN_TIME_MS = 1;
+inline constexpr uint32_t SPIN_TIME_MS = 10;
 inline constexpr uint32_t TIMER_MS = 10;
 inline constexpr uint16_t PING_WATCHDOG_MS = 200;
 inline constexpr uint16_t PING_TIMEOUT_MS = 100;

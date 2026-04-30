@@ -14,6 +14,9 @@
 
 #include "ros_node.hpp"
 
+#include "transport/lwip_udp_transport.hpp"
+#include "transport/serial_transport.hpp"
+
 RosNode* RosNode::instance_ = nullptr;
 
 bool RosNode::pingAgent() {
@@ -177,48 +180,15 @@ void RosNode::ethernetTransportInit(IPAddress agent_ip, uint16_t agent_port) {
   locator.port = agent_port;
 
   RC_CHECK(rmw_uros_set_custom_transport(
-      false, (void*)&locator, arduino_native_ethernet_udp_transport_open,
-      arduino_native_ethernet_udp_transport_close,
-      arduino_native_ethernet_udp_transport_write,
-      arduino_native_ethernet_udp_transport_read));
+      false, (void*)&locator, lwip_udp_transport_open, lwip_udp_transport_close,
+      lwip_udp_transport_write, lwip_udp_transport_read));
 }
 
 void RosNode::serialTransportInit(const SerialConfig& config) {
   RC_CHECK(rmw_uros_set_custom_transport(
       /* Enable XRCE framing */
       true,
-      /* Arguments for callbacks - pass config pointer */
-      (void*)&config,
-
-      /* Open transport callback */
-      [](struct uxrCustomTransport* transport) -> bool {
-        const SerialConfig* cfg = (const SerialConfig*)transport->args;
-        cfg->serial->setRx(cfg->rxPin);
-        cfg->serial->setTx(cfg->txPin);
-        cfg->serial->setTimeout(cfg->timeout_ms);
-        cfg->serial->begin(cfg->baudrate);
-        return cfg->serial->operator bool();
-      },
-
-      /* Close transport callback */
-      [](struct uxrCustomTransport* transport) -> bool {
-        const SerialConfig* cfg = (const SerialConfig*)transport->args;
-        cfg->serial->end();
-        return true;
-      },
-
-      /* Write transport callback */
-      [](struct uxrCustomTransport* transport, const uint8_t* buf, size_t len,
-         uint8_t* errcode) -> unsigned int {
-        const SerialConfig* cfg = (const SerialConfig*)transport->args;
-        return cfg->serial->write(buf, len);
-      },
-
-      /* Read transport callback */
-      [](struct uxrCustomTransport* transport, uint8_t* buf, size_t len,
-         int timeout, uint8_t* errcode) -> unsigned int {
-        const SerialConfig* cfg = (const SerialConfig*)transport->args;
-        cfg->serial->setTimeout(timeout);
-        return cfg->serial->readBytes((char*)buf, len);
-      }));
+      /* Arguments for callbacks */
+      (void*)&config, serial_transport_open, serial_transport_close,
+      serial_transport_write, serial_transport_read));
 }
