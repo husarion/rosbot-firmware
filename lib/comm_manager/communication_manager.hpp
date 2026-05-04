@@ -16,8 +16,9 @@
 
 #include <HardwareSerial.h>
 
-#include <cstring>
-#include <functional>
+#include <array>
+#include <cstddef>
+#include <cstdint>
 
 enum class TransportType { kSerial, kEthernet };
 
@@ -40,12 +41,14 @@ struct CommunicationManagerConfig {
   /// Always present — debug output or fallback communication channel
   SerialConfig diagnostic_serial = {};
 
-  /// If returns true during selection window → diagnostic serial becomes
-  /// the ROS communication channel (and debug is disabled on it)
-  std::function<bool()> useDiagnosticCondition = nullptr;
+  /// If returns true during the selection window → diagnostic serial
+  /// becomes the ROS communication channel (and debug is disabled on it).
+  /// Plain function pointer to avoid std::function's implicit heap path
+  /// on embedded targets; non-capturing free functions decay naturally.
+  bool (*useDiagnosticCondition)() = nullptr;
 
-  /// Called once after diagnostic serial is chosen for communication
-  std::function<void()> onDiagnosticSelected = nullptr;
+  /// Called once after diagnostic serial is chosen for communication.
+  void (*onDiagnosticSelected)() = nullptr;
 
   uint16_t check_interval_ms = 50;
   uint16_t resend_ready_interval_ms = 250;
@@ -56,70 +59,23 @@ class CommunicationManager {
  public:
   static constexpr size_t NS_MAX_LENGTH = 32;
 
-  explicit CommunicationManager(CommunicationManagerConfig cfg) : cfg_(cfg) {}
+  explicit CommunicationManager(CommunicationManagerConfig cfg);
 
   // ============== Lifecycle ==============
 
-  void init() {
-    initSerial(cfg_.diagnostic_serial);
-    if (cfg_.primary_type == TransportType::kSerial) {
-      initSerial(cfg_.primary_serial);
-    }
-  }
+  void init();
 
-  /// @brief  Wait up to @p timeout_ms for diagnostic serial activity.
-  ///         If detected → ROS transport = diagnostic serial, debug OFF.
-  ///         If timeout  → ROS transport = primary (serial or ethernet), debug
-  ///         ON.
+  /// Wait up to @p timeout_ms for diagnostic serial activity. If
+  /// detected → ROS transport = diagnostic serial, debug OFF. If timeout
+  /// elapses → ROS transport = primary (serial or ethernet), debug ON.
   /// @return Pointer to SerialConfig when serial transport chosen;
   ///         nullptr when ethernet is the selected transport.
-  const SerialConfig* selectTransport(uint32_t timeout_ms = 1500) {
-    uint32_t start = millis();
+  const SerialConfig* selectTransport(uint32_t timeout_ms = 1500);
 
-    while ((millis() - start) < timeout_ms) {
-      if (cfg_.useDiagnosticCondition && cfg_.useDiagnosticCondition()) {
-        selected_type_ = TransportType::kSerial;
-        selected_serial_ = &cfg_.diagnostic_serial;
-        debug_available_ = false;  // diagnostic busy → no debug
-        if (cfg_.onDiagnosticSelected) cfg_.onDiagnosticSelected();
-        return selected_serial_;
-      }
-      delay(cfg_.check_interval_ms);
-    }
-
-    // Timeout — use primary transport
-    selected_type_ = cfg_.primary_type;
-    debug_available_ = true;  // diagnostic free → debug OK
-
-    if (cfg_.primary_type == TransportType::kSerial) {
-      selected_serial_ = &cfg_.primary_serial;
-      return selected_serial_;
-    }
-
-    // Ethernet — no serial config to return
-    selected_serial_ = nullptr;
-    return nullptr;
-  }
-
-  /// Negotiate namespace over the active serial link (FW/NS/ACK handshake).
-  /// For ethernet transport falls back to ns_default immediately.
-  bool configureNamespace(uint16_t timeout_ms = 2500) {
-    HardwareSerial* config_serial = nullptr;
-
-    if (selected_type_ == TransportType::kEthernet) {
-      config_serial = cfg_.diagnostic_serial.serial;
-    } else if (selected_serial_) {
-      config_serial = selected_serial_->serial;
-    }
-
-    if (config_serial && waitForHostConfig(*config_serial, timeout_ms)) {
-      return true;
-    }
-
-    strncpy(namespace_, cfg_.ns_default, NS_MAX_LENGTH);
-    namespace_[NS_MAX_LENGTH - 1] = '\0';
-    return true;
-  }
+  /// Negotiate namespace over the active serial link (FW/NS/ACK
+  /// handshake). For ethernet transport — or if the host does not
+  /// respond within @p timeout_ms — falls back to `cfg_.ns_default`.
+  void configureNamespace(uint16_t timeout_ms = 2500);
 
   // ============== Accessors ==============
 
@@ -130,76 +86,28 @@ class CommunicationManager {
   const SerialConfig* selectedSerialConfig() const { return selected_serial_; }
 
   /// @return true when diagnostic serial is free for debug output
-  ///         (i.e. communication goes via primary transport, not diagnostic)
+  ///         (i.e. communication goes via primary transport, not
+  ///         diagnostic).
   bool hasDebugSerial() const { return debug_available_; }
 
   /// @return diagnostic HardwareSerial* if available for debug, nullptr
-  /// otherwise
-  HardwareSerial* debugSerial() {
-    return debug_available_ ? cfg_.diagnostic_serial.serial : nullptr;
-  }
+  ///         otherwise.
+  HardwareSerial* debugSerial();
 
-  const char* getNamespace() const { return namespace_; }
+  const char* getNamespace() const { return namespace_.data(); }
 
  private:
+  void initSerial(const SerialConfig& cfg);
+  bool waitForHostConfig(HardwareSerial& serial, uint32_t timeout_ms);
+  bool parseAndStoreNamespace(HardwareSerial& serial, const char* buf,
+                              size_t len);
+
   CommunicationManagerConfig cfg_;
   TransportType selected_type_ = TransportType::kSerial;
   const SerialConfig* selected_serial_ = nullptr;
   bool debug_available_ = false;
-  char namespace_[NS_MAX_LENGTH] = {};
-
-  // ============== Private helpers ==============
-
-  void initSerial(const SerialConfig& cfg) {
-    cfg.serial->setRx(cfg.rxPin);
-    cfg.serial->setTx(cfg.txPin);
-    cfg.serial->begin(cfg.baudrate);
-    cfg.serial->setTimeout(cfg.timeout_ms);
-  }
-
-  bool waitForHostConfig(HardwareSerial& serial, uint32_t timeout_ms) {
-    uint32_t start_time = millis();
-    char buffer[NS_MAX_LENGTH] = {0};
-    size_t idx = 0;
-    bool got_line = false;
-    uint32_t last_ready = 0;
-
-    const char* fw_version = "0.0.0";
-#if defined(FW_VERSION)
-    fw_version = FW_VERSION;
-#endif
-
-    serial.printf("FW: %s\r\n", fw_version);
-    serial.flush();
-    last_ready = millis();
-
-    while (millis() - start_time < timeout_ms && !got_line) {
-      while (serial.available()) {
-        char c = serial.read();
-        if (c == '\n') {
-          got_line = true;
-          break;
-        }
-        if (c != '\r' && idx < NS_MAX_LENGTH - 1) {
-          buffer[idx++] = c;
-        }
-      }
-      if (millis() - last_ready >= cfg_.resend_ready_interval_ms) {
-        serial.printf("FW: %s\r\n", fw_version);
-        serial.flush();
-        last_ready = millis();
-      }
-    }
-
-    if (got_line && idx >= 3 && strncmp(buffer, "NS:", 3) == 0) {
-      strncpy(namespace_, buffer + 3, NS_MAX_LENGTH);
-      namespace_[NS_MAX_LENGTH - 1] = '\0';
-      serial.println("ACK");
-      serial.flush();
-      return true;
-    }
-    return false;
-  }
+  std::array<char, NS_MAX_LENGTH> namespace_{};
 };
 
+/// Global instance — defined in board-specific main.
 extern CommunicationManager g_comm_mgr;
