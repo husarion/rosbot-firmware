@@ -34,6 +34,18 @@ Companion documents:
 - The bridge node responsible for that translation ships in **this firmware
   repo**, alongside the firmware code that produces the MAVLink wire format.
   Both halves of the protocol are versioned and released together.
+- **One firmware binary serves all SBC distros.** The MAVLink firmware has zero
+  ROS-2 dependency in its source, so the same `.bin` runs against jazzy,
+  humble, or any future distro on the SBC. This is a *natural consequence* of
+  using MAVLink rather than micro-ROS — the existing micro-ROS firmware is
+  jazzy-pinned by `micro_ros_arduino#v2.0.8-jazzy` and would need separate
+  builds per distro; MAVLink removes that coupling.
+- **One bridge source tree builds for both jazzy and humble** (and any future
+  distro), via a CI matrix that compiles the same package in two different
+  ROS-2 containers. The rclcpp API surface and message types we touch are
+  stable between humble and jazzy; we expect no source split. If a future
+  distro ever forces a divergence, we localise it behind a `#ifdef`
+  rather than forking the package.
 - Coexistence with the current micro-ROS path is **build-flag selectable** via new
   PlatformIO envs.
 - No regression in latency, jitter, or CPU floor relative to the event-driven
@@ -92,6 +104,15 @@ the bridge produces output indistinguishable from `micro_ros_agent` output. This
 is a non-negotiable acceptance criterion; if a wire-protocol detail forces a QoS
 or topic-shape change, the bridge absorbs the difference rather than leaking it
 upward.
+
+D24: ROS-2-distro coverage. The MAVLink firmware binary is **distro-agnostic**
+(one `.bin` per variant × debug/release works for any SBC distro). The bridge
+package is **a single source tree built per supported distro** in CI; initial
+release covers **jazzy and humble** out of one source. No code fork between
+distros unless a hard API break appears; current scope confirms the rclcpp
+surface and message types are stable between the two. Tagged release artefacts
+make the split explicit: firmware `.bin` files carry no distro suffix; bridge
+tarballs do.
 
 ---
 
@@ -571,30 +592,38 @@ build-firmware:
     - run: pio run -e ${{ matrix.env }}
 
 build-bridge:
-  name: Build bridge (ROS 2 jazzy)
+  name: Build bridge
   runs-on: ubuntu-latest
-  container: osrf/ros:jazzy-desktop
+  strategy:
+    matrix:
+      distro: [jazzy, humble]
+  container: ros:${{ matrix.distro }}-ros-base
   steps:
     - uses: actions/checkout@v4
     - run: |
         rosdep update
         rosdep install --from-paths bridge --ignore-src -y
-        . /opt/ros/jazzy/setup.sh
+        . /opt/ros/${{ matrix.distro }}/setup.sh
         colcon build --packages-select rosbot_mavlink_bridge
         colcon test --packages-select rosbot_mavlink_bridge --return-code-on-test-failure
 ```
 
 Release workflow (`release.yaml`) adds the four MAVLink envs to the firmware
-build matrix and uploads four extra binaries plus a versioned source tarball of
-the bridge package:
+build matrix and builds the bridge tarball once per supported distro:
 
 ```
-rosbot-<tag>.bin
-rosbot_mavlink-<tag>.bin
-rosbot_xl-<tag>.bin
-rosbot_xl_mavlink-<tag>.bin
-rosbot_mavlink_bridge-<tag>-src.tar.gz       # vendored into snap by rosbot-snap
+rosbot-v1.2.0-jazzy.bin                          # micro-ROS, jazzy-pinned, unchanged
+rosbot_xl-v1.2.0-jazzy.bin                       # micro-ROS, jazzy-pinned, unchanged
+rosbot_mavlink-v1.2.0.bin                        # MAVLink, distro-agnostic (no distro suffix)
+rosbot_xl_mavlink-v1.2.0.bin                     # MAVLink, distro-agnostic
+rosbot_mavlink_bridge-v1.2.0-jazzy-src.tar.gz    # bridge, per-distro
+rosbot_mavlink_bridge-v1.2.0-humble-src.tar.gz   # bridge, per-distro
 ```
+
+The dropped `-<distro>` suffix on the MAVLink firmware binaries is intentional
+and visible at the release-page level: it tells operators that flashing the
+same `.bin` works across both jazzy and humble SBCs. The micro-ROS firmware
+binaries keep the `-jazzy` suffix because they are jazzy-pinned today.
 
 ---
 
@@ -634,7 +663,10 @@ timer.
 
 The bridge lives in this repo under `bridge/rosbot_mavlink_bridge/` (§8.2). It is
 a plain ROS 2 C++ node, **no micro-ROS dependency**, no MAVLink CLI tooling
-dependency, no `mavros`. Runs with any RMW the SBC has configured.
+dependency, no `mavros`. Runs with any RMW the SBC has configured. **Single
+source tree** for both jazzy and humble (D24); the CI matrix builds it twice
+against the matching `ros:<distro>-ros-base` container (the slim official
+image; we don't need the `-desktop` extras).
 
 ### 10.1 API parity contract (hard requirement)
 
@@ -739,16 +771,22 @@ the consumer side.
 
 ### 10.3 Versioning
 
-Bridge and firmware are released together from a single tag, e.g.
-`v1.2.0-jazzy`. The release workflow (§8.3) produces:
+Bridge and firmware are released together from a single tag, e.g. `v1.2.0`
+(MAVLink artefacts) and `v1.2.0-jazzy` (existing micro-ROS artefacts; the
+release workflow drives both naming schemes from the same source tag). The
+release workflow (§8.3) produces:
 
-- four firmware `.bin` files (two variants × two stacks),
-- one source tarball of the bridge package.
+- two micro-ROS firmware `.bin` files (variants × jazzy), unchanged from today,
+- two MAVLink firmware `.bin` files (variants), **no distro suffix**,
+- one bridge source tarball **per supported ROS-2 distro** (initially jazzy
+  and humble).
 
-`rosbot-snap` vendors the bridge tarball at the same tag as the firmware
-binary it flashes. Mismatched bridge / firmware versions are detected by
-parsing the boot banner against an expected-version regex configured at
-build time.
+`rosbot-snap` vendors the bridge tarball that matches its target distro at the
+same tag as the firmware binary it flashes. Because the MAVLink firmware is
+distro-agnostic, the snap pairs *any* of the bridge tarballs at a given tag
+with the *same* `rosbot_mavlink-<tag>.bin`. Mismatched bridge / firmware
+versions are detected by parsing the boot banner against an expected-version
+regex configured at bridge build time.
 
 ---
 
@@ -803,9 +841,12 @@ phase corresponds to one or more PRs into `jazzy-mavlink`.
 - Validate the firmware + bridge works against an SBC running CycloneDDS and
   Zenoh (each tested for at least 30 minutes of teleop + telemetry) with
   `rosbot_ros` checked out unmodified.
+- Validate the **same firmware binary** flashes and runs against an SBC on
+  humble and an SBC on jazzy (the bridge tarball differs, the `.bin` does
+  not).
 - Exit criterion: performance within 10 % of micro-ROS baseline; no warnings
   from either RMW; a `diff` of `ros2 node info` / `ros2 topic info -v` output
-  between agent setup and bridge setup is empty.
+  between agent setup and bridge setup is empty, on both distros.
 
 **Phase 5 — release.**
 - Tag a release. Release workflow produces `rosbot_mavlink-<tag>.bin`,
@@ -830,7 +871,8 @@ whole feature on `jazzy-mavlink` before merging into `jazzy`:
   produce binaries within +20 % flash, +10 % RAM of the matching micro-ROS
   release builds.
 - `colcon build --packages-select rosbot_mavlink_bridge` and `colcon test`
-  pass cleanly under jazzy.
+  pass cleanly under **both jazzy and humble**, from the same source tree
+  (D24).
 - **API parity**: a side-by-side `diff` of
   `ros2 node info`, `ros2 topic info -v`, and `ros2 service list` between an
   agent-based setup and a bridge-based setup (same namespace, same hardware)
