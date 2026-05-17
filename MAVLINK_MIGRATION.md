@@ -608,6 +608,49 @@ build-bridge:
         colcon test --packages-select rosbot_mavlink_bridge --return-code-on-test-failure
 ```
 
+### 8.4 Developer flash workflow on the ROSbot SBC
+
+Day-to-day build + flash is driven by [`justfile`](justfile) at the repo root.
+`just` is a project-scoped command runner already installed on the ROSbot
+image; `just --list` shows the recipes. The relevant ones:
+
+```
+just build rosbot_mavlink         # PlatformIO build, one env
+just build-mavlink                # all four MAVLink envs
+just flash rosbot_xl_mavlink      # build + flash the connected robot
+```
+
+`just flash` shells into [`scripts/flash.sh`](scripts/flash.sh), which does
+*not* reimplement the STM32 bootloader handshake. It delegates to
+`ros2 run rosbot_utils flash_firmware` — the same battle-tested entry point
+the [rosbot-snap](https://github.com/husarion/rosbot-snap)
+`snap/local/flash_launcher.sh` uses in production. The wrapper:
+
+- maps the PlatformIO env name to the `--robot-model` arg
+  (`rosbot_xl*` → `rosbot_xl`, otherwise `rosbot`),
+- auto-selects USB/FTDI for ROSbot XL (or when `SERIAL_TYPE_USB=True`,
+  matching the snap's `driver.serial-type-usb` semantics),
+- finds the FTDI tty by USB VID:PID `0403:6015` via `pyudev` (override with
+  `SERIAL_PORT=/dev/ttyUSBx`),
+- points `flash_firmware --file` at the freshly built
+  `.pio/build/<env>/firmware.bin` instead of the binary bundled inside
+  `rosbot_utils`. **This is the only difference** from the snap path: we
+  flash what we just compiled, not a pre-baked release artefact.
+
+What this implies for MAVLink phases:
+
+- **Phase 1 onward** — `just flash rosbot_mavlink` and
+  `just flash rosbot_xl_mavlink` are the canonical ways to push the new
+  firmware onto a robot for testing. The bridge is started separately from
+  the ROS 2 workspace (`ros2 launch rosbot_mavlink_bridge ...` once the
+  package lives at `bridge/rosbot_mavlink_bridge/`).
+- **Phase 4 parity validation** — the same `flash.sh` flashes both stacks
+  back-to-back on the same robot; the side-by-side `ros2 topic info -v` diff
+  in §12 runs against the same physical hardware in two consecutive runs.
+- **Phase 5 release** — the workflow that builds the release artefacts is
+  separate from this dev recipe; production flashing uses the snap, which
+  pulls the released `.bin`. The dev recipe is for developer machines only.
+
 Release workflow (`release.yaml`) adds the four MAVLink envs to the firmware
 build matrix and builds the bridge tarball once per supported distro:
 
