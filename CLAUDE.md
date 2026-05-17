@@ -104,13 +104,16 @@ do not change the conceptual shape.
 
 - [ARCHITECTURE.md](ARCHITECTURE.md) — full technical reference.
 - [ROS_API.md](ROS_API.md) — user-facing ROS topic / service contract.
+- [MAVLINK_MIGRATION.md](MAVLINK_MIGRATION.md) — implementation spec for the
+  alternative MAVLink stack that ships alongside the micro-ROS path.
+  Active feature work happens on branch `jazzy-mavlink`.
 - [README.md](README.md) — high-level project intro.
 - [CONTRIBUTING.md](CONTRIBUTING.md) — VS Code tasks, dev mode.
 - [platformio.ini](platformio.ini) — build configuration.
 - [.pre-commit-config.yaml](.pre-commit-config.yaml) — hook definitions.
 
 Project memory lives at
-`~/.claude/projects/-home-aayli-Husarion-Firmware-rosbot-firmware/memory/`.
+`~/.claude/projects/-home-husarion-repo-rosbot-firmware/memory/`.
 Use it for facts about the user (preferences, role) and project-specific
 feedback that does not belong in the repo. Do not duplicate this CLAUDE.md
 into memory.
