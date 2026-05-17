@@ -72,7 +72,7 @@ Commit rules:
 
 ## Communication style with the user
 
-- The user converses in **Polish**. Reply in Polish.
+- The user converses in **English**. Reply in English.
 - **Code and commit messages stay in English.** Comments too — match
   surrounding style. The existing repo is mostly English with rare Polish
   comments; do not introduce more Polish into source.
