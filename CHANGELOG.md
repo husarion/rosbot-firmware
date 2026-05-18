@@ -12,6 +12,14 @@ per track — `v0.1.0-jazzy-mavlink` and `v1.1.0-jazzy` are not comparable
 across the suffix boundary, they are parallel release lineages until
 MAVLink merges back into `jazzy`.
 
+## [0.1.1-jazzy-mavlink] - 2026-05-18
+
+### Added
+- Release pipeline now publishes `rosbot_mavlink_bridge` container images to GHCR alongside the firmware artifacts.
+
+### Fixed
+- Release workflow no longer aborts under `set -u` while assembling the `rosbot_mavlink_bridge` tarball, so the bridge artifact is produced reliably.
+
 ## [0.1.0-jazzy-mavlink] - 2026-05-18
 
 ### Added
