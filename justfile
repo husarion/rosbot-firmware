@@ -126,13 +126,16 @@ bridge-rebuild:
     #!/bin/bash
     docker compose -f bridge/docker-compose.yaml build --no-cache
 
-# Cut a release for the current branch. Drives the full local→tag flow:
-# sanity gate, build all four release envs, ask Claude for a semver bump
-# + Keep-a-Changelog section, show the diff, then commit + tag. Does NOT
-# push — the operator runs `git push --follow-tags` themselves so the
-# push step stays explicit. CI (`.github/workflows/release.yaml`) takes
-# over on the tag push and publishes the artefacts, reading the release
-# body from the CHANGELOG.md section the recipe just wrote.
+# Cut a release for the current branch. Drives the full local→published
+# flow: sanity gate, build all four release envs, ask Claude for a semver
+# bump + Keep-a-Changelog section, show the diff, then on y/N confirm
+# commit + tag + push branch + push tag. CI (`.github/workflows/release.yaml`)
+# takes over on the tag push and publishes the artefacts, reading the
+# release body from the CHANGELOG.md section the recipe just wrote.
+#
+# The y/N gate is the one chance to back out before anything irreversible
+# happens. Saying 'y' commits, tags, and pushes in the same breath — push
+# is part of the release, not a separate step the operator has to remember.
 #
 # Requires: claude CLI, jq, python3 — all already present on the SBC.
 release:
@@ -250,7 +253,7 @@ release:
     echo
     git --no-pager diff CHANGELOG.md platformio.ini
     echo
-    read -rp "Commit + tag ${new_tag}? (push stays on you) [y/N] " confirm
+    read -rp "Commit, tag ${new_tag}, and push to origin? [y/N] " confirm
     if [ "${confirm:-N}" != "y" ] && [ "${confirm:-N}" != "Y" ]; then
         echo "aborted — reverting working-tree edits"
         git restore --worktree CHANGELOG.md platformio.ini
@@ -262,11 +265,14 @@ release:
     git add CHANGELOG.md platformio.ini
     git commit -m "Release ${new_tag}"
     git tag -a "${new_tag}" -m "Release ${new_tag}"
+    git push --follow-tags origin "${branch}"
     echo
-    echo "=== released locally — push to trigger CI: ==="
-    echo "  git push origin ${branch} && git push origin ${new_tag}"
-    echo "  # or, equivalently:"
-    echo "  git push --follow-tags origin ${branch}"
+    echo "=== ${new_tag} released — CI is now building artefacts ==="
+    if command -v gh >/dev/null 2>&1; then
+        repo_url=$(gh repo view --json url -q .url 2>/dev/null || true)
+        [ -n "$repo_url" ] && echo "  ${repo_url}/actions"
+        [ -n "$repo_url" ] && echo "  ${repo_url}/releases/tag/${new_tag}"
+    fi
 
 # Copy release-built MAVLink firmware binaries into the bridge package's
 # `firmware/` directory so the rosbot-snap build can bundle them.
