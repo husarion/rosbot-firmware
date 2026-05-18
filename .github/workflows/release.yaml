@@ -123,6 +123,7 @@ jobs:
     runs-on: ubuntu-latest
     env:
       TAG_NAME: ${{ needs.bump-tag.outputs.tag_name }}
+      VERSION: ${{ needs.bump-tag.outputs.version }}
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -135,14 +136,24 @@ jobs:
       - name: Install PlatformIO
         run: pip3 install -U platformio
 
-      - name: Build firmware
-        run: pio run -e rosbot_release -e rosbot_xl_release
+      - name: Build all release envs (micro-ROS + MAVLink)
+        run: |
+          pio run -e rosbot_release -e rosbot_xl_release \
+                  -e rosbot_mavlink_release -e rosbot_xl_mavlink_release
 
       - name: Rename binaries
         run: |
           mkdir -p release
+          # micro-ROS firmware stays jazzy-pinned by micro_ros_arduino;
+          # keep the -<distro> suffix on those artefacts.
           cp .pio/build/rosbot_release/firmware.bin    "release/rosbot-${TAG_NAME}.bin"
           cp .pio/build/rosbot_xl_release/firmware.bin  "release/rosbot_xl-${TAG_NAME}.bin"
+          # MAVLink firmware is distro-agnostic (D24) — drop the suffix so
+          # operators see one binary covers every supported SBC distro.
+          cp .pio/build/rosbot_mavlink_release/firmware.bin \
+             "release/rosbot_mavlink-${VERSION}.bin"
+          cp .pio/build/rosbot_xl_mavlink_release/firmware.bin \
+             "release/rosbot_xl_mavlink-${VERSION}.bin"
           echo "--- Release artifacts ---"
           ls -la release/
 
@@ -154,4 +165,51 @@ jobs:
           files: |
             release/rosbot-${{ env.TAG_NAME }}.bin
             release/rosbot_xl-${{ env.TAG_NAME }}.bin
+            release/rosbot_mavlink-${{ env.VERSION }}.bin
+            release/rosbot_xl_mavlink-${{ env.VERSION }}.bin
             LICENSE
+
+  bridge-release:
+    name: Bridge release tarball (${{ matrix.distro }})
+    needs: bump-tag
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        distro: [jazzy, humble]
+    env:
+      TAG_NAME: ${{ needs.bump-tag.outputs.tag_name }}
+      VERSION: ${{ needs.bump-tag.outputs.version }}
+    container: ros:${{ matrix.distro }}-ros-base
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.bump-tag.outputs.sha }}
+      - name: Build bridge package
+        shell: bash
+        run: |
+          set -euo pipefail
+          source /opt/ros/${{ matrix.distro }}/setup.bash
+          apt-get update
+          rosdep update --rosdistro=${{ matrix.distro }}
+          rosdep install --from-paths bridge --ignore-src -y
+          colcon build --packages-select rosbot_mavlink_bridge --base-paths bridge
+      - name: Package source tarball
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p release
+          tarball="rosbot_mavlink_bridge-${VERSION}-${{ matrix.distro }}-src.tar.gz"
+          # Include both the bridge package and the dialect headers it depends
+          # on. The relative path inside `bridge/`'s CMakeLists.txt is the
+          # contract — the tarball preserves it.
+          tar --transform "s,^,rosbot_mavlink_bridge-${VERSION}/," \
+              -czf "release/${tarball}" \
+              bridge lib/mavlink/dialect/generated lib/mavlink/dialect/rosbot.xml \
+              MAVLINK_MIGRATION.md LICENSE
+          ls -la release/
+      - name: Attach to release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ env.TAG_NAME }}
+          files: release/rosbot_mavlink_bridge-${{ env.VERSION }}-${{ matrix.distro }}-src.tar.gz

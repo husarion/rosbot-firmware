@@ -25,11 +25,13 @@
 #include "motor_hi_z.hpp"
 #include "pid.hpp"
 #include "range_vl53l0.hpp"
+#ifndef USE_MAVLINK
 #include "ros/publishers/battery_publisher.hpp"
 #include "ros/publishers/buttons_publisher.hpp"
 #include "ros/publishers/imu_publisher.hpp"
 #include "ros/publishers/joint_state_publisher.hpp"
 #include "ros/publishers/range_publisher.hpp"
+#endif
 
 // ───────── Arduino settings ─────────
 inline constexpr uint32_t ADC_MAX_VALUE =
@@ -277,6 +279,11 @@ inline constexpr uint8_t BATTERY_NUM_CELLS = 3;
 inline constexpr float BATTERY_CELL_CAPACITY = 2.6f;  // Ah
 inline constexpr float BATTERY_DESIGN_CAPACITY =
     BATTERY_NUM_CELLS * BATTERY_CELL_CAPACITY;
+inline constexpr uint8_t buttons_pins[2] = {PUSH_BUTTON2, PUSH_BUTTON1};
+
+#ifndef USE_MAVLINK
+// micro-ROS publisher configs. MAVLink build constructs its own publishers
+// from the same underlying queue handles + frame ids in ros_mavlink.cpp.
 inline constexpr BatteryPublisherConfig battery_pub_config = {
     .topic = "battery",
     .queue = battery_queue,
@@ -285,7 +292,6 @@ inline constexpr BatteryPublisherConfig battery_pub_config = {
     .num_cells = BATTERY_NUM_CELLS,
 };
 
-inline constexpr uint8_t buttons_pins[2] = {PUSH_BUTTON2, PUSH_BUTTON1};
 inline constexpr ButtonsPublisherConfig buttons_pub_config = {
     .topic = "buttons",
     .pins = buttons_pins,
@@ -311,6 +317,7 @@ inline constexpr RangePublisherConfig range_pub_config = {
     .min_range = 0.01f,
     .max_range = 0.9f,
 };
+#endif  // USE_MAVLINK
 
 // ───────── SBC Interface ─────────
 inline constexpr uint32_t SBC_SERIAL_TIMEOUT_MS = 100;

@@ -86,7 +86,7 @@ Companion documents:
 | D13 | Message signing | **Off** for both MVP and v1. Same trust model as today. |
 | D14 | Diagnostic-serial logs | **Keep diag-serial logs and** emit duplicate `STATUSTEXT` over the main link. |
 | D15 | Time sync | **MCU-initiated MAVLink `TIMESYNC`** ping-pong. Filtered offset applied to all timestamps. |
-| D16 | rosbot serial transport | **Re-use DMA TX + yielding-poll RX** pattern from `lib/ros/ros/transport/serial_transport.cpp`, strip XRCE framing, add MAVLink parser. |
+| D16 | rosbot serial transport | **Reuse DMA TX + yielding-poll RX** pattern from `lib/ros/ros/transport/serial_transport.cpp`, strip XRCE framing, add MAVLink parser. |
 | D17 | rosbot_xl UDP transport | **Mavros default ports**: MCU listens on **14555**, sends to **14550**. LwIP raw API pattern reused. |
 | D18 | CI matrix | **Build all 8 envs** on every push. Pre-commit job remains as is. |
 | D19 | Mismatch detection | Firmware emits **one-shot `STATUSTEXT`** on boot: `"rosbot[_xl] <FW_VERSION> mavlink"`. Bridge requires this banner before declaring CONNECTED. |

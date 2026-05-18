@@ -11,3 +11,72 @@ jobs:
     uses: ros-controls/ros2_control_ci/.github/workflows/reusable-pre-commit.yml@master
     with:
       ros_distro: jazzy
+
+  build-firmware:
+    name: Build firmware (${{ matrix.env }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        env:
+          - rosbot
+          - rosbot_release
+          - rosbot_xl
+          - rosbot_xl_release
+          - rosbot_mavlink
+          - rosbot_mavlink_release
+          - rosbot_xl_mavlink
+          - rosbot_xl_mavlink_release
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install PlatformIO
+        run: pip3 install -U platformio
+      - name: Build env ${{ matrix.env }}
+        run: pio run -e ${{ matrix.env }}
+
+  build-bridge:
+    name: Build bridge (${{ matrix.distro }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        distro: [jazzy, humble]
+    container: ros:${{ matrix.distro }}-ros-base
+    steps:
+      - uses: actions/checkout@v4
+      - name: Resolve deps and build bridge
+        shell: bash
+        run: |
+          set -euo pipefail
+          source /opt/ros/${{ matrix.distro }}/setup.bash
+          apt-get update
+          rosdep update --rosdistro=${{ matrix.distro }}
+          rosdep install --from-paths bridge --ignore-src -y
+          colcon build --packages-select rosbot_mavlink_bridge --base-paths bridge \
+            --event-handlers console_direct+
+          colcon test --packages-select rosbot_mavlink_bridge --base-paths bridge \
+            --return-code-on-test-failure --event-handlers console_direct+
+
+  verify-dialect:
+    name: Verify checked-in MAVLink dialect headers
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install pymavlink
+        run: pip3 install -U pymavlink
+      - name: Regenerate and diff
+        shell: bash
+        run: |
+          set -euo pipefail
+          # Vendored common.xml etc. must accompany rosbot.xml so mavgen
+          # finds them without an internet round-trip.
+          tmp=$(mktemp -d)
+          mavgen.py --lang=C --wire-protocol=2.0 \
+            --output="$tmp/generated" lib/mavlink/dialect/rosbot.xml
+          diff -ruN lib/mavlink/dialect/generated "$tmp/generated"

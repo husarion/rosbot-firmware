@@ -28,15 +28,32 @@
 #include "motor_array.hpp"
 #include "ntc.hpp"
 #include "power_board.hpp"
+#include "robotics_link.hpp"
+
+#ifdef USE_MAVLINK
+#include "mavlink_types.hpp"  // queue wrappers (BatteryStamped etc.)
+#else
 #include "ros/clients/trigger_client.hpp"
 #include "ros/publishers/battery_publisher.hpp"
 #include "ros/publishers/imu_publisher.hpp"
 #include "ros/publishers/joint_state_publisher.hpp"
 #include "ros/ros_node.hpp"
+#endif
 
 // ───── Externs ─────
 extern FanController g_fan;
 extern PowerBoard power_board;
+
+// ───── Link selection ─────
+// One concrete RoboticsLink lives per build. The variant's ros[_mavlink].cpp
+// defines it; we just publish the polymorphic reference the tasks use.
+#ifdef USE_MAVLINK
+#include "mavlink_node.hpp"
+extern MavlinkNode g_mavlink_node;
+RoboticsLink& g_link = g_mavlink_node;
+#else
+RoboticsLink& g_link = g_ros_node;
+#endif
 
 // ───── Queues ─────
 void createQueues() {
@@ -88,7 +105,7 @@ void hwMonitorTask(void* p) {
     // LED Indicator
     bool battery_low = g_battery->isLow();
     bool error_state = false;
-    g_indicator.update(battery_low, !g_ros_node.isConnected(), error_state);
+    g_indicator.update(battery_low, !g_link.isConnected(), error_state);
 
     if (xTaskGetTickCount() - last_battery_update > pdMS_TO_TICKS(1000)) {
       // Fan
@@ -241,7 +258,7 @@ void uRosTask(void* p) {
   TickType_t wake_time = xTaskGetTickCount();
 
   while (true) {
-    g_ros_node.loop();
+    g_link.loop();
     vTaskDelayUntil(&wake_time, period);
   }
 }

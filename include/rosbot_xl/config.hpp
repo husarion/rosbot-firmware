@@ -29,10 +29,12 @@
 #include "ntc.hpp"
 #include "pid.hpp"
 #include "power_board.hpp"
+#ifndef USE_MAVLINK
 #include "ros/publishers/battery_publisher.hpp"
 #include "ros/publishers/buttons_publisher.hpp"
 #include "ros/publishers/imu_publisher.hpp"
 #include "ros/publishers/joint_state_publisher.hpp"
+#endif
 #include "transport/spi_transport.hpp"
 
 // ───────── Arduino settings ─────────
@@ -374,6 +376,12 @@ inline constexpr uint8_t BATTERY_NUM_CELLS = 3;
 inline constexpr float BATTERY_CELL_CAPACITY = 2.6f;  // Ah
 inline constexpr float BATTERY_DESIGN_CAPACITY =
     BATTERY_NUM_CELLS * BATTERY_CELL_CAPACITY;
+inline constexpr uint8_t buttons_pins[] = {PUSH_BUTTON1};
+
+#ifndef USE_MAVLINK
+// micro-ROS publishers configured here; the MAVLink build constructs its
+// own publishers in ros_mavlink.cpp from the same underlying values
+// (queue handles, frame ids) so the topic semantics stay identical.
 inline constexpr BatteryPublisherConfig battery_pub_config = {
     .topic = "battery",
     .queue = battery_queue,
@@ -382,7 +390,6 @@ inline constexpr BatteryPublisherConfig battery_pub_config = {
     .num_cells = BATTERY_NUM_CELLS,
 };
 
-inline constexpr uint8_t buttons_pins[] = {PUSH_BUTTON1};
 inline constexpr ButtonsPublisherConfig buttons_pub_config = {
     .topic = "buttons",
     .pins = buttons_pins,
@@ -400,6 +407,7 @@ inline constexpr JointStatePublisherConfig joint_state_pub_config = {
     .queue = joint_state_queue,
     .frame_id = "base_link",
 };
+#endif  // USE_MAVLINK
 
 // ───────── Power Board - Battery ─────────
 inline constexpr PowerBoardConfig power_board_config = {

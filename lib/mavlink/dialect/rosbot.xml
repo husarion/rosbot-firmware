@@ -1,0 +1,52 @@
+<?xml version="1.0"?>
+<mavlink>
+  <include>common.xml</include>
+  <version>1</version>
+  <dialect>11</dialect>
+
+  <messages>
+    <message id="11001" name="ROSBOT_IMU">
+      <description>IMU sample (orientation + gyro + accel) from rosbot MCU.</description>
+      <field type="uint64_t" name="time_boot_us">Timestamp since MCU boot [us].</field>
+      <field type="float[4]"  name="quaternion">Orientation {x,y,z,w}.</field>
+      <field type="float[3]"  name="angular_velocity">Gyro [rad/s], IMU frame.</field>
+      <field type="float[3]"  name="linear_acceleration">Accel [m/s^2], IMU frame.</field>
+    </message>
+
+    <message id="11002" name="ROSBOT_JOINT_STATE">
+      <description>Wheel joint state, order: FL, FR, RL, RR.</description>
+      <field type="uint64_t" name="time_boot_us">Timestamp since MCU boot [us].</field>
+      <field type="float[4]"  name="position">Wheel position [rad].</field>
+      <field type="float[4]"  name="velocity">Wheel angular velocity [rad/s].</field>
+      <field type="float[4]"  name="effort">Wheel effort [Nm or PWM duty fallback].</field>
+    </message>
+
+    <message id="11003" name="ROSBOT_BUTTONS">
+      <description>User-button bitmask snapshot.</description>
+      <field type="uint64_t" name="time_boot_us">Timestamp since MCU boot [us].</field>
+      <field type="uint8_t"  name="mask">Pressed-button bitmask.</field>
+    </message>
+
+    <message id="11010" name="ROSBOT_WHEEL_SETPOINTS">
+      <description>Wheel velocity setpoints, order: FL, FR, RL, RR.</description>
+      <field type="uint64_t" name="time_boot_us">Bridge-side stamp for diagnostics [us].</field>
+      <field type="float[4]"  name="velocity">Target wheel angular velocity [rad/s].</field>
+    </message>
+
+    <message id="11011" name="ROSBOT_PANEL_LEDS">
+      <description>Rear-panel LED state bitmask.</description>
+      <field type="uint8_t" name="mask">Desired LED bitmask.</field>
+    </message>
+
+    <message id="11012" name="ROSBOT_LED_STRIP">
+      <description>LED strip RGB frame (rosbot_xl).</description>
+      <field type="uint8_t"     name="count">Number of valid pixels (0..18).</field>
+      <field type="uint8_t[54]" name="rgb">Pixel data, RGB triplets, count*3 valid bytes.</field>
+    </message>
+
+    <message id="11020" name="ROSBOT_MCU_ID">
+      <description>Reply to MAV_CMD_USER_1 carrying the MCU unique identifier.</description>
+      <field type="char[24]" name="uid">Hex-encoded 12-byte MCU UID.</field>
+    </message>
+  </messages>
+</mavlink>
