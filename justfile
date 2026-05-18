@@ -141,10 +141,16 @@ bridge-rebuild:
 release:
     #!/bin/bash
     set -euo pipefail
+    # Prepend the dev venv so 'pio' resolves the same way it does for the
+    # rest of the just recipes (see `install-deps`). Harmless when pio is
+    # already on PATH; required when running from a fresh shell.
+    export PATH="{{venv}}/bin:$PATH"
 
     # ---- 1. sanity ----
     [ -z "$(git status --porcelain)" ] \
         || { echo "release: working tree dirty — commit or stash first" >&2; exit 1; }
+    command -v pio >/dev/null \
+        || { echo "release: 'pio' not on PATH (run: just install-deps)" >&2; exit 1; }
     branch=$(git branch --show-current)
     [ "$branch" != "main" ] \
         || { echo "release: must not be on 'main' (jazzy / jazzy-* is the working branch)" >&2; exit 1; }
