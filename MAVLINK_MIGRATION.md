@@ -1,19 +1,32 @@
 # MAVLink migration — implementation spec
 
-This document is the implementation contract for adding a MAVLink-based
+> **Status: shipped.** Phases 1–5 are implemented on branch `jazzy-mavlink`.
+> This document is preserved as the design record — rationale, dialect IDs,
+> the D1–D24 sign-off decisions, and the phasing that got us here. It is no
+> longer the live reference for *how the firmware works today*; for that see:
+>
+> - [ARCHITECTURE.md](ARCHITECTURE.md) — current firmware architecture,
+>   including the MAVLink stack.
+> - [ROS_API.md](ROS_API.md) — user-facing ROS 2 topic / service contract
+>   (identical for both flavours).
+> - [README.md](README.md) — how to build, flash and launch each flavour.
+>
+> Read this document when you need to know *why* a design decision was made,
+> not *what* the current code does.
+
+This document was the implementation contract for adding a MAVLink-based
 communication stack to the firmware alongside the existing micro-ROS / XRCE-DDS
-stack. All open design decisions have been resolved (see §2). Anyone can pick this
-document up and implement Phase 1 without further clarification rounds.
+stack. All open design decisions had been resolved (see §2) before
+implementation began.
 
 Branch for the work: `jazzy-mavlink` (off `jazzy`). The micro-ROS path on `jazzy`
 keeps shipping unchanged; the MAVLink path adds new PlatformIO envs and a parallel
 `lib/mavlink/` subsystem.
 
 Companion documents:
-- [ARCHITECTURE.md](ARCHITECTURE.md) — current firmware architecture (must stay
-  accurate after each phase lands).
+- [ARCHITECTURE.md](ARCHITECTURE.md) — current firmware architecture.
 - [ROS_API.md](ROS_API.md) — user-facing topic / service contract. The bridge
-  must preserve this exactly. No diffs.
+  preserves this exactly. No diffs.
 - [CLAUDE.md](CLAUDE.md) — workflow expectations.
 
 ---
