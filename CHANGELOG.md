@@ -11,3 +11,14 @@ Release tags carry a track suffix (`-jazzy` for the micro-ROS track,
 per track — `v0.1.0-jazzy-mavlink` and `v1.1.0-jazzy` are not comparable
 across the suffix boundary, they are parallel release lineages until
 MAVLink merges back into `jazzy`.
+
+## [0.1.0-jazzy-mavlink] - 2026-05-18
+
+### Added
+- MAVLink firmware as a second transport alongside the micro-ROS firmware; both rosbot and rosbot_xl can be flashed with either flavour. Pairs with the new `rosbot_mavlink_bridge` on the SBC side.
+- `just` recipes plus `scripts/flash.sh` wrapper for the SBC-side build + flash workflow; flash picks the right model and port based on the PlatformIO env and points at the freshly-built `firmware.bin`.
+- `just release` recipe with tag-driven release workflow — bumps the version, updates the changelog, commits, tags and pushes; auto-bootstraps the dev venv (PlatformIO included) on a clean host.
+
+### Changed
+- `ROS_API.md` rewritten to be transport-neutral, so the same topic/service contract covers both the micro-ROS firmware and the MAVLink firmware + `rosbot_mavlink_bridge` pair.
+
