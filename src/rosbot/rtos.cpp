@@ -19,7 +19,6 @@
 #include "battery_interface.hpp"
 #include "communication_manager.hpp"
 #include "config.hpp"
-#include "encoder_array.hpp"
 #include "imu_interface.hpp"
 #include "led_indicator.hpp"
 #include "motor_array.hpp"
@@ -33,25 +32,22 @@
 void createQueues() {
   battery_queue = xQueueCreate(1, sizeof(BatteryStamped));
   imu_queue = xQueueCreate(1, sizeof(ImuStamped));
-  joint_state_queue = xQueueCreate(1, sizeof(EncodersStamped));
+  joint_state_queue = xQueueCreate(1, sizeof(JointStateStamped));
   ranges_queue = xQueueCreate(1, sizeof(RangesStamped));
 }
 
 // ──── Create all tasks ────
 void batteryTask(void* p);
-void encoderTask(void* p);
 void imuTask(void* p);
 void ledIndicatorTask(void* p);
 void monitorTask(void* p);
 void motorControlTask(void* p);
 void rangeTask(void* p);
 void uRosTask(void* p);
-void uRosPingTask(void* p);
 
 inline TaskConfig tasks[] = {
     {"Battery", Priority::SENSORS, Stack::XS, 10, batteryTask},
-    {"Encoder", Priority::CONTROL, Stack::S, 500, encoderTask},
-    {"Imu", Priority::SENSORS, Stack::M, 50, imuTask},
+    {"Imu", Priority::SENSORS, Stack::M, 100, imuTask},
     {"LedIndicator", Priority::OBSERVING, Stack::XS, 20, ledIndicatorTask},
 #ifndef RELEASE
     {"Monitor", Priority::BLOCKING, Stack::XL, 1, monitorTask},
@@ -87,23 +83,6 @@ void batteryTask(void* p) {
   }
 }
 
-void encoderTask(void* p) {
-  TickType_t period = taskGetPeriod(p);
-  TickType_t wake_time = xTaskGetTickCount();
-  EncodersStamped data = {};
-
-  while (true) {
-    bool connected = rtos_get_timestamp_ns(data.timestamp_ns);
-    g_encoders.update();
-    data.data = g_encoders.getData();
-
-    if (connected) {
-      xQueueOverwrite(joint_state_queue, &data);
-    }
-    vTaskDelayUntil(&wake_time, period);
-  }
-}
-
 void imuTask(void* p) {
   TickType_t period = taskGetPeriod(p);
   TickType_t wake_time = xTaskGetTickCount();
@@ -111,7 +90,7 @@ void imuTask(void* p) {
 
   while (true) {
     bool connected = rtos_get_timestamp_ns(data.timestamp_ns);
-    g_imu->update();  // TODO: DMA should be used
+    g_imu->update();
     data.data = g_imu->getData();
 
     if (connected) {
@@ -162,9 +141,16 @@ void monitorTask(void* p) {
 void motorControlTask(void* p) {
   TickType_t period = taskGetPeriod(p);
   TickType_t wake_time = xTaskGetTickCount();
+  JointStateStamped data = {};
 
   while (true) {
-    g_motors.update();
+    bool connected = rtos_get_timestamp_ns(data.timestamp_ns);
+
+    g_motors.update();  // updates all motors, including encoders
+    data.data = g_motors.getData();
+    if (connected) {
+      xQueueOverwrite(joint_state_queue, &data);
+    }
 
     vTaskDelayUntil(&wake_time, period);
   }

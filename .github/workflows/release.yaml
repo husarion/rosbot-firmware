@@ -43,9 +43,10 @@ jobs:
         id: get_tag
         run: |
           distro=${{ steps.distro.outputs.distro }}
-          latest_tag=$(git tag -l "${distro}-v*" --sort=-v:refname | head -n1)
+          # Tag format produced by this workflow: v<major>.<minor>.<patch>-<distro>
+          latest_tag=$(git tag -l "v*-${distro}" --sort=-v:refname | head -n1)
           if [ -z "$latest_tag" ]; then
-            latest_tag="${distro}-v0.0.0"
+            latest_tag="v0.0.0-${distro}"
           fi
           echo "Latest tag: $latest_tag"
           echo "latest=$latest_tag" >> $GITHUB_OUTPUT
@@ -57,7 +58,8 @@ jobs:
           bump_type="${{ github.event.inputs.bump_type }}"
           distro="${{ steps.distro.outputs.distro }}"
 
-          latest_num=$(echo "$latest" | sed "s/^${distro}-v//")
+          # Strip leading "v" and trailing "-<distro>" to get bare X.Y.Z
+          latest_num=$(echo "$latest" | sed -E "s/^v//; s/-${distro}\$//")
           IFS='.' read -r major minor patch <<< "$latest_num"
 
           if [ "$bump_type" = "major" ]; then

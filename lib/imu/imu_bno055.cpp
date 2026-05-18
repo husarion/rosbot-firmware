@@ -14,7 +14,89 @@
 
 #include "imu_bno055.hpp"
 
+#include <STM32FreeRTOS.h>
 #include <wiring_constants.h>
+
+namespace {
+
+// BNO055 has acceleration, magnetometer, gyroscope, euler and quaternion
+// data laid out contiguously starting at register 0x08. We DMA-read the
+// whole 32-byte block in one transaction and ignore mag/euler bytes.
+constexpr uint8_t kStartReg = 0x08;     // ACC_DATA_X_LSB
+constexpr uint16_t kBlockLen = 32;      // 0x08..0x27 inclusive
+constexpr uint16_t kReadTimeoutMs = 4;  // 32 B @ 400 kHz takes ~0.7 ms
+
+// FreeRTOS-safe NVIC priority. Must be numerically >=
+// configLIBRARY_MAX_SYSCALL_INTERRUPT_PRIORITY (5) so ISRs can call the
+// *FromISR API.
+constexpr uint32_t kIrqPriority = 5;
+
+// STM32F4 DMA1 mapping for I2C RX. Reference: RM0090, Table 42.
+struct DmaRxMap {
+  DMA_Stream_TypeDef* stream;
+  uint32_t channel;
+  IRQn_Type irqn;
+};
+
+const DmaRxMap* findRxMap(I2C_TypeDef* inst) {
+#ifdef I2C1
+  static const DmaRxMap kI2C1Rx = {DMA1_Stream0, DMA_CHANNEL_1,
+                                   DMA1_Stream0_IRQn};
+  if (inst == I2C1) return &kI2C1Rx;
+#endif
+#ifdef I2C2
+  static const DmaRxMap kI2C2Rx = {DMA1_Stream3, DMA_CHANNEL_7,
+                                   DMA1_Stream3_IRQn};
+  if (inst == I2C2) return &kI2C2Rx;
+#endif
+#ifdef I2C3
+  static const DmaRxMap kI2C3Rx = {DMA1_Stream2, DMA_CHANNEL_3,
+                                   DMA1_Stream2_IRQn};
+  if (inst == I2C3) return &kI2C3Rx;
+#endif
+  return nullptr;
+}
+
+// DMA1 buffers must live in regular SRAM (DMA1 cannot reach CCM on F4).
+// Aligning to 4 bytes is safe for the F4 DMA controller.
+alignas(4) uint8_t s_buf[kBlockLen];
+
+I2C_HandleTypeDef* s_hi2c = nullptr;
+DMA_HandleTypeDef s_hdma_rx = {};
+SemaphoreHandle_t s_done_sem = nullptr;
+volatile bool s_xfer_ok = false;
+
+inline int16_t le16(const uint8_t* p) {
+  return static_cast<int16_t>(static_cast<uint16_t>(p[0]) |
+                              (static_cast<uint16_t>(p[1]) << 8));
+}
+
+}  // namespace
+
+extern "C" void HAL_I2C_MemRxCpltCallback(I2C_HandleTypeDef* hi2c) {
+  if (hi2c != s_hi2c || s_done_sem == nullptr) return;
+  BaseType_t hpw = pdFALSE;
+  s_xfer_ok = true;
+  xSemaphoreGiveFromISR(s_done_sem, &hpw);
+  portYIELD_FROM_ISR(hpw);
+}
+
+// On NACK/bus errors HAL invokes the framework's HAL_I2C_ErrorCallback in
+// twi.c (strong symbol — cannot be overridden); the I2C state machine
+// resets but the success semaphore is never given, so update() falls
+// through on the xSemaphoreTake timeout below.
+
+// Stream IRQ handlers for the streams we may bind to. Each guards against
+// stray firings by checking that we own that stream.
+extern "C" void DMA1_Stream0_IRQHandler() {
+  if (s_hdma_rx.Instance == DMA1_Stream0) HAL_DMA_IRQHandler(&s_hdma_rx);
+}
+extern "C" void DMA1_Stream2_IRQHandler() {
+  if (s_hdma_rx.Instance == DMA1_Stream2) HAL_DMA_IRQHandler(&s_hdma_rx);
+}
+extern "C" void DMA1_Stream3_IRQHandler() {
+  if (s_hdma_rx.Instance == DMA1_Stream3) HAL_DMA_IRQHandler(&s_hdma_rx);
+}
 
 ImuBno055::ImuBno055(const ImuBno055Config& cfg)
     : cfg_(cfg), bno_(cfg.sensor_id, cfg.i2c_addr, cfg.bus) {}
@@ -28,23 +110,104 @@ bool ImuBno055::init() {
   bno_.setAxisSign(cfg_.axis_sign);
   bno_.setExtCrystalUse(true);
 
-  return true;
+  s_hi2c = cfg_.bus->getHandle();
+  const DmaRxMap* map = findRxMap(s_hi2c->Instance);
+  if (map == nullptr) {
+    return false;
+  }
+
+  __HAL_RCC_DMA1_CLK_ENABLE();
+
+  s_hdma_rx.Instance = map->stream;
+  s_hdma_rx.Init.Channel = map->channel;
+  s_hdma_rx.Init.Direction = DMA_PERIPH_TO_MEMORY;
+  s_hdma_rx.Init.PeriphInc = DMA_PINC_DISABLE;
+  s_hdma_rx.Init.MemInc = DMA_MINC_ENABLE;
+  s_hdma_rx.Init.PeriphDataAlignment = DMA_PDATAALIGN_BYTE;
+  s_hdma_rx.Init.MemDataAlignment = DMA_MDATAALIGN_BYTE;
+  s_hdma_rx.Init.Mode = DMA_NORMAL;
+  s_hdma_rx.Init.Priority = DMA_PRIORITY_HIGH;
+  s_hdma_rx.Init.FIFOMode = DMA_FIFOMODE_DISABLE;
+  s_hdma_rx.Init.FIFOThreshold = DMA_FIFO_THRESHOLD_FULL;
+  s_hdma_rx.Init.MemBurst = DMA_MBURST_SINGLE;
+  s_hdma_rx.Init.PeriphBurst = DMA_PBURST_SINGLE;
+
+  if (HAL_DMA_Init(&s_hdma_rx) != HAL_OK) {
+    return false;
+  }
+  __HAL_LINKDMA(s_hi2c, hdmarx, s_hdma_rx);
+
+  HAL_NVIC_SetPriority(map->irqn, kIrqPriority, 0);
+  HAL_NVIC_EnableIRQ(map->irqn);
+
+  // Wire's I2C IRQs were configured by the framework at priority 2 (above
+  // configMAX_SYSCALL_INTERRUPT_PRIORITY=5). Lower them so HAL's I2C IRQ
+  // path can call FreeRTOS *FromISR API safely from our overrides.
+  IRQn_Type ev_irq = (IRQn_Type)0;
+  IRQn_Type er_irq = (IRQn_Type)0;
+#ifdef I2C1
+  if (s_hi2c->Instance == I2C1) {
+    ev_irq = I2C1_EV_IRQn;
+    er_irq = I2C1_ER_IRQn;
+  }
+#endif
+#ifdef I2C2
+  if (s_hi2c->Instance == I2C2) {
+    ev_irq = I2C2_EV_IRQn;
+    er_irq = I2C2_ER_IRQn;
+  }
+#endif
+#ifdef I2C3
+  if (s_hi2c->Instance == I2C3) {
+    ev_irq = I2C3_EV_IRQn;
+    er_irq = I2C3_ER_IRQn;
+  }
+#endif
+  HAL_NVIC_SetPriority(ev_irq, kIrqPriority, 0);
+  HAL_NVIC_SetPriority(er_irq, kIrqPriority, 0);
+
+  s_done_sem = xSemaphoreCreateBinary();
+  return s_done_sem != nullptr;
 }
 
 void ImuBno055::update() {
-  imu::Vector<3> accel = bno_.getVector(Adafruit_BNO055::VECTOR_ACCELEROMETER);
-  data_.acceleration[0] = accel.x();
-  data_.acceleration[1] = accel.y();
-  data_.acceleration[2] = accel.z();
+  if (s_done_sem == nullptr) return;
 
-  imu::Vector<3> gyro = bno_.getVector(Adafruit_BNO055::VECTOR_GYROSCOPE);
-  data_.angular_velocity[0] = gyro.x() * DEG_TO_RAD;
-  data_.angular_velocity[1] = gyro.y() * DEG_TO_RAD;
-  data_.angular_velocity[2] = gyro.z() * DEG_TO_RAD;
+  s_xfer_ok = false;
+  // Drain any stale completion left over from a previous timeout.
+  xSemaphoreTake(s_done_sem, 0);
 
-  imu::Quaternion q = bno_.getQuat();
-  data_.orientation[0] = q.x();
-  data_.orientation[1] = q.y();
-  data_.orientation[2] = q.z();
-  data_.orientation[3] = q.w();
+  if (HAL_I2C_Mem_Read_DMA(s_hi2c, cfg_.i2c_addr << 1, kStartReg,
+                           I2C_MEMADD_SIZE_8BIT, s_buf, kBlockLen) != HAL_OK) {
+    return;
+  }
+
+  if (xSemaphoreTake(s_done_sem, pdMS_TO_TICKS(kReadTimeoutMs)) != pdTRUE) {
+    HAL_I2C_Master_Abort_IT(s_hi2c, cfg_.i2c_addr << 1);
+    return;
+  }
+  if (!s_xfer_ok) return;
+
+  // Acceleration: 1 LSB = 0.01 m/s²  (offsets 0..5)
+  data_.acceleration[0] = le16(&s_buf[0]) / 100.0f;
+  data_.acceleration[1] = le16(&s_buf[2]) / 100.0f;
+  data_.acceleration[2] = le16(&s_buf[4]) / 100.0f;
+
+  // Gyroscope: 1 LSB = 1/16 deg/s → rad/s  (offsets 12..17)
+  constexpr float kGyroToRad = (1.0f / 16.0f) * DEG_TO_RAD;
+  data_.angular_velocity[0] = le16(&s_buf[12]) * kGyroToRad;
+  data_.angular_velocity[1] = le16(&s_buf[14]) * kGyroToRad;
+  data_.angular_velocity[2] = le16(&s_buf[16]) * kGyroToRad;
+
+  // Quaternion: w,x,y,z order in the register block, 1 LSB = 1/2^14
+  // (offsets 24..31). ImuData stores x,y,z,w.
+  constexpr float kQuatScale = 1.0f / (1 << 14);
+  const float qw = le16(&s_buf[24]) * kQuatScale;
+  const float qx = le16(&s_buf[26]) * kQuatScale;
+  const float qy = le16(&s_buf[28]) * kQuatScale;
+  const float qz = le16(&s_buf[30]) * kQuatScale;
+  data_.orientation[0] = qx;
+  data_.orientation[1] = qy;
+  data_.orientation[2] = qz;
+  data_.orientation[3] = qw;
 }

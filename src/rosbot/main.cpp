@@ -18,12 +18,11 @@
 #include "battery_interface.hpp"
 #include "communication_manager.hpp"
 #include "config.hpp"
-#include "encoder_array.hpp"
 #include "hardware_encoder.hpp"
 #include "imu_bno055.hpp"
 #include "led_indicator.hpp"
 #include "motor_array.hpp"
-#include "motor_drv8848.hpp"
+#include "motor_hi_z.hpp"
 #include "range_array.hpp"
 #include "range_vl53l0.hpp"
 #include "ros/ros_node.hpp"
@@ -37,21 +36,15 @@ static HardwareEncoder enc_fl(enc_fl_config);
 static HardwareEncoder enc_fr(enc_fr_config);
 static HardwareEncoder enc_rl(enc_rl_config);
 static HardwareEncoder enc_rr(enc_rr_config);
-static EncoderInterface* encoders[] = {&enc_fl, &enc_fr, &enc_rl, &enc_rr};
-static constexpr uint8_t ENCODER_COUNT = sizeof(encoders) / sizeof(encoders[0]);
 
 // ───────── IMU ─────────
 ImuBno055 imu_bno055(imu_bno055_config);
 
 // ───────── Motors ─────────
-static MotorDrv8848 motor_fl(motor_fl_config, &enc_fl,
-                             PIDController(pid_config));
-static MotorDrv8848 motor_fr(motor_fr_config, &enc_fr,
-                             PIDController(pid_config));
-static MotorDrv8848 motor_rl(motor_rl_config, &enc_rl,
-                             PIDController(pid_config));
-static MotorDrv8848 motor_rr(motor_rr_config, &enc_rr,
-                             PIDController(pid_config));
+static MotorHiZ motor_fl(motor_fl_config, &enc_fl, PIDController(pid_config));
+static MotorHiZ motor_fr(motor_fr_config, &enc_fr, PIDController(pid_config));
+static MotorHiZ motor_rl(motor_rl_config, &enc_rl, PIDController(pid_config));
+static MotorHiZ motor_rr(motor_rr_config, &enc_rr, PIDController(pid_config));
 static MotorInterface* motors[] = {&motor_fl, &motor_fr, &motor_rl, &motor_rr};
 static constexpr uint8_t MOTOR_COUNT = sizeof(motors) / sizeof(motors[0]);
 static constexpr uint8_t DRIVER_GROUP_COUNT =
@@ -69,7 +62,6 @@ static constexpr uint8_t RANGE_COUNT =
 
 // ───────── Extern variables ─────────
 BatteryInterface* g_battery = &battery_adc;
-EncoderArray g_encoders(encoders, ENCODER_COUNT);
 ImuInterface* g_imu = &imu_bno055;
 LedIndicator g_indicator(led_status_config);
 MotorArray g_motors(motors, MOTOR_COUNT, driver_groups, DRIVER_GROUP_COUNT);
@@ -91,6 +83,8 @@ CommunicationManagerConfig communication_config = {
     .useDiagnosticCondition = useAlt,
     .onDiagnosticSelected = confirmAlt};
 CommunicationManager g_comm_mgr(communication_config);
+
+static float supplyVoltage() { return g_battery->getData().voltage; }
 
 void boardPheripheralsInit() {
   // Initialize Buttons
@@ -129,10 +123,12 @@ void setup() {
 
   // Sensors initialization
   battery_adc.init();
-  g_encoders.init();
   imu_bno055.init();
   g_indicator.init();
-  g_motors.init();
+  for (auto* m : {&motor_fl, &motor_fr, &motor_rl, &motor_rr}) {
+    m->setSupplyVoltageProvider(supplyVoltage);
+  }
+  g_motors.init();  // motors own encoders → enc init happens here
   g_ranges.init();
   g_ros_node.serialTransportInit(*transport);
   g_ros_node.setDiagnosticSerial(g_comm_mgr.debugSerial());

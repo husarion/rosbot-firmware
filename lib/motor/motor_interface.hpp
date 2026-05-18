@@ -35,7 +35,6 @@ class MotorInterface {
   virtual void brake() = 0;
   virtual void setNeutral() = 0;
 
-  virtual void setEnabled(bool en) = 0;
   virtual MotorData getData() const { return data_; }
 
   virtual const char* name() const = 0;

@@ -37,7 +37,7 @@ struct MotorsData {
 
 /// Container for N motor interfaces with driver management,
 /// watchdog, and FreeRTOS thread safety.
-/// Pattern identical to EncoderArray / RangeArray.
+/// Pattern identical to RangeArray.
 class MotorArray {
  public:
   static constexpr uint32_t WATCHDOG_TIMEOUT_MS = 500;

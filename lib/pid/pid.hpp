@@ -18,8 +18,12 @@ struct PIDConfig {
   float kp;
   float ki;
   float kd;
-  float min_output = -1.0f;        // Default output limits
-  float max_output = 1.0f;         // Default output limits
+  float kv = 0.0f;           // Velocity feedforward: output += kv * setpoint
+  float min_output = -1.0f;  // Default output limits
+  float max_output = 1.0f;   // Default output limits
+  float max_brake_output =
+      0.0f;  // Max reverse PWM magnitude during same-direction braking.
+             // 0 disables active braking (only passive coast-down).
   float min_power_to_move = 0.0f;  // Minimum output to overcome
   float compensation_up_to_speed =
       0.0f;  // Speed up to which inertia compensation is applied

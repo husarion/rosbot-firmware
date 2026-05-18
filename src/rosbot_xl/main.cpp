@@ -17,13 +17,12 @@
 #include "battery_interface.hpp"
 #include "communication_manager.hpp"
 #include "config.hpp"
-#include "encoder_array.hpp"
 #include "hardware_encoder.hpp"
 #include "imu_bno055.hpp"
 #include "led_indicator.hpp"
 #include "led_strip.hpp"
 #include "motor_array.hpp"
-#include "motor_drv8848.hpp"
+#include "motor_hi_z.hpp"
 #include "power_board.hpp"
 #include "ros/ros_node.hpp"
 #include "rtos.hpp"
@@ -36,8 +35,6 @@ static HardwareEncoder enc_fl(enc_fl_config);
 static HardwareEncoder enc_fr(enc_fr_config);
 static HardwareEncoder enc_rl(enc_rl_config);
 static HardwareEncoder enc_rr(enc_rr_config);
-static EncoderInterface* encoders[] = {&enc_fl, &enc_fr, &enc_rl, &enc_rr};
-static constexpr uint8_t ENCODER_COUNT = sizeof(encoders) / sizeof(encoders[0]);
 
 // ───────── Fan ─────────
 FanController g_fan;
@@ -50,14 +47,10 @@ static SpiTransport s_transport(spi_config);
 
 // ───────── Motors (compatible with MAX22205) ─────────
 // TODO: Can be improved and used tourque control
-static MotorDrv8848 motor_fl(motor_fl_config, &enc_fl,
-                             PIDController(pid_config));
-static MotorDrv8848 motor_fr(motor_fr_config, &enc_fr,
-                             PIDController(pid_config));
-static MotorDrv8848 motor_rl(motor_rl_config, &enc_rl,
-                             PIDController(pid_config));
-static MotorDrv8848 motor_rr(motor_rr_config, &enc_rr,
-                             PIDController(pid_config));
+static MotorHiZ motor_fl(motor_fl_config, &enc_fl, PIDController(pid_config));
+static MotorHiZ motor_fr(motor_fr_config, &enc_fr, PIDController(pid_config));
+static MotorHiZ motor_rl(motor_rl_config, &enc_rl, PIDController(pid_config));
+static MotorHiZ motor_rr(motor_rr_config, &enc_rr, PIDController(pid_config));
 static MotorInterface* motors[] = {&motor_fl, &motor_fr, &motor_rl, &motor_rr};
 static constexpr uint8_t MOTOR_COUNT = sizeof(motors) / sizeof(motors[0]);
 static constexpr uint8_t DRIVER_GROUP_COUNT =
@@ -68,7 +61,6 @@ PowerBoard power_board(power_board_config);
 
 // ─────────Extern variables─────────
 BatteryInterface* g_battery = &power_board;
-EncoderArray g_encoders(encoders, ENCODER_COUNT);
 ImuInterface* g_imu = &imu_bno055;
 LedIndicator g_indicator(led_status_config);
 LedStrip g_led_strip;
@@ -85,6 +77,8 @@ CommunicationManagerConfig communication_config = {
     .onDiagnosticSelected = confirmAlt};
 
 CommunicationManager g_comm_mgr(communication_config);
+
+static float supplyVoltage() { return g_battery->getData().voltage; }
 
 void boardPheripheralsInit() {
   // Audio
@@ -138,6 +132,11 @@ void setMaxMotorsCurrent(Revision rev) {
       digitalWrite(ILIM2, HIGH);
       digitalWrite(ILIM3, HIGH);
       digitalWrite(ILIM4, HIGH);
+      // V1_1 uses DRV8870 do not have a real current sensor.
+      motor_fl.disableCurrentSensor();
+      motor_fr.disableCurrentSensor();
+      motor_rl.disableCurrentSensor();
+      motor_rr.disableCurrentSensor();
       break;
 
     default:
@@ -164,12 +163,14 @@ void setup() {
 
   // Components initialization
   Ethernet.begin(MAC, CLIENT_IP);
-  g_encoders.init();
   ntc.init();
   g_fan.init(fan_config);
   imu_bno055.init();
   g_indicator.init();
   g_led_strip.init(strip_config, &s_transport);
+  for (auto* m : {&motor_fl, &motor_fr, &motor_rl, &motor_rr}) {
+    m->setSupplyVoltageProvider(supplyVoltage);
+  }
   g_motors.init();
   power_board.init();
   if (g_comm_mgr.isSerialTransport()) {

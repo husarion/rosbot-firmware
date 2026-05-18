@@ -25,7 +25,7 @@
 #include "led_indicator.hpp"
 #include "led_strip.hpp"
 #include "motor_array.hpp"
-#include "motor_drv8848.hpp"
+#include "motor_hi_z.hpp"
 #include "ntc.hpp"
 #include "pid.hpp"
 #include "power_board.hpp"
@@ -78,7 +78,7 @@ inline constexpr float GEAR_RATIO = 50.0f;
 inline constexpr uint16_t ENCODER_CPR = 64;
 inline constexpr float TICKS_PER_REVOLUTION = ENCODER_CPR * GEAR_RATIO;
 inline constexpr float RAD_PER_TICK = (2.0f * PI) / TICKS_PER_REVOLUTION;
-inline constexpr float LOW_PASS_ALPHA = 0.05f;
+inline constexpr float LOW_PASS_ALPHA = 0.25f;
 
 inline constexpr HardwareEncoderConfig enc_fl_config = {
     .pin_a = PD12,
@@ -119,6 +119,34 @@ inline constexpr HardwareEncoderConfig enc_rr_config = {
     .frame_id = "rr_wheel_joint",
     .alpha = LOW_PASS_ALPHA,
 };
+
+// ───────── Extra GPIO ─────────
+inline constexpr uint8_t CAN1_TX = PD1;  // External transceiver needed
+inline constexpr uint8_t CAN1_RX = PD0;  // External transceiver needed
+
+inline constexpr uint8_t EXT_ADC1 = PF3;
+inline constexpr uint8_t EXT_ADC2 = PF4;
+inline constexpr uint8_t EXT_ADC3 = PF5;
+
+inline constexpr uint8_t EXT_GPIO1 = PG2;
+inline constexpr uint8_t EXT_GPIO2 = PG3;
+inline constexpr uint8_t EXT_GPIO3 = PG4;
+
+inline constexpr uint8_t EXT_PWM1 = PE5;
+inline constexpr uint8_t EXT_PWM2 = PE6;
+inline constexpr uint8_t EXT_PWM3 = PB14;
+
+inline constexpr uint8_t I2C1_SDA = PB7;  // External pull-up needed
+inline constexpr uint8_t I2C1_SCL = PB6;  // External pull-up needed
+inline constexpr uint8_t I2C3_SDA = PC9;  // External pull-up needed
+inline constexpr uint8_t I2C3_SCL = PA8;  // External pull-up needed
+
+inline constexpr uint8_t SPI1_MOSI = PB5;
+inline constexpr uint8_t SPI1_MISO = PA6;
+inline constexpr uint8_t SPI1_SCK = PA5;
+
+inline constexpr uint8_t USART6_RX = PG9;
+inline constexpr uint8_t USART6_TX = PG14;
 
 // ───────── Fan and temperature ─────────
 inline constexpr NtcConfig ntc_cfg{
@@ -201,8 +229,8 @@ inline constexpr LedStripConfig strip_config = {
 
 // ───────── Motors ─────────
 inline constexpr uint32_t MOTOR_PWM_FREQ = 20000;  // 20 kHz
-inline constexpr float MAX_VELOCITY = 22.0f;
-inline constexpr float MIN_VELOCITY = 0.5f;
+inline constexpr float MAX_VELOCITY = 23.0f;
+inline constexpr float MIN_VELOCITY = 0.0f;
 
 // Table 2:
 // https://www.analog.com/media/en/technical-documentation/data-sheets/max22205.pdf
@@ -211,6 +239,26 @@ inline constexpr uint8_t ILIM2 = PG15;
 inline constexpr uint8_t ILIM3 = PG7;
 inline constexpr uint8_t ILIM4 = PD14;
 
+// MAX22205 current-sense (rev 1.2 only). The CSO/ISEN pin sources
+//   I_isen = I_motor / KISEN          (KISEN = 7500 A/A, datasheet)
+// across an external R_sense_ext = 3.3 kΩ to GND, so:
+//   I_motor [A] = V_isen [V] * (KISEN / R_sense_ext)
+inline constexpr float MAX22205_KISEN = 7500.0f;  // [A/A]
+inline constexpr float ISEN_RSENSE = 3300.0f;     // [Ω]
+inline constexpr float MOTOR_CURRENT_PER_VOLT =
+    MAX22205_KISEN / ISEN_RSENSE;  // [A/V] ≈ 2.27
+
+// Gear-motor spec sheet: 12 V, 220 RPM no-load, 250 mA no-load, 21 kg·cm
+// stall, 50:1 gearbox. Derived (assuming η ≈ 0.78):
+//   I_stall ≈ 5.3 A,  R ≈ 2.17 Ω,  Ke ≈ 0.00994 V·s/rad
+//   Kt_total = Ke × N × η ≈ 0.39 Nm/A   (sanity: 0.39 × 5.3 ≈ 2.06 Nm)
+// On rev 1.2 the MAX22205 CSO is the primary effort source; the back-EMF
+// model below is the fallback used on revisions without a real sensor.
+inline constexpr float MOTOR_TORQUE_CONSTANT = 0.39f;  // [Nm/A]
+inline constexpr float MOTOR_RESISTANCE = 2.17f;       // [Ω]
+inline constexpr float MOTOR_BACK_EMF = 0.00994f;      // [V·s/rad]
+inline constexpr float MOTOR_SUPPLY_VOLTAGE = 12.0f;   // [V] nominal
+
 inline constexpr DriverGroupConfig right_motors_driver = {PC13, PE0};
 inline constexpr DriverGroupConfig left_motors_driver = {PC14, PE1};
 inline constexpr DriverGroupConfig driver_groups[] = {
@@ -218,7 +266,7 @@ inline constexpr DriverGroupConfig driver_groups[] = {
     left_motors_driver,
 };
 
-inline constexpr MotorDrv8848Config motor_fl_config = {
+inline constexpr MotorHiZConfig motor_fl_config = {
     .pwm_pin = PF9,
     .in_a_pin = PD10,
     .in_b_pin = PD11,
@@ -227,9 +275,16 @@ inline constexpr MotorDrv8848Config motor_fl_config = {
     .min_velocity = MIN_VELOCITY,
     .pwm_freq = MOTOR_PWM_FREQ,
     .frame_id = "fl_wheel_joint",
+    .current_sense_pin = PA0,
+    .current_per_volt = MOTOR_CURRENT_PER_VOLT,
+    .torque_constant = MOTOR_TORQUE_CONSTANT,
+    .gear_ratio = GEAR_RATIO,
+    .winding_resistance = MOTOR_RESISTANCE,
+    .back_emf_constant = MOTOR_BACK_EMF,
+    .supply_voltage = MOTOR_SUPPLY_VOLTAGE,
 };
 
-inline constexpr MotorDrv8848Config motor_fr_config = {
+inline constexpr MotorHiZConfig motor_fr_config = {
     .pwm_pin = PF8,
     .in_a_pin = PG5,
     .in_b_pin = PG6,
@@ -238,9 +293,16 @@ inline constexpr MotorDrv8848Config motor_fr_config = {
     .min_velocity = MIN_VELOCITY,
     .pwm_freq = MOTOR_PWM_FREQ,
     .frame_id = "fr_wheel_joint",
+    .current_sense_pin = PA3,
+    .current_per_volt = MOTOR_CURRENT_PER_VOLT,
+    .torque_constant = MOTOR_TORQUE_CONSTANT,
+    .gear_ratio = GEAR_RATIO,
+    .winding_resistance = MOTOR_RESISTANCE,
+    .back_emf_constant = MOTOR_BACK_EMF,
+    .supply_voltage = MOTOR_SUPPLY_VOLTAGE,
 };
 
-inline constexpr MotorDrv8848Config motor_rl_config = {
+inline constexpr MotorHiZConfig motor_rl_config = {
     .pwm_pin = PF7,
     .in_a_pin = PG11,
     .in_b_pin = PG12,
@@ -249,9 +311,16 @@ inline constexpr MotorDrv8848Config motor_rl_config = {
     .min_velocity = MIN_VELOCITY,
     .pwm_freq = MOTOR_PWM_FREQ,
     .frame_id = "rl_wheel_joint",
+    .current_sense_pin = PC3,
+    .current_per_volt = MOTOR_CURRENT_PER_VOLT,
+    .torque_constant = MOTOR_TORQUE_CONSTANT,
+    .gear_ratio = GEAR_RATIO,
+    .winding_resistance = MOTOR_RESISTANCE,
+    .back_emf_constant = MOTOR_BACK_EMF,
+    .supply_voltage = MOTOR_SUPPLY_VOLTAGE,
 };
 
-inline constexpr MotorDrv8848Config motor_rr_config = {
+inline constexpr MotorHiZConfig motor_rr_config = {
     .pwm_pin = PF6,
     .in_a_pin = PE12,
     .in_b_pin = PE13,
@@ -260,22 +329,31 @@ inline constexpr MotorDrv8848Config motor_rr_config = {
     .min_velocity = MIN_VELOCITY,
     .pwm_freq = MOTOR_PWM_FREQ,
     .frame_id = "rr_wheel_joint",
+    .current_sense_pin = PC2,
+    .current_per_volt = MOTOR_CURRENT_PER_VOLT,
+    .torque_constant = MOTOR_TORQUE_CONSTANT,
+    .gear_ratio = GEAR_RATIO,
+    .winding_resistance = MOTOR_RESISTANCE,
+    .back_emf_constant = MOTOR_BACK_EMF,
+    .supply_voltage = MOTOR_SUPPLY_VOLTAGE,
 };
 
 // ───────── PID ─────────
 // PID configuration is the same for all motors
 inline constexpr PIDConfig pid_config = {
-    .kp = 0.5f,
-    .ki = 0.75f,
-    .kd = 0.008f,
+    .kp = 0.3f,
+    .ki = 0.4f,
+    .kd = 0.0f,
+    .kv = 0.04,  // 1.0f / MAX_VELOCITY velocity feedforward (~0.045)
     .min_output = -1.0f,
     .max_output = 1.0f,
+    .max_brake_output = 0.3f,  // allow up to 30% reverse PWM for braking
 };
 
 // ───────── ROS ─────────
 inline constexpr const char* NODE_NAME = "rosbot_mcu";
 inline constexpr uint16_t DOMAIN_ID = 255;  // 255 inherit from Micro ROS Agent
-inline constexpr uint32_t SPIN_TIME_MS = 1;
+inline constexpr uint32_t SPIN_TIME_MS = 10;
 inline constexpr uint32_t TIMER_MS = 10;
 inline constexpr uint16_t PING_WATCHDOG_MS = 200;
 inline constexpr uint16_t PING_TIMEOUT_MS = 100;
