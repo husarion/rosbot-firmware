@@ -40,9 +40,12 @@ install-deps:
       python3 -m venv {{venv}}
     fi
     {{venv}}/bin/pip install --upgrade pip
+    # pymavlink is pinned so locally-generated dialect headers stay
+    # byte-identical to what CI's verify-dialect job expects. Bumping the
+    # pin should accompany a `just mavgen` + re-commit.
     {{venv}}/bin/pip install \
       platformio \
-      pymavlink \
+      'pymavlink==2.4.49' \
       pyudev \
       pyserial
     echo

@@ -50,7 +50,9 @@ jobs:
       - name: Resolve deps and build bridge
         shell: bash
         run: |
-          set -euo pipefail
+          # Drop `-u` while sourcing ROS overlays — setup.bash references
+          # AMENT_TRACE_SETUP_FILES without setting it first.
+          set -eo pipefail
           source /opt/ros/${{ matrix.distro }}/setup.bash
           apt-get update
           rosdep update --rosdistro=${{ matrix.distro }}
@@ -69,7 +71,10 @@ jobs:
         with:
           python-version: '3.12'
       - name: Install pymavlink
-        run: pip3 install -U pymavlink
+        # Pin to the version the committed headers were generated with.
+        # Bumping the pin should accompany a `just mavgen` + re-commit so
+        # the diff check stays meaningful.
+        run: pip3 install 'pymavlink==2.4.49'
       - name: Regenerate and diff
         shell: bash
         run: |
