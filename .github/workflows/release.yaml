@@ -1,137 +1,58 @@
 ---
 name: Release
 
+# Fired by `just release` pushing a `v<X>.<Y>.<Z>[-<distro>]` tag.
+# The recipe has already bumped FW_VERSION, written the CHANGELOG.md
+# section, committed, and tagged — this workflow's job is to build, name
+# the artefacts and publish the GitHub Release with the CHANGELOG section
+# as the body.
 on:
-  workflow_dispatch:
-    inputs:
-      bump_type:
-        description: Version to bump (major, minor, patch)
-        required: true
-        default: patch
-        type: choice
-        options:
-          - major
-          - minor
-          - patch
+  push:
+    tags:
+      - 'v*'
 
 permissions:
   contents: write
 
 jobs:
-  bump-tag:
+  parse-tag:
     runs-on: ubuntu-latest
     outputs:
-      tag_name: ${{ steps.bump.outputs.tag_name }}
-      version: ${{ steps.bump.outputs.version }}
-      distro: ${{ steps.bump.outputs.distro }}
-      sha: ${{ steps.push.outputs.sha }}
+      tag_name: ${{ steps.parse.outputs.tag_name }}
+      version: ${{ steps.parse.outputs.version }}
+      distro: ${{ steps.parse.outputs.distro }}
     steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
-          token: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: Resolve distro from branch name
-        id: distro
+      - name: Parse tag
+        id: parse
         run: |
-          distro=$(echo "${GITHUB_REF_NAME}" | awk -F'/' '{print $NF}')
-          echo "distro=$distro" >> $GITHUB_OUTPUT
-          echo "Distro: $distro"
-
-      - name: Get latest tag for distro
-        id: get_tag
-        run: |
-          distro=${{ steps.distro.outputs.distro }}
-          # Tag format produced by this workflow: v<major>.<minor>.<patch>-<distro>
-          latest_tag=$(git tag -l "v*-${distro}" --sort=-v:refname | head -n1)
-          if [ -z "$latest_tag" ]; then
-            latest_tag="v0.0.0-${distro}"
+          TAG="${GITHUB_REF_NAME}"
+          if [[ ! "$TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+(-[A-Za-z0-9.\-]+)?$ ]]; then
+            echo "::error::tag '${TAG}' must look like v<X>.<Y>.<Z>[-<distro>]"
+            exit 1
           fi
-          echo "Latest tag: $latest_tag"
-          echo "latest=$latest_tag" >> $GITHUB_OUTPUT
-
-      - name: Bump version
-        id: bump
-        run: |
-          latest="${{ steps.get_tag.outputs.latest }}"
-          bump_type="${{ github.event.inputs.bump_type }}"
-          distro="${{ steps.distro.outputs.distro }}"
-
-          # Strip leading "v" and trailing "-<distro>" to get bare X.Y.Z
-          latest_num=$(echo "$latest" | sed -E "s/^v//; s/-${distro}\$//")
-          IFS='.' read -r major minor patch <<< "$latest_num"
-
-          if [ "$bump_type" = "major" ]; then
-            major=$((major + 1)); minor=0; patch=0
-          elif [ "$bump_type" = "minor" ]; then
-            minor=$((minor + 1)); patch=0
-          else
-            patch=$((patch + 1))
-          fi
-
-          version="v${major}.${minor}.${patch}"
-          tag_name="${version}-${distro}"
-
-          echo "version=$version"   >> $GITHUB_OUTPUT
-          echo "tag_name=$tag_name" >> $GITHUB_OUTPUT
-          echo "distro=$distro"     >> $GITHUB_OUTPUT
-          echo "New tag: $tag_name"
-
-      - name: Update FW_VERSION in platformio.ini
-        run: |
-          TAG="${{ steps.bump.outputs.tag_name }}"
-          echo "Setting FW_VERSION to ${TAG}"
-          sed -i "s/-D FW_VERSION=\\\\\"[^\"]*\\\\\"/-D FW_VERSION=\\\\\"${TAG}\\\\\"/" platformio.ini
-          echo "--- Verify ---"
-          grep "FW_VERSION" platformio.ini
-
-      - name: Commit and push version bump
-        id: push
-        run: |
-          TAG="${{ steps.bump.outputs.tag_name }}"
-
-          git config user.name "github-actions[bot]"
-          git config user.email "github-actions[bot]@users.noreply.github.com"
-
-          git add platformio.ini
-          git commit -m "bump FW_VERSION to ${TAG}"
-          git push
-
-          NEW_SHA=$(git rev-parse HEAD)
-          echo "sha=$NEW_SHA" >> $GITHUB_OUTPUT
-          echo "New commit SHA: $NEW_SHA"
-
-      - name: Create tag on new commit
-        uses: actions/github-script@v7
-        with:
-          github-token: ${{ secrets.GITHUB_TOKEN }}
-          script: |
-            const tag = '${{ steps.bump.outputs.tag_name }}';
-            const sha = '${{ steps.push.outputs.sha }}';
-            await github.rest.git.createRef({
-              owner: context.repo.owner,
-              repo: context.repo.repo,
-              ref: 'refs/tags/' + tag,
-              sha: sha
-            });
-            console.log(`Created tag ${tag} → ${sha}`);
+          VERSION=$(echo "$TAG" | grep -oE '^v[0-9]+\.[0-9]+\.[0-9]+')
+          DISTRO=$(echo "$TAG" | sed -E "s/^v[0-9]+\.[0-9]+\.[0-9]+-?//")
+          echo "tag_name=${TAG}"   >> $GITHUB_OUTPUT
+          echo "version=${VERSION}" >> $GITHUB_OUTPUT
+          echo "distro=${DISTRO}"   >> $GITHUB_OUTPUT
+          echo "Tag ${TAG} -> version=${VERSION} distro=${DISTRO:-<none>}"
 
   firmware-release:
     name: Firmware release
-    needs: bump-tag
+    needs: parse-tag
     runs-on: ubuntu-latest
     env:
-      TAG_NAME: ${{ needs.bump-tag.outputs.tag_name }}
-      VERSION: ${{ needs.bump-tag.outputs.version }}
+      TAG_NAME: ${{ needs.parse-tag.outputs.tag_name }}
+      VERSION: ${{ needs.parse-tag.outputs.version }}
     steps:
-      - name: Checkout repository
+      - name: Checkout tag
         uses: actions/checkout@v4
-        with:
-          ref: ${{ needs.bump-tag.outputs.sha }}
 
-      - name: Verify FW_VERSION
-        run: grep "FW_VERSION" platformio.ini
+      - name: Verify FW_VERSION matches tag
+        run: |
+          expected="-D FW_VERSION=\\\"${TAG_NAME}\\\""
+          grep -F -- "${expected}" platformio.ini \
+            || { echo "::error::FW_VERSION in platformio.ini doesn't match tag ${TAG_NAME}"; grep FW_VERSION platformio.ini; exit 1; }
 
       - name: Install PlatformIO
         run: pip3 install -U platformio
@@ -148,8 +69,9 @@ jobs:
           # keep the -<distro> suffix on those artefacts.
           cp .pio/build/rosbot_release/firmware.bin    "release/rosbot-${TAG_NAME}.bin"
           cp .pio/build/rosbot_xl_release/firmware.bin  "release/rosbot_xl-${TAG_NAME}.bin"
-          # MAVLink firmware is distro-agnostic (D24) — drop the suffix so
-          # operators see one binary covers every supported SBC distro.
+          # MAVLink firmware is distro-agnostic (D24 in MAVLINK_MIGRATION.md) —
+          # drop the suffix so operators see one binary covers every supported
+          # SBC distro.
           cp .pio/build/rosbot_mavlink_release/firmware.bin \
              "release/rosbot_mavlink-${VERSION}.bin"
           cp .pio/build/rosbot_xl_mavlink_release/firmware.bin \
@@ -157,11 +79,32 @@ jobs:
           echo "--- Release artifacts ---"
           ls -la release/
 
+      - name: Extract release body from CHANGELOG.md
+        run: |
+          set -euo pipefail
+          VERSION_KEY="${TAG_NAME#v}"
+          awk -v key="## [${VERSION_KEY}]" '
+            index($0, key) == 1 { capturing=1; next }
+            /^## \[/             { capturing=0 }
+            capturing            { print }
+          ' CHANGELOG.md > release_body.md
+          if [ ! -s release_body.md ]; then
+            echo "::error::No CHANGELOG.md section found for [${VERSION_KEY}]"
+            echo "--- CHANGELOG.md headings ---"
+            grep -nE '^## \[' CHANGELOG.md || true
+            exit 1
+          fi
+          # Trim leading and trailing blank lines.
+          sed -i -e '/./,$!d' -e ':a' -e '/^\n*$/{$d;N;ba' -e '}' release_body.md
+          echo "--- release body ---"
+          cat release_body.md
+
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ env.TAG_NAME }}
-          generate_release_notes: true
+          name: ${{ env.TAG_NAME }}
+          body_path: release_body.md
           files: |
             release/rosbot-${{ env.TAG_NAME }}.bin
             release/rosbot_xl-${{ env.TAG_NAME }}.bin
@@ -171,20 +114,18 @@ jobs:
 
   bridge-release:
     name: Bridge release tarball (${{ matrix.distro }})
-    needs: bump-tag
+    needs: parse-tag
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
       matrix:
         distro: [jazzy, humble]
     env:
-      TAG_NAME: ${{ needs.bump-tag.outputs.tag_name }}
-      VERSION: ${{ needs.bump-tag.outputs.version }}
+      TAG_NAME: ${{ needs.parse-tag.outputs.tag_name }}
+      VERSION: ${{ needs.parse-tag.outputs.version }}
     container: ros:${{ matrix.distro }}-ros-base
     steps:
       - uses: actions/checkout@v4
-        with:
-          ref: ${{ needs.bump-tag.outputs.sha }}
       - name: Build bridge package
         shell: bash
         run: |
