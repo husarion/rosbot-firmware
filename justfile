@@ -141,16 +141,21 @@ bridge-rebuild:
 release:
     #!/bin/bash
     set -euo pipefail
-    # Prepend the dev venv so 'pio' resolves the same way it does for the
-    # rest of the just recipes (see `install-deps`). Harmless when pio is
-    # already on PATH; required when running from a fresh shell.
+    # Auto-bootstrap the dev venv if it's missing or incomplete. Makes
+    # `just release` self-sufficient on a clean host — operator doesn't
+    # need to know about `install-deps` first. Idempotent: skipped when
+    # the venv already has pio.
+    if [[ ! -x {{venv}}/bin/pio ]]; then
+        echo "release: 'pio' not in {{venv}} — bootstrapping dev deps..."
+        just install-deps
+    fi
     export PATH="{{venv}}/bin:$PATH"
 
     # ---- 1. sanity ----
     [ -z "$(git status --porcelain)" ] \
         || { echo "release: working tree dirty — commit or stash first" >&2; exit 1; }
     command -v pio >/dev/null \
-        || { echo "release: 'pio' not on PATH (run: just install-deps)" >&2; exit 1; }
+        || { echo "release: 'pio' still not on PATH after install-deps" >&2; exit 1; }
     branch=$(git branch --show-current)
     [ "$branch" != "main" ] \
         || { echo "release: must not be on 'main' (jazzy / jazzy-* is the working branch)" >&2; exit 1; }
