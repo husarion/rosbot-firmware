@@ -33,17 +33,17 @@ static MavlinkSerialTransport serial_transport(SBC_SERIAL_CONFIG);
 // Periods per MAVLINK_MIGRATION.md §4 / D21:
 //   battery 1 Hz, imu 100 Hz, joint_state 200 Hz, ranges 10 Hz × 4 sensors,
 //   buttons 20 Hz.
-static BatteryPublisher battery_pub({.queue = battery_queue,
+static MavlinkBatteryPublisher battery_pub({.queue = battery_queue,
                                      .num_cells = BATTERY_NUM_CELLS,
                                      .period_ms = 1000});
-static ImuPublisher imu_pub({.queue = imu_queue, .period_ms = 10});
-static JointStatePublisher joint_state_pub({.queue = joint_state_queue,
+static MavlinkImuPublisher imu_pub({.queue = imu_queue, .period_ms = 10});
+static MavlinkJointStatePublisher joint_state_pub({.queue = joint_state_queue,
                                             .period_ms = 5});
-static RangePublisher range_pub({.queue = ranges_queue,
+static MavlinkRangePublisher range_pub({.queue = ranges_queue,
                                  .min_range_m = 0.01f,
                                  .max_range_m = 0.9f,
                                  .period_ms = 100});
-static ButtonsPublisher buttons_pub({.pins = buttons_pins,
+static MavlinkButtonsPublisher buttons_pub({.pins = buttons_pins,
                                      .num_buttons = sizeof(buttons_pins),
                                      .period_ms = 50});
 
