@@ -127,8 +127,16 @@ bool CommunicationManager::waitForHostConfig(HardwareSerial& serial,
 
   sendVersionPrompt(serial);
 
+  // The host may send an optional "BACKEND:microros|mavlink" line ahead
+  // of "NS:foo". We acknowledge each line and keep reading until the
+  // namespace arrives — that is the terminator of the handshake.
   while ((millis() - start) < timeout_ms) {
     if (consumeAvailable(serial, buffer.data(), &idx, NS_MAX_LENGTH)) {
+      if (parseAndStoreBackend(serial, buffer.data(), idx)) {
+        idx = 0;
+        buffer.fill('\0');
+        continue;
+      }
       return parseAndStoreNamespace(serial, buffer.data(), idx);
     }
     if ((millis() - last_prompt) >= cfg_.resend_ready_interval_ms) {
@@ -150,6 +158,39 @@ bool CommunicationManager::parseAndStoreNamespace(HardwareSerial& serial,
 
   std::strncpy(namespace_.data(), buf + kPrefixLen, NS_MAX_LENGTH);
   namespace_[NS_MAX_LENGTH - 1] = '\0';
+
+  serial.println("ACK");
+  serial.flush();
+  return true;
+}
+
+bool CommunicationManager::parseAndStoreBackend(HardwareSerial& serial,
+                                                const char* buf, size_t len) {
+  constexpr const char* kPrefix = "BACKEND:";
+  constexpr size_t kPrefixLen = 8;
+  constexpr const char* kMavlink = "mavlink";
+  constexpr const char* kMicroRos = "microros";
+
+  if (len < kPrefixLen || std::strncmp(buf, kPrefix, kPrefixLen) != 0) {
+    return false;
+  }
+
+  const char* value = buf + kPrefixLen;
+  const size_t value_len = len - kPrefixLen;
+
+  if (value_len == std::strlen(kMavlink) &&
+      std::strncmp(value, kMavlink, value_len) == 0) {
+    selected_backend_ = CommBackend::MAVLINK;
+  } else if (value_len == std::strlen(kMicroRos) &&
+             std::strncmp(value, kMicroRos, value_len) == 0) {
+    selected_backend_ = CommBackend::MICRO_ROS;
+  } else {
+    // Unknown value — keep current default and signal so the host can
+    // retry. Do not ACK so the host does not assume success.
+    serial.println("NAK");
+    serial.flush();
+    return true;
+  }
 
   serial.println("ACK");
   serial.flush();

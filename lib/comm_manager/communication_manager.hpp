@@ -20,6 +20,8 @@
 #include <cstddef>
 #include <cstdint>
 
+#include "comm_backend.hpp"
+
 enum class TransportType { kSerial, kEthernet };
 
 struct SerialConfig {
@@ -96,17 +98,25 @@ class CommunicationManager {
 
   const char* getNamespace() const { return namespace_.data(); }
 
+  /// Backend selected during configureNamespace handshake. Defaults to
+  /// MICRO_ROS when the host driver does not send a "BACKEND:" line
+  /// before the namespace exchange (older hosts, timeout).
+  CommBackend getSelectedBackend() const { return selected_backend_; }
+
  private:
   void initSerial(const SerialConfig& cfg);
   bool waitForHostConfig(HardwareSerial& serial, uint32_t timeout_ms);
   bool parseAndStoreNamespace(HardwareSerial& serial, const char* buf,
                               size_t len);
+  bool parseAndStoreBackend(HardwareSerial& serial, const char* buf,
+                            size_t len);
 
   CommunicationManagerConfig cfg_;
   TransportType selected_type_ = TransportType::kSerial;
   const SerialConfig* selected_serial_ = nullptr;
   bool debug_available_ = false;
   std::array<char, NS_MAX_LENGTH> namespace_{};
+  CommBackend selected_backend_ = CommBackend::MICRO_ROS;
 };
 
 /// Global instance — defined in board-specific main.
