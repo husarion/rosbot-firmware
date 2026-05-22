@@ -73,11 +73,8 @@ void txCpltCallback(DMA_HandleTypeDef* /*hdma*/) {
 
 }  // namespace
 
-// The actual IRQ vectors live in lib/ros/ros/transport/serial_transport.cpp
-// (they are always linked into the single-binary build). Those vectors
-// call the hooks below as a strong override of lib/ros's weak no-op
-// fallback, so when MAVLink owns the DMA stream at runtime our handler
-// fires; when micro-ROS owns it our s_hdma_tx.Instance check no-ops.
+// Strong overrides of lib/ros's weak no-op hooks; the actual ISRs live
+// there and call these in the shared single-binary build.
 extern "C" void mavlink_serial_dma2_stream7_isr(void) {
   if (s_hdma_tx.Instance == DMA2_Stream7) HAL_DMA_IRQHandler(&s_hdma_tx);
 }

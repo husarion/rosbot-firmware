@@ -372,8 +372,8 @@ inline constexpr float BATTERY_DESIGN_CAPACITY =
     BATTERY_NUM_CELLS * BATTERY_CELL_CAPACITY;
 inline constexpr uint8_t buttons_pins[] = {PUSH_BUTTON1};
 
-// micro-ROS publisher configs live in src/rosbot_xl/ros.cpp now — see
-// the matching comment in include/rosbot/config.hpp for rationale.
+// Publisher configs live in src/rosbot_xl/ros.cpp — see
+// include/rosbot/config.hpp for the ODR rationale.
 
 // ───────── Power Board - Battery ─────────
 inline constexpr PowerBoardConfig power_board_config = {

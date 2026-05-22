@@ -37,10 +37,8 @@
 extern FanController g_fan;
 extern PowerBoard power_board;
 
-// ───── Link selection ─────
-// Assigned in main.cpp's setup() after the handshake picks a backend.
-// Tasks only access this from their loop bodies, which run strictly
-// after vTaskStartScheduler() — past the assignment site.
+// Assigned in setup() before vTaskStartScheduler; nullptr window is
+// unobservable to tasks (they read it only from their loop bodies).
 RoboticsLink* g_link = nullptr;
 
 // ───── Queues ─────

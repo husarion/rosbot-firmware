@@ -115,17 +115,12 @@ void boardPheripheralsInit() {
 
 /*───────── Setup ─────────*/
 void setup() {
-  // Peripherals initialization
   boardPheripheralsInit();
 
-  // Pre-communication: the host driver may send "BACKEND:mavlink|microros"
-  // ahead of the namespace line. Default is MICRO_ROS on timeout — see
-  // CommunicationManager::getSelectedBackend.
   g_comm_mgr.init();
   const SerialConfig* transport = g_comm_mgr.selectTransport();
   g_comm_mgr.configureNamespace();
 
-  // Sensors initialization (backend-agnostic)
   battery_adc.init();
   imu_bno055.init();
   g_indicator.init();
@@ -135,9 +130,8 @@ void setup() {
   g_motors.init();  // motors own encoders → enc init happens here
   g_ranges.init();
 
-  // Upstream link — only the chosen backend is brought up; the other
-  // singleton stays at the constructor-stored config (which is HW-safe,
-  // see CLAUDE.md verification log).
+  // Only the chosen backend's begin()/transport-init runs; the other
+  // singleton stays inert at its ctor-stored config.
   if (g_comm_mgr.getSelectedBackend() == CommBackend::MAVLINK) {
     g_mavlink_node.setNamespace(g_comm_mgr.getNamespace());
     g_mavlink_node.setDiagnosticSerial(g_comm_mgr.debugSerial());

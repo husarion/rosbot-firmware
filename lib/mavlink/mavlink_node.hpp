@@ -41,7 +41,7 @@ struct MavlinkNodeConfig {
   uint32_t timesync_period_ms = 2000;        // 0.5 Hz once CONNECTED
   uint32_t timesync_active_period_ms = 200;  // 5 Hz during AWAIT_TIMESYNC
   uint32_t peer_timeout_ms = 3000;  // D10 — disconnect after 3 s silence
-  // Publisher/subscriber tables (populated by ros_mavlink.cpp).
+  // Publisher/subscriber tables (populated by mavlink_entities.cpp).
   MavlinkPublisherInterface** publishers = nullptr;
   size_t pub_count = 0;
   MavlinkSubscriberInterface** subscribers = nullptr;
@@ -111,8 +111,5 @@ class MavlinkNode : public RoboticsLink {
   SemaphoreHandle_t tx_mutex_ = nullptr;
 };
 
-/// Defined by the variant's mavlink_entities.cpp. Mirrors the
-/// extern-singleton pattern lib/ros/ros/ros_node.hpp uses for g_ros_node
-/// so the variant entry point can flip between either link without
-/// having to manually re-declare the symbol.
+// Defined in the variant's mavlink_entities.cpp (mirrors g_ros_node).
 extern MavlinkNode g_mavlink_node;

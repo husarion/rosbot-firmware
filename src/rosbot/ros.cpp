@@ -31,10 +31,8 @@
 #include "ros/publishers/range_publisher.hpp"
 #include "ros/subscribers/led_subscriber.hpp"
 
-// micro-ROS publisher configs. Kept in this TU rather than config.hpp so
-// that the lib/ros publisher headers (which declare BatteryStamped et al.
-// alongside lib/mavlink's identically-named structs) do not leak into
-// every variant TU that pulls in config.hpp purely for the constants.
+// Pub configs kept here, not config.hpp, to keep lib/ros publisher
+// headers out of TUs that also see lib/mavlink — ODR safety.
 static constexpr BatteryPublisherConfig battery_pub_config = {
     .topic = "battery",
     .queue = battery_queue,

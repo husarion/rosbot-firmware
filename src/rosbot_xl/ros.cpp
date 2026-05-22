@@ -34,9 +34,7 @@
 #include "ros/publishers/joint_state_publisher.hpp"
 #include "ros/subscribers/led_subscriber.hpp"
 
-// micro-ROS publisher configs. See the matching block in
-// src/rosbot/ros.cpp for why they live alongside the publishers rather
-// than in config.hpp.
+// Pub configs kept here, not config.hpp — see src/rosbot/ros.cpp.
 static constexpr BatteryPublisherConfig battery_pub_config = {
     .topic = "battery",
     .queue = battery_queue,

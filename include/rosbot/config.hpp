@@ -274,11 +274,9 @@ inline constexpr float BATTERY_DESIGN_CAPACITY =
     BATTERY_NUM_CELLS * BATTERY_CELL_CAPACITY;
 inline constexpr uint8_t buttons_pins[2] = {PUSH_BUTTON2, PUSH_BUTTON1};
 
-// micro-ROS publisher configs live in src/rosbot/ros.cpp now — keeping
-// them out of config.hpp avoids dragging the lib/ros publisher headers
-// (and their BatteryStamped et al. definitions) into TUs that pull
-// config.hpp purely for the variant constants. lib/mavlink defines its
-// own BatteryStamped, so a header collision would surface here.
+// Publisher configs live in src/rosbot/ros.cpp; lib/ros publisher
+// headers stay out of this file to avoid ODR-colliding with
+// lib/mavlink's identically-named BatteryStamped et al.
 
 // ───────── SBC Interface ─────────
 inline constexpr uint32_t SBC_SERIAL_TIMEOUT_MS = 100;

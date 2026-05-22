@@ -95,11 +95,7 @@ void txCpltCallback(DMA_HandleTypeDef* /*hdma*/) {
 
 }  // namespace
 
-// DMA-TX ISRs route to whichever transport set up s_hdma_tx, so the
-// guard on .Instance lets the same vector serve either lib safely.
-// When lib/mavlink is also linked (single-binary runtime switch) it
-// supplies the strong override for these hooks; with only lib/ros
-// linked the weak no-op default below applies.
+// Weak hooks; lib/mavlink supplies the strong overrides when linked.
 extern "C" void __attribute__((weak)) mavlink_serial_dma2_stream7_isr(void) {}
 extern "C" void __attribute__((weak)) mavlink_serial_dma1_stream4_isr(void) {}
 

@@ -98,9 +98,6 @@ class CommunicationManager {
 
   const char* getNamespace() const { return namespace_.data(); }
 
-  /// Backend selected during configureNamespace handshake. Defaults to
-  /// MICRO_ROS when the host driver does not send a "BACKEND:" line
-  /// before the namespace exchange (older hosts, timeout).
   CommBackend getSelectedBackend() const { return selected_backend_; }
 
  private:

@@ -151,8 +151,6 @@ void setMaxMotorsCurrent(Revision rev) {
 void setup() {
   boardPheripheralsInit();
 
-  // Pre-communication: optional "BACKEND:" line precedes the namespace
-  // handshake. Default is MICRO_ROS on timeout.
   g_comm_mgr.init();
   const SerialConfig* transport = g_comm_mgr.selectTransport();
   g_comm_mgr.configureNamespace();
@@ -164,7 +162,6 @@ void setup() {
   auto fan_config =
       (rev == Revision::V1_1) ? rev1_1_fan_config : rev1_2_fan_config;
 
-  // Components initialization (backend-agnostic)
   Ethernet.begin(MAC, CLIENT_IP);
   ntc.init();
   g_fan.init(fan_config);
@@ -177,10 +174,8 @@ void setup() {
   g_motors.init();
   power_board.init();
 
-  // Upstream link — only the chosen backend is brought up. MAVLink path
-  // on rosbot_xl runs over UDP (transport baked into g_mavlink_node's
-  // constructor); micro-ROS picks between serial / ethernet per the
-  // transport selector.
+  // MAVLink on rosbot_xl runs over UDP (transport baked into
+  // g_mavlink_node's ctor); micro-ROS picks serial vs ethernet here.
   if (g_comm_mgr.getSelectedBackend() == CommBackend::MAVLINK) {
     g_mavlink_node.setNamespace(g_comm_mgr.getNamespace());
     g_mavlink_node.setDiagnosticSerial(g_comm_mgr.debugSerial());

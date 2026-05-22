@@ -127,9 +127,7 @@ bool CommunicationManager::waitForHostConfig(HardwareSerial& serial,
 
   sendVersionPrompt(serial);
 
-  // The host may send an optional "BACKEND:microros|mavlink" line ahead
-  // of "NS:foo". We acknowledge each line and keep reading until the
-  // namespace arrives — that is the terminator of the handshake.
+  // BACKEND: lines (optional, repeatable) come before NS:; NS: terminates.
   while ((millis() - start) < timeout_ms) {
     if (consumeAvailable(serial, buffer.data(), &idx, NS_MAX_LENGTH)) {
       if (parseAndStoreBackend(serial, buffer.data(), idx)) {
@@ -185,8 +183,6 @@ bool CommunicationManager::parseAndStoreBackend(HardwareSerial& serial,
              std::strncmp(value, kMicroRos, value_len) == 0) {
     selected_backend_ = CommBackend::MICRO_ROS;
   } else {
-    // Unknown value — keep current default and signal so the host can
-    // retry. Do not ACK so the host does not assume success.
     serial.println("NAK");
     serial.flush();
     return true;

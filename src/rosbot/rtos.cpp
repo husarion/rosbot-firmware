@@ -27,10 +27,8 @@
 #include "robotics_link.hpp"
 #include "ros/ros_node.hpp"
 
-// Selected in main.cpp's setup() based on the handshake's backend choice.
-// Tasks dereference this only inside their loop bodies — which never run
-// before vTaskStartScheduler() — so the brief nullptr window during
-// initialization is unobservable.
+// Assigned in setup() before vTaskStartScheduler; tasks read it only
+// from their loop bodies, so the nullptr window is unobservable.
 RoboticsLink* g_link = nullptr;
 
 // ──── Queues ────

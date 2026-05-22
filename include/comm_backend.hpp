@@ -16,14 +16,8 @@
 
 #include <cstdint>
 
-/// Upstream-link implementation selected at boot.
-///
-/// The choice is communicated from the host driver during the pre-comm
-/// handshake (see CommunicationManager::waitForHostConfig — the host
-/// sends a "BACKEND:microros" / "BACKEND:mavlink" line on the SBC serial
-/// link before the namespace exchange). When the line is absent (timeout
-/// or older host driver), the firmware falls back to MICRO_ROS so that
-/// existing deployments keep working.
+// Selected at boot via the BACKEND: handshake line; defaults to
+// MICRO_ROS when absent (older host or timeout).
 enum class CommBackend : uint8_t {
   MICRO_ROS = 0,
   MAVLINK = 1,
