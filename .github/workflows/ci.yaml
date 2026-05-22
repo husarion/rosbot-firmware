@@ -46,8 +46,7 @@ jobs:
       - name: Resolve deps and build bridge
         shell: bash
         run: |
-          # Drop `-u` while sourcing ROS overlays — setup.bash references
-          # AMENT_TRACE_SETUP_FILES without setting it first.
+          # No -u: ROS's setup.bash trips on unset AMENT_TRACE_SETUP_FILES.
           set -eo pipefail
           source /opt/ros/${{ matrix.distro }}/setup.bash
           apt-get update
@@ -67,16 +66,12 @@ jobs:
         with:
           python-version: '3.12'
       - name: Install pymavlink
-        # Pin to the version the committed headers were generated with.
-        # Bumping the pin should accompany a `just mavgen` + re-commit so
-        # the diff check stays meaningful.
+        # Must match the version the committed headers were generated with.
         run: pip3 install 'pymavlink==2.4.49'
       - name: Regenerate and diff
         shell: bash
         run: |
           set -euo pipefail
-          # Vendored common.xml etc. must accompany rosbot.xml so mavgen
-          # finds them without an internet round-trip.
           tmp=$(mktemp -d)
           mavgen.py --lang=C --wire-protocol=2.0 \
             --output="$tmp/generated" lib/mavlink/dialect/rosbot.xml

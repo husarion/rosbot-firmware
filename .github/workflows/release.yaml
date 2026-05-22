@@ -1,11 +1,7 @@
 ---
 name: Release
 
-# Fired by `just release` pushing a `v<X>.<Y>.<Z>[-<distro>]` tag.
-# The recipe has already bumped FW_VERSION, written the CHANGELOG.md
-# section, committed, and tagged — this workflow's job is to build, name
-# the artefacts and publish the GitHub Release with the CHANGELOG section
-# as the body.
+# Triggered by `just release` pushing a `v<X>.<Y>.<Z>[-<distro>]` tag.
 on:
   push:
     tags:
@@ -64,14 +60,10 @@ jobs:
       - name: Rename binaries
         run: |
           mkdir -p release
-          # One binary per platform now — the upstream link (micro-ROS vs
-          # MAVLink) is picked at boot by the host driver, so the artefact
-          # itself is link-agnostic. The micro-ROS path still pins
-          # micro_ros_arduino@v2.0.8-jazzy, which is why the -<distro>
-          # suffix stays meaningful for operators picking against a host.
+          # -${TAG_NAME} keeps the -<distro> suffix — micro_ros_arduino
+          # is still jazzy-pinned per platformio.ini.
           cp .pio/build/rosbot_release/firmware.bin    "release/rosbot-${TAG_NAME}.bin"
           cp .pio/build/rosbot_xl_release/firmware.bin "release/rosbot_xl-${TAG_NAME}.bin"
-          echo "--- Release artifacts ---"
           ls -la release/
 
       - name: Extract release body from CHANGELOG.md
@@ -89,9 +81,8 @@ jobs:
             grep -nE '^## \[' CHANGELOG.md || true
             exit 1
           fi
-          # Trim leading and trailing blank lines.
+          # Strip leading/trailing blank lines.
           sed -i -e '/./,$!d' -e ':a' -e '/^\n*$/{$d;N;ba' -e '}' release_body.md
-          echo "--- release body ---"
           cat release_body.md
 
       - name: Create GitHub Release
@@ -122,9 +113,7 @@ jobs:
       - name: Build bridge package
         shell: bash
         run: |
-          # Drop `-u` while sourcing ROS overlays — ROS's setup.bash trips
-          # on AMENT_TRACE_SETUP_FILES under nounset. -e and pipefail keep
-          # genuine errors fatal.
+          # No -u: ROS's setup.bash trips on unset AMENT_TRACE_SETUP_FILES.
           set -eo pipefail
           source /opt/ros/${{ matrix.distro }}/setup.bash
           apt-get update
@@ -137,9 +126,8 @@ jobs:
           set -euo pipefail
           mkdir -p release
           tarball="rosbot_mavlink_bridge-${VERSION}-${{ matrix.distro }}-src.tar.gz"
-          # Include both the bridge package and the dialect headers it depends
-          # on. The relative path inside `bridge/`'s CMakeLists.txt is the
-          # contract — the tarball preserves it.
+          # Dialect headers ride along; bridge/CMakeLists.txt's relative
+          # include path is the contract.
           tar --transform "s,^,rosbot_mavlink_bridge-${VERSION}/," \
               -czf "release/${tarball}" \
               bridge lib/mavlink/dialect/generated lib/mavlink/dialect/rosbot.xml \
@@ -151,10 +139,7 @@ jobs:
           tag_name: ${{ env.TAG_NAME }}
           files: release/rosbot_mavlink_bridge-${{ env.VERSION }}-${{ matrix.distro }}-src.tar.gz
 
-  # Container images on GHCR — built from bridge/Dockerfile, multi-arch
-  # (amd64 + arm64 so the SBC can pull native). Runs in parallel with
-  # bridge-release, against the same release tag. Independent — failure
-  # here doesn't roll back the firmware/tarball publication.
+  # Multi-arch GHCR image, independent of bridge-release.
   bridge-image:
     name: Bridge container image (${{ matrix.distro }})
     needs: parse-tag
@@ -185,11 +170,7 @@ jobs:
         run: |
           owner=$(echo "${{ github.repository_owner }}" | tr '[:upper:]' '[:lower:]')
           name="ghcr.io/${owner}/rosbot-mavlink-bridge"
-          # Strip leading 'v' from version (docker tag convention).
-          # ${{ matrix.distro }} is the bridge's ROS distro, not the
-          # firmware tag's distro suffix — see the table in the release
-          # notes for the user-facing pairing.
-          version_tag="${VERSION#v}"
+          version_tag="${VERSION#v}"  # docker tag convention drops the 'v'
           {
             echo "tags<<EOF"
             echo "${name}:${version_tag}-${{ matrix.distro }}"
