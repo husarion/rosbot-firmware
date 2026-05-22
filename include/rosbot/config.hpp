@@ -25,13 +25,6 @@
 #include "motor_hi_z.hpp"
 #include "pid.hpp"
 #include "range_vl53l0.hpp"
-#ifndef USE_MAVLINK
-#include "ros/publishers/battery_publisher.hpp"
-#include "ros/publishers/buttons_publisher.hpp"
-#include "ros/publishers/imu_publisher.hpp"
-#include "ros/publishers/joint_state_publisher.hpp"
-#include "ros/publishers/range_publisher.hpp"
-#endif
 
 // ───────── Arduino settings ─────────
 inline constexpr uint32_t ADC_MAX_VALUE =
@@ -281,43 +274,11 @@ inline constexpr float BATTERY_DESIGN_CAPACITY =
     BATTERY_NUM_CELLS * BATTERY_CELL_CAPACITY;
 inline constexpr uint8_t buttons_pins[2] = {PUSH_BUTTON2, PUSH_BUTTON1};
 
-#ifndef USE_MAVLINK
-// micro-ROS publisher configs. MAVLink build constructs its own publishers
-// from the same underlying queue handles + frame ids in ros_mavlink.cpp.
-inline constexpr BatteryPublisherConfig battery_pub_config = {
-    .topic = "battery",
-    .queue = battery_queue,
-    .frame_id = "base_link",
-    .design_capacity = BATTERY_DESIGN_CAPACITY,
-    .num_cells = BATTERY_NUM_CELLS,
-};
-
-inline constexpr ButtonsPublisherConfig buttons_pub_config = {
-    .topic = "buttons",
-    .pins = buttons_pins,
-    .num_buttons = 2,
-};
-
-inline constexpr ImuPublisherConfig imu_pub_config = {
-    .topic = "_imu/data",
-    .queue = imu_queue,
-    .frame_id = "imu_link",
-};
-
-inline constexpr JointStatePublisherConfig joint_state_pub_config = {
-    .topic = "_motors/feedback",
-    .queue = joint_state_queue,
-    .frame_id = "base_link",
-};
-
-inline constexpr RangePublisherConfig range_pub_config = {
-    .topic = "ranges",
-    .queue = ranges_queue,
-    .fov = 0.26f,
-    .min_range = 0.01f,
-    .max_range = 0.9f,
-};
-#endif  // USE_MAVLINK
+// micro-ROS publisher configs live in src/rosbot/ros.cpp now — keeping
+// them out of config.hpp avoids dragging the lib/ros publisher headers
+// (and their BatteryStamped et al. definitions) into TUs that pull
+// config.hpp purely for the variant constants. lib/mavlink defines its
+// own BatteryStamped, so a header collision would surface here.
 
 // ───────── SBC Interface ─────────
 inline constexpr uint32_t SBC_SERIAL_TIMEOUT_MS = 100;

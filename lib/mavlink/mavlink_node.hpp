@@ -110,3 +110,9 @@ class MavlinkNode : public RoboticsLink {
   State state_ = WAITING;
   SemaphoreHandle_t tx_mutex_ = nullptr;
 };
+
+/// Defined by the variant's mavlink_entities.cpp. Mirrors the
+/// extern-singleton pattern lib/ros/ros/ros_node.hpp uses for g_ros_node
+/// so the variant entry point can flip between either link without
+/// having to manually re-declare the symbol.
+extern MavlinkNode g_mavlink_node;

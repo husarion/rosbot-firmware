@@ -33,5 +33,9 @@ class RoboticsLink {
   virtual void setDiagnosticSerial(HardwareSerial* serial) = 0;
 };
 
-/// Resolved by the variant's main_*.cpp to the concrete singleton.
-extern RoboticsLink& g_link;
+/// Selected at runtime in the variant's setup() once the host driver
+/// has indicated its choice via CommunicationManager::getSelectedBackend
+/// (default: MICRO_ROS when no BACKEND: line is seen). nullptr until
+/// setup() finishes the dispatch — but FreeRTOS tasks only read this
+/// after vTaskStartScheduler(), by which point the assignment is done.
+extern RoboticsLink* g_link;

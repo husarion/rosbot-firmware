@@ -16,15 +16,18 @@
 
 #include "battery_adc.hpp"
 #include "battery_interface.hpp"
+#include "comm_backend.hpp"
 #include "communication_manager.hpp"
 #include "config.hpp"
 #include "hardware_encoder.hpp"
 #include "imu_bno055.hpp"
 #include "led_indicator.hpp"
+#include "mavlink_node.hpp"
 #include "motor_array.hpp"
 #include "motor_hi_z.hpp"
 #include "range_array.hpp"
 #include "range_vl53l0.hpp"
+#include "robotics_link.hpp"
 #include "ros/ros_node.hpp"
 #include "rtos.hpp"
 
@@ -115,13 +118,14 @@ void setup() {
   // Peripherals initialization
   boardPheripheralsInit();
 
-  // Pre-communication
+  // Pre-communication: the host driver may send "BACKEND:mavlink|microros"
+  // ahead of the namespace line. Default is MICRO_ROS on timeout — see
+  // CommunicationManager::getSelectedBackend.
   g_comm_mgr.init();
-  const auto& transport = g_comm_mgr.selectTransport();
+  const SerialConfig* transport = g_comm_mgr.selectTransport();
   g_comm_mgr.configureNamespace();
-  g_ros_node.setNamespace(g_comm_mgr.getNamespace());
 
-  // Sensors initialization
+  // Sensors initialization (backend-agnostic)
   battery_adc.init();
   imu_bno055.init();
   g_indicator.init();
@@ -130,8 +134,21 @@ void setup() {
   }
   g_motors.init();  // motors own encoders → enc init happens here
   g_ranges.init();
-  g_ros_node.serialTransportInit(*transport);
-  g_ros_node.setDiagnosticSerial(g_comm_mgr.debugSerial());
+
+  // Upstream link — only the chosen backend is brought up; the other
+  // singleton stays at the constructor-stored config (which is HW-safe,
+  // see CLAUDE.md verification log).
+  if (g_comm_mgr.getSelectedBackend() == CommBackend::MAVLINK) {
+    g_mavlink_node.setNamespace(g_comm_mgr.getNamespace());
+    g_mavlink_node.setDiagnosticSerial(g_comm_mgr.debugSerial());
+    g_mavlink_node.begin();
+    g_link = &g_mavlink_node;
+  } else {
+    g_ros_node.setNamespace(g_comm_mgr.getNamespace());
+    g_ros_node.serialTransportInit(*transport);
+    g_ros_node.setDiagnosticSerial(g_comm_mgr.debugSerial());
+    g_link = &g_ros_node;
+  }
 
   // RTOS
   createQueues();

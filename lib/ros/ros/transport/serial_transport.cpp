@@ -95,11 +95,21 @@ void txCpltCallback(DMA_HandleTypeDef* /*hdma*/) {
 
 }  // namespace
 
+// DMA-TX ISRs route to whichever transport set up s_hdma_tx, so the
+// guard on .Instance lets the same vector serve either lib safely.
+// When lib/mavlink is also linked (single-binary runtime switch) it
+// supplies the strong override for these hooks; with only lib/ros
+// linked the weak no-op default below applies.
+extern "C" void __attribute__((weak)) mavlink_serial_dma2_stream7_isr(void) {}
+extern "C" void __attribute__((weak)) mavlink_serial_dma1_stream4_isr(void) {}
+
 extern "C" void DMA2_Stream7_IRQHandler(void) {
   if (s_hdma_tx.Instance == DMA2_Stream7) HAL_DMA_IRQHandler(&s_hdma_tx);
+  mavlink_serial_dma2_stream7_isr();
 }
 extern "C" void DMA1_Stream4_IRQHandler(void) {
   if (s_hdma_tx.Instance == DMA1_Stream4) HAL_DMA_IRQHandler(&s_hdma_tx);
+  mavlink_serial_dma1_stream4_isr();
 }
 
 bool serial_transport_open(struct uxrCustomTransport* transport) {

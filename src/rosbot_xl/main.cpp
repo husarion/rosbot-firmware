@@ -15,15 +15,18 @@
 #include <Arduino.h>
 
 #include "battery_interface.hpp"
+#include "comm_backend.hpp"
 #include "communication_manager.hpp"
 #include "config.hpp"
 #include "hardware_encoder.hpp"
 #include "imu_bno055.hpp"
 #include "led_indicator.hpp"
 #include "led_strip.hpp"
+#include "mavlink_node.hpp"
 #include "motor_array.hpp"
 #include "motor_hi_z.hpp"
 #include "power_board.hpp"
+#include "robotics_link.hpp"
 #include "ros/ros_node.hpp"
 #include "rtos.hpp"
 
@@ -148,11 +151,11 @@ void setMaxMotorsCurrent(Revision rev) {
 void setup() {
   boardPheripheralsInit();
 
-  // Pre-communication
+  // Pre-communication: optional "BACKEND:" line precedes the namespace
+  // handshake. Default is MICRO_ROS on timeout.
   g_comm_mgr.init();
-  const auto* transport = g_comm_mgr.selectTransport();
+  const SerialConfig* transport = g_comm_mgr.selectTransport();
   g_comm_mgr.configureNamespace();
-  g_ros_node.setNamespace(g_comm_mgr.getNamespace());
 
   // Revision specific configuration
   board_revision.init();
@@ -161,7 +164,7 @@ void setup() {
   auto fan_config =
       (rev == Revision::V1_1) ? rev1_1_fan_config : rev1_2_fan_config;
 
-  // Components initialization
+  // Components initialization (backend-agnostic)
   Ethernet.begin(MAC, CLIENT_IP);
   ntc.init();
   g_fan.init(fan_config);
@@ -173,12 +176,26 @@ void setup() {
   }
   g_motors.init();
   power_board.init();
-  if (g_comm_mgr.isSerialTransport()) {
-    g_ros_node.serialTransportInit(*transport);
+
+  // Upstream link — only the chosen backend is brought up. MAVLink path
+  // on rosbot_xl runs over UDP (transport baked into g_mavlink_node's
+  // constructor); micro-ROS picks between serial / ethernet per the
+  // transport selector.
+  if (g_comm_mgr.getSelectedBackend() == CommBackend::MAVLINK) {
+    g_mavlink_node.setNamespace(g_comm_mgr.getNamespace());
+    g_mavlink_node.setDiagnosticSerial(g_comm_mgr.debugSerial());
+    g_mavlink_node.begin();
+    g_link = &g_mavlink_node;
   } else {
-    g_ros_node.ethernetTransportInit(AGENT_IP, AGENT_PORT);
+    g_ros_node.setNamespace(g_comm_mgr.getNamespace());
+    if (g_comm_mgr.isSerialTransport()) {
+      g_ros_node.serialTransportInit(*transport);
+    } else {
+      g_ros_node.ethernetTransportInit(AGENT_IP, AGENT_PORT);
+    }
+    g_ros_node.setDiagnosticSerial(g_comm_mgr.debugSerial());
+    g_link = &g_ros_node;
   }
-  g_ros_node.setDiagnosticSerial(g_comm_mgr.debugSerial());
 
   // RTOS
   createQueues();
