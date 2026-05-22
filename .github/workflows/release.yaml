@@ -57,25 +57,20 @@ jobs:
       - name: Install PlatformIO
         run: pip3 install -U platformio
 
-      - name: Build all release envs (micro-ROS + MAVLink)
+      - name: Build all release envs
         run: |
-          pio run -e rosbot_release -e rosbot_xl_release \
-                  -e rosbot_mavlink_release -e rosbot_xl_mavlink_release
+          pio run -e rosbot_release -e rosbot_xl_release
 
       - name: Rename binaries
         run: |
           mkdir -p release
-          # micro-ROS firmware stays jazzy-pinned by micro_ros_arduino;
-          # keep the -<distro> suffix on those artefacts.
+          # One binary per platform now — the upstream link (micro-ROS vs
+          # MAVLink) is picked at boot by the host driver, so the artefact
+          # itself is link-agnostic. The micro-ROS path still pins
+          # micro_ros_arduino@v2.0.8-jazzy, which is why the -<distro>
+          # suffix stays meaningful for operators picking against a host.
           cp .pio/build/rosbot_release/firmware.bin    "release/rosbot-${TAG_NAME}.bin"
-          cp .pio/build/rosbot_xl_release/firmware.bin  "release/rosbot_xl-${TAG_NAME}.bin"
-          # MAVLink firmware is distro-agnostic (D24 in MAVLINK_MIGRATION.md) —
-          # drop the suffix so operators see one binary covers every supported
-          # SBC distro.
-          cp .pio/build/rosbot_mavlink_release/firmware.bin \
-             "release/rosbot_mavlink-${VERSION}.bin"
-          cp .pio/build/rosbot_xl_mavlink_release/firmware.bin \
-             "release/rosbot_xl_mavlink-${VERSION}.bin"
+          cp .pio/build/rosbot_xl_release/firmware.bin "release/rosbot_xl-${TAG_NAME}.bin"
           echo "--- Release artifacts ---"
           ls -la release/
 
@@ -108,8 +103,6 @@ jobs:
           files: |
             release/rosbot-${{ env.TAG_NAME }}.bin
             release/rosbot_xl-${{ env.TAG_NAME }}.bin
-            release/rosbot_mavlink-${{ env.VERSION }}.bin
-            release/rosbot_xl_mavlink-${{ env.VERSION }}.bin
             LICENSE
 
   bridge-release:

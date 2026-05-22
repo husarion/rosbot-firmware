@@ -23,10 +23,6 @@ jobs:
           - rosbot_release
           - rosbot_xl
           - rosbot_xl_release
-          - rosbot_mavlink
-          - rosbot_mavlink_release
-          - rosbot_xl_mavlink
-          - rosbot_xl_mavlink_release
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
