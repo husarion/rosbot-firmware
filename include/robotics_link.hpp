@@ -16,7 +16,7 @@
 
 #include <HardwareSerial.h>
 
-// Abstract upstream-link layer. Both RosNode (micro-ROS) and MavlinkNode
+// Abstract upstream-link backend. Both RosNode (micro-ROS) and MavlinkNode
 // implement this so the FreeRTOS task harness in src/<variant>/rtos.cpp can
 // drive either build without an #ifdef ladder. See MAVLINK_MIGRATION.md
 // §8.2 "Implementation note".
