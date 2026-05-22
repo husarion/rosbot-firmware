@@ -21,7 +21,7 @@ MAVLink merges back into `jazzy`.
 
 ### Added
 - `include/comm_backend.hpp` exposes the `CommBackend { MICRO_ROS, MAVLINK }` enum that `CommunicationManager::getSelectedBackend()` returns after the handshake.
-- `CommunicationManager::waitForHostConfig` parses an optional `BACKEND:microros|mavlink` line ahead of the existing `NS:` line; default on timeout stays `MICRO_ROS` so older host drivers keep working byte-for-byte.
+- `CommunicationManager::waitForHostConfig` parses `BACKEND:microros|mavlink`, `NS:<namespace>`, and `END` lines in any order. `END` (or timeout) terminates the handshake; both NS and BACKEND are independently optional. Default backend stays `MICRO_ROS`, default namespace stays `ns_default` — legacy hosts that only emit `NS:` still work, paying a one-time ~2.5 s timeout instead of a fast `END`-driven exit.
 
 ### Flash budget
 

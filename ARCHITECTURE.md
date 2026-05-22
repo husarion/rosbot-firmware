@@ -488,10 +488,12 @@ Full design and rollout plan: [MAVLINK_MIGRATION.md](./MAVLINK_MIGRATION.md).
 
 ### Runtime backend dispatch
 
-`CommunicationManager::waitForHostConfig` accepts an optional
-`BACKEND:microros|mavlink\n` line ahead of the existing `NS:<namespace>\n`
-during the same boot-time handshake window (~2.5 s after MCU reset).
-The chosen value drives the upstream-link selection in `setup()`:
+`CommunicationManager::waitForHostConfig` accepts three line types in
+any order during the boot-time handshake window (~2.5 s after MCU
+reset): `BACKEND:microros|mavlink`, `NS:<namespace>`, and `END`. `END`
+(or the timeout) closes the handshake; the others are independently
+optional. The chosen backend drives the upstream-link selection in
+`setup()`:
 
 ```cpp
 if (g_comm_mgr.getSelectedBackend() == CommBackend::MAVLINK) {

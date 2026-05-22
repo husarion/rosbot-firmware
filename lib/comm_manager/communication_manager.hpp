@@ -107,6 +107,7 @@ class CommunicationManager {
                               size_t len);
   bool parseAndStoreBackend(HardwareSerial& serial, const char* buf,
                             size_t len);
+  bool parseEnd(HardwareSerial& serial, const char* buf, size_t len);
 
   CommunicationManagerConfig cfg_;
   TransportType selected_type_ = TransportType::kSerial;

@@ -127,7 +127,10 @@ bool CommunicationManager::waitForHostConfig(HardwareSerial& serial,
 
   sendVersionPrompt(serial);
 
-  // BACKEND: lines (optional, repeatable) come before NS:; NS: terminates.
+  // END terminates explicitly so BACKEND:/NS: lines may arrive in any
+  // order. Timeout terminates implicitly — preserves whatever was set
+  // for legacy hosts that don't emit END.
+  bool received_ns = false;
   while ((millis() - start) < timeout_ms) {
     if (consumeAvailable(serial, buffer.data(), &idx, NS_MAX_LENGTH)) {
       if (parseAndStoreBackend(serial, buffer.data(), idx)) {
@@ -135,14 +138,24 @@ bool CommunicationManager::waitForHostConfig(HardwareSerial& serial,
         buffer.fill('\0');
         continue;
       }
-      return parseAndStoreNamespace(serial, buffer.data(), idx);
+      if (parseAndStoreNamespace(serial, buffer.data(), idx)) {
+        received_ns = true;
+        idx = 0;
+        buffer.fill('\0');
+        continue;
+      }
+      if (parseEnd(serial, buffer.data(), idx)) {
+        return received_ns;
+      }
+      idx = 0;
+      buffer.fill('\0');
     }
     if ((millis() - last_prompt) >= cfg_.resend_ready_interval_ms) {
       sendVersionPrompt(serial);
       last_prompt = millis();
     }
   }
-  return false;
+  return received_ns;
 }
 
 bool CommunicationManager::parseAndStoreNamespace(HardwareSerial& serial,
@@ -157,6 +170,18 @@ bool CommunicationManager::parseAndStoreNamespace(HardwareSerial& serial,
   std::strncpy(namespace_.data(), buf + kPrefixLen, NS_MAX_LENGTH);
   namespace_[NS_MAX_LENGTH - 1] = '\0';
 
+  serial.println("ACK");
+  serial.flush();
+  return true;
+}
+
+bool CommunicationManager::parseEnd(HardwareSerial& serial, const char* buf,
+                                    size_t len) {
+  constexpr const char* kEnd = "END";
+  constexpr size_t kEndLen = 3;
+  if (len != kEndLen || std::strncmp(buf, kEnd, kEndLen) != 0) {
+    return false;
+  }
   serial.println("ACK");
   serial.flush();
   return true;
