@@ -14,10 +14,11 @@
 #                       since runtime picks the comm backend), publish
 #                       GitHub Release with auto-generated notes + the
 #                       .bin artefacts attached.
-#   3. bridge-release  — matrix [jazzy, humble] — bridge package source tarball,
-#                       attached to the same release.
-#   4. bridge-image    — matrix [jazzy, humble] — multi-arch (amd64+arm64)
-#                       GHCR image built from bridge/Dockerfile.
+#   3. bridge-release  — bridge package source tarball for ROS jazzy,
+#                       attached to the same release. (humble not built —
+#                       rosbot_ros doesn't ship a humble track.)
+#   4. bridge-image    — multi-arch (amd64+arm64) GHCR image for jazzy,
+#                       built from bridge/Dockerfile.
 #   5. bump-rosbot-ros — open auto-PR in husarion/rosbot_ros@jazzy-mavlink-v2
 #                       bumping the vcs pin, swapping .bin artefacts, and
 #                       bumping bundled-firmware paths. Labelled
@@ -250,7 +251,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        distro: [jazzy, humble]
+        distro: [jazzy]
     env:
       TAG_NAME: ${{ needs.bump-tag.outputs.tag_name }}
       VERSION: ${{ needs.bump-tag.outputs.version }}
@@ -299,7 +300,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        distro: [jazzy, humble]
+        distro: [jazzy]
     env:
       VERSION: ${{ needs.bump-tag.outputs.version }}
     steps:
