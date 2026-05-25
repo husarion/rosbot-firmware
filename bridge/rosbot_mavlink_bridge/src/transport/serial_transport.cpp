@@ -61,7 +61,7 @@ bool SerialTransport::open() {
     return false;
   }
 
-  // Raw 8N1 — MAVLink does its own framing. No XON/XOFF, no canonical mode.
+  // Raw 8N1; MAVLink owns framing.
   cfmakeraw(&tty);
   tty.c_cflag |= CLOCAL | CREAD;
   tty.c_cflag &= ~PARENB;

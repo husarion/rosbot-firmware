@@ -33,9 +33,7 @@ void sendVersionPrompt(HardwareSerial& s) {
   s.flush();
 }
 
-/// Drain whatever is currently available on the serial line into @p buf
-/// (until a newline or buffer fills). Returns true when a newline was
-/// consumed — the caller's buffer holds a complete line of length @p idx.
+// Returns true after consuming a newline; *idx then holds the line length.
 bool consumeAvailable(HardwareSerial& s, char* buf, size_t* idx,
                       size_t max_len) {
   while (s.available()) {
@@ -67,23 +65,21 @@ const SerialConfig* CommunicationManager::selectTransport(uint32_t timeout_ms) {
     if (cfg_.useDiagnosticCondition && cfg_.useDiagnosticCondition()) {
       selected_type_ = TransportType::kSerial;
       selected_serial_ = &cfg_.diagnostic_serial;
-      debug_available_ = false;  // diagnostic busy → no debug
+      debug_available_ = false;
       if (cfg_.onDiagnosticSelected) cfg_.onDiagnosticSelected();
       return selected_serial_;
     }
     delay(cfg_.check_interval_ms);
   }
 
-  // Timeout — use primary transport
   selected_type_ = cfg_.primary_type;
-  debug_available_ = true;  // diagnostic free → debug OK
+  debug_available_ = true;
 
   if (cfg_.primary_type == TransportType::kSerial) {
     selected_serial_ = &cfg_.primary_serial;
     return selected_serial_;
   }
 
-  // Ethernet — no serial config to return
   selected_serial_ = nullptr;
   return nullptr;
 }
@@ -99,10 +95,9 @@ void CommunicationManager::configureNamespace(uint16_t timeout_ms) {
 
   if (config_serial != nullptr &&
       waitForHostConfig(*config_serial, timeout_ms)) {
-    return;  // namespace_ filled by waitForHostConfig
+    return;
   }
 
-  // Fallback: use the configured default namespace.
   std::strncpy(namespace_.data(), cfg_.ns_default, NS_MAX_LENGTH);
   namespace_[NS_MAX_LENGTH - 1] = '\0';
 }
@@ -127,9 +122,8 @@ bool CommunicationManager::waitForHostConfig(HardwareSerial& serial,
 
   sendVersionPrompt(serial);
 
-  // END terminates explicitly so BACKEND:/NS: lines may arrive in any
-  // order. Timeout terminates implicitly — preserves whatever was set
-  // for legacy hosts that don't emit END.
+  // END terminates the handshake so BACKEND:/NS: may arrive in any order.
+  // Legacy hosts that don't send END fall through on timeout instead.
   bool received_ns = false;
   while ((millis() - start) < timeout_ms) {
     if (consumeAvailable(serial, buffer.data(), &idx, NS_MAX_LENGTH)) {

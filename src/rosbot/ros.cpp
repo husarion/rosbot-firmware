@@ -31,8 +31,8 @@
 #include "ros/publishers/range_publisher.hpp"
 #include "ros/subscribers/led_subscriber.hpp"
 
-// Pub configs kept here, not config.hpp, to keep lib/ros publisher
-// headers out of TUs that also see lib/mavlink — ODR safety.
+// Kept in this TU (not config.hpp) so lib/ros publisher headers don't
+// reach TUs that also include lib/mavlink — ODR safety.
 static constexpr BatteryPublisherConfig battery_pub_config = {
     .topic = "battery",
     .queue = battery_queue,

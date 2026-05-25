@@ -18,15 +18,10 @@
 
 #include "mavlink_node.hpp"
 
-// Periodic-publisher facade for the MAVLink stack. Each concrete publisher
-// reads a FreeRTOS queue, builds the matching mavlink_message_t, and forwards
-// it through MavlinkNode::sendMessage(). Rate limiting is enforced internally
-// by the publisher (matches MAVLINK_MIGRATION.md §9 "Telemetry rates").
+// Concrete publishers self-gate by their configured publish period; the
+// node loop calls publish() every tick without per-publisher scheduling.
 class MavlinkPublisherInterface {
  public:
   virtual ~MavlinkPublisherInterface() = default;
-  /// Called every uRos tick. Each implementation gates itself by the
-  /// configured publish period so the node loop doesn't need to schedule
-  /// individual publishers.
   virtual void publish(MavlinkNode& node) = 0;
 };

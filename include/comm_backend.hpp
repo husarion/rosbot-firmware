@@ -16,8 +16,7 @@
 
 #include <cstdint>
 
-// Selected at boot via the BACKEND: handshake line; defaults to
-// MICRO_ROS when absent (older host or timeout).
+// Selected at boot by the BACKEND: handshake. Defaults: MICRO_ROS.
 enum class CommBackend : uint8_t {
   MICRO_ROS = 0,
   MAVLINK = 1,

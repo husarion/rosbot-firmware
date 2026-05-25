@@ -34,22 +34,15 @@ struct SerialConfig {
 };
 
 struct CommunicationManagerConfig {
-  /// Primary transport: serial (Robot A) or ethernet (Robot B)
   TransportType primary_type = TransportType::kSerial;
-
-  /// Used only when primary_type == kSerial
   SerialConfig primary_serial = {};
-
-  /// Always present — debug output or fallback communication channel
+  // Debug output, or the comm channel when useDiagnosticCondition fires.
   SerialConfig diagnostic_serial = {};
 
-  /// If returns true during the selection window → diagnostic serial
-  /// becomes the ROS communication channel (and debug is disabled on it).
-  /// Plain function pointer to avoid std::function's implicit heap path
-  /// on embedded targets; non-capturing free functions decay naturally.
+  // When this returns true during the selection window, the diagnostic
+  // serial is promoted to the comm channel and debug output is silenced.
+  // Function pointer (not std::function) to avoid the embedded heap path.
   bool (*useDiagnosticCondition)() = nullptr;
-
-  /// Called once after diagnostic serial is chosen for communication.
   void (*onDiagnosticSelected)() = nullptr;
 
   uint16_t check_interval_ms = 50;
@@ -68,19 +61,11 @@ class CommunicationManager {
 
   void init();
 
-  /// Wait up to @p timeout_ms for diagnostic serial activity. If
-  /// detected → ROS transport = diagnostic serial, debug OFF. If timeout
-  /// elapses → ROS transport = primary (serial or ethernet), debug ON.
-  /// @return Pointer to SerialConfig when serial transport chosen;
-  ///         nullptr when ethernet is the selected transport.
+  // Returns the chosen SerialConfig, or nullptr when ethernet is primary.
   const SerialConfig* selectTransport(uint32_t timeout_ms = 1500);
 
-  /// Negotiate namespace over the active serial link (FW/NS/ACK
-  /// handshake). For ethernet transport — or if the host does not
-  /// respond within @p timeout_ms — falls back to `cfg_.ns_default`.
+  // Handshakes the namespace; falls back to ns_default on timeout / ethernet.
   void configureNamespace(uint16_t timeout_ms = 2500);
-
-  // ============== Accessors ==============
 
   TransportType selectedTransportType() const { return selected_type_; }
   bool isSerialTransport() const {
@@ -88,21 +73,14 @@ class CommunicationManager {
   }
   const SerialConfig* selectedSerialConfig() const { return selected_serial_; }
 
-  /// @return true when diagnostic serial is free for debug output
-  ///         (i.e. communication goes via primary transport, not
-  ///         diagnostic).
+  // True when diagnostic serial is free for debug printing.
   bool hasDebugSerial() const { return debug_available_; }
-
-  /// @return diagnostic HardwareSerial* if available for debug, nullptr
-  ///         otherwise.
   HardwareSerial* debugSerial();
 
   const char* getNamespace() const { return namespace_.data(); }
-
   CommBackend getSelectedBackend() const { return selected_backend_; }
 
-  // Override the build-time defaults — call before init() / handshake.
-  // ns_default must point to memory that outlives this manager.
+  // ns_default must point to memory outliving this manager.
   void setBackendDefault(CommBackend b) {
     cfg_.backend_default = b;
     selected_backend_ = b;
@@ -126,5 +104,4 @@ class CommunicationManager {
   CommBackend selected_backend_;
 };
 
-/// Global instance — defined in board-specific main.
 extern CommunicationManager g_comm_mgr;

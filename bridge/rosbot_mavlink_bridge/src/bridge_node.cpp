@@ -43,14 +43,12 @@ BridgeNode::BridgeNode(const rclcpp::NodeOptions& node_options,
   banner_regex_str_ = this->declare_parameter<std::string>(
       "expected_banner_regex", "rosbot(?:_xl)? .* mavlink");
   banner_regex_ = std::regex(banner_regex_str_);
-  // Bridge starts that come up AFTER the firmware has finished emitting
-  // its 10-shot boot banner would otherwise wait forever. After this many
-  // seconds of seeing HEARTBEAT from the MCU, promote anyway and log a
-  // warning. Set to 0 to require the banner strictly.
+  // Grace window for a bridge that started after the firmware finished
+  // emitting its 10-shot banner; promote on HEARTBEAT alone after this
+  // many seconds. 0 = strictly require the banner.
   banner_grace_seconds_ =
       this->declare_parameter<int>("banner_grace_seconds", 8);
 
-  // ── Transport ──────────────────────────────────────────
   if (!transport_->open()) {
     RCLCPP_FATAL(this->get_logger(),
                  "Failed to open MAVLink transport — aborting bridge node.");
@@ -59,8 +57,7 @@ BridgeNode::BridgeNode(const rclcpp::NodeOptions& node_options,
   RCLCPP_INFO(this->get_logger(),
               "MAVLink transport open. Waiting for HEARTBEAT + boot banner.");
 
-  // ── Publishers / subscribers / services ────────────────
-  // Topic names and QoS per §10.1 — matched to micro-ROS API parity.
+  // Topics + QoS mirror the micro-ROS API contract.
   battery_pub_ = this->create_publisher<sensor_msgs::msg::BatteryState>(
       "battery", bestEffortDepth1());
   imu_pub_ = this->create_publisher<sensor_msgs::msg::Imu>("_imu/data",
@@ -96,7 +93,6 @@ BridgeNode::BridgeNode(const rclcpp::NodeOptions& node_options,
         mcuIdServiceCb(req, res);
       });
 
-  // ── Timer + RX thread ──────────────────────────────────
   heartbeat_timer_ = this->create_wall_timer(std::chrono::seconds(1),
                                              [this]() { heartbeatTimer(); });
 
@@ -114,9 +110,7 @@ std::int64_t BridgeNode::nowUnixNs() const { return this->now().nanoseconds(); }
 
 rclcpp::Time BridgeNode::mcuTimeToRos(std::uint64_t time_boot_us) const {
   if (!time_synced_.load()) {
-    // No offset yet — fall back to bridge wall clock so downstream nodes
-    // still receive sensible stamps. Difference will normalise once
-    // TIMESYNC converges (within ~1 s).
+    // Stamps fall back to bridge wall clock until TIMESYNC converges (~1 s).
     return this->now();
   }
   std::int64_t mcu_boot_ns = static_cast<std::int64_t>(time_boot_us) * 1000LL;
@@ -133,14 +127,11 @@ void BridgeNode::sendMavlink(mavlink_message_t& msg) {
 
 void BridgeNode::heartbeatTimer() {
   mavlink_message_t m;
-  // Bridge advertises as MAV_TYPE_ONBOARD_CONTROLLER (companion computer)
-  // and MAV_AUTOPILOT_INVALID — we are not flying anything.
   mavlink_msg_heartbeat_pack(bridge_sysid_, bridge_compid_, &m,
                              MAV_TYPE_ONBOARD_CONTROLLER, MAV_AUTOPILOT_INVALID,
                              0, 0, MAV_STATE_ACTIVE);
   sendMavlink(m);
 
-  // Link-state diagnostic publishing — purely additive.
   if (publish_link_state_ && link_state_pub_) {
     std_msgs::msg::UInt8 msg;
     // bit0: peer alive, bit1: banner seen, bit2: time synced.
@@ -150,7 +141,6 @@ void BridgeNode::heartbeatTimer() {
     link_state_pub_->publish(msg);
   }
 
-  // Aging check on the peer.
   const auto now_ns = nowUnixNs();
   const auto last = last_peer_heartbeat_ns_.load();
   if (peer_alive_.load() && last != 0 &&
@@ -190,18 +180,15 @@ void BridgeNode::heartbeatTimer() {
 }
 
 void BridgeNode::rxLoop() {
-  // UDP delivers whole datagrams; reading 1 byte at a time discards the
-  // rest of each frame. Read a full datagram-sized chunk then feed the
-  // bytes through mavlink_parse_char one by one. Same code path works for
-  // the serial transport — read() just returns whatever the OS buffer has
-  // (up to len) and the parser slurps bytes regardless of chunking.
+  // Reads a full datagram (or whatever serial has) so UDP doesn't drop the
+  // tail of a frame between read() calls; the parser is byte-by-byte.
   std::uint8_t buf[kMaxFrame];
   mavlink_message_t msg;
   mavlink_status_t status;
   std::memset(&status, 0, sizeof(status));
 
   while (rx_running_.load()) {
-    // 50 ms select() — keeps thread responsive to shutdown while idle.
+    // 50 ms timeout keeps the thread responsive to shutdown while idle.
     const std::size_t n = transport_->read(buf, sizeof(buf), 50);
     for (std::size_t i = 0; i < n; ++i) {
       if (mavlink_parse_char(kChannel, buf[i], &msg, &status)) {
@@ -244,8 +231,6 @@ void BridgeNode::onMavlinkMessage(const mavlink_message_t& msg) {
       onCommandAck(msg);
       break;
     default:
-      // Unknown / unused IDs — silently drop. mavros-shaped dialect, not a
-      // generic relay (Non-goal 2 from MAVLINK_MIGRATION.md §1).
       break;
   }
 }
@@ -263,8 +248,8 @@ void BridgeNode::onTimesync(const mavlink_message_t& msg) {
   mavlink_timesync_t ts;
   mavlink_msg_timesync_decode(&msg, &ts);
 
-  // MCU initiated (tc1==0) — reply with our wall clock and echo ts1. The
-  // bridge's wall clock IS the time source the MCU is calibrating against.
+  // tc1==0 → MCU-initiated; echo ts1 and update our offset estimate from
+  // the same exchange. RTT on UDP is sub-ms, EWMA absorbs the asymmetry.
   if (ts.tc1 == 0) {
     const std::int64_t bridge_unix_ns = nowUnixNs();
     mavlink_message_t reply;
@@ -272,10 +257,6 @@ void BridgeNode::onTimesync(const mavlink_message_t& msg) {
                               bridge_unix_ns, ts.ts1);
     sendMavlink(reply);
 
-    // Update our own offset estimate from the same exchange. ts1 is the
-    // MCU's monotonic clock at send time; bridge_unix_ns is now-ish on
-    // our wall clock. Skip half-rtt correction — the EWMA averages it out
-    // and rtt is sub-millisecond on UDP.
     const std::int64_t sample = bridge_unix_ns - ts.ts1;
     std::int64_t prev = time_offset_ns_.load();
     std::int64_t next;
@@ -285,8 +266,8 @@ void BridgeNode::onTimesync(const mavlink_message_t& msg) {
       RCLCPP_INFO(this->get_logger(),
                   "TIMESYNC: initial MCU-boot → wall offset = %ld ns.", sample);
     } else {
-      // EWMA with α from parameter. Cast through double to avoid integer
-      // wrap on the multiply when prev/sample diverge during boot.
+      // Cast through double — direct int64 multiply wraps on early boot
+      // when prev/sample still diverge widely.
       const double a = timesync_alpha_;
       next = static_cast<std::int64_t>(a * static_cast<double>(sample) +
                                        (1.0 - a) * static_cast<double>(prev));
@@ -298,13 +279,11 @@ void BridgeNode::onTimesync(const mavlink_message_t& msg) {
 void BridgeNode::onStatustext(const mavlink_message_t& msg) {
   mavlink_statustext_t st;
   mavlink_msg_statustext_decode(&msg, &st);
-  // STATUSTEXT.text is up to 50 chars and may not be NUL-terminated.
+  // STATUSTEXT.text may not be NUL-terminated; trailing byte forces one.
   char text[51];
   std::memcpy(text, st.text, 50);
   text[50] = '\0';
 
-  // Severity mapping. MAVLink uses syslog levels (low=critical, high=debug);
-  // map to the closest rclcpp logger call.
   if (st.severity <= MAV_SEVERITY_ERROR) {
     RCLCPP_ERROR(this->get_logger(), "[MCU] %s", text);
   } else if (st.severity <= MAV_SEVERITY_WARNING) {
@@ -332,7 +311,7 @@ void BridgeNode::onBatteryStatus(const mavlink_message_t& msg) {
   sensor_msgs::msg::BatteryState out;
   out.header.stamp = this->now();
   out.header.frame_id = "base_link";
-  // Per-cell voltages in mV — sum the valid ones for the total voltage.
+  // Voltages are per-cell mV; sum the valid slots for the pack total.
   float total_v = 0.0f;
   out.cell_voltage.clear();
   for (int i = 0; i < 10; ++i) {
@@ -383,8 +362,7 @@ void BridgeNode::onRosbotImu(const mavlink_message_t& msg) {
   out.linear_acceleration.x = i.linear_acceleration[0];
   out.linear_acceleration.y = i.linear_acceleration[1];
   out.linear_acceleration.z = i.linear_acceleration[2];
-  // ROS convention: -1 in diag[0] of the 3x3 covariance = unknown. Apply
-  // to all three covariance arrays.
+  // ROS convention: covariance[0] = -1 marks the whole 3x3 as unknown.
   for (auto* arr :
        {&out.orientation_covariance, &out.angular_velocity_covariance,
         &out.linear_acceleration_covariance}) {
@@ -464,8 +442,7 @@ void BridgeNode::onRosbotMcuId(const mavlink_message_t& msg) {
 }
 
 void BridgeNode::onCommandAck(const mavlink_message_t& msg) {
-  // No-op for MVP — bridge resends COMMAND_LONG on timeout rather than
-  // tracking ACK arrival. Spec §5.4 retries up to 3 times every 500 ms.
+  // We retry COMMAND_LONG on timeout rather than tracking ACKs.
   (void)msg;
 }
 
@@ -504,9 +481,7 @@ void BridgeNode::ledStripCb(const sensor_msgs::msg::Image::SharedPtr msg) {
 void BridgeNode::mcuIdServiceCb(
     const std::shared_ptr<std_srvs::srv::Trigger::Request> /*req*/,
     std::shared_ptr<std_srvs::srv::Trigger::Response> res) {
-  // §5.4: COMMAND_LONG(MAV_CMD_USER_1) → COMMAND_ACK → ROSBOT_MCU_ID.
-  // We don't gate on the ACK; we just retry the COMMAND_LONG and wait for
-  // the ROSBOT_MCU_ID reply.
+  // COMMAND_LONG(MAV_CMD_USER_1) → ROSBOT_MCU_ID; retry on no reply.
   {
     std::lock_guard<std::mutex> lk(mcu_id_mutex_);
     mcu_id_received_ = false;

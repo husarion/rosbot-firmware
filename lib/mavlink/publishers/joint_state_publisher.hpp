@@ -40,8 +40,7 @@ class MavlinkJointStatePublisher : public MavlinkPublisherInterface {
     if (xQueueReceive(cfg_.queue, &data, 0) != pdPASS) return;
 
     const uint64_t t_us = static_cast<uint64_t>(data.timestamp_ns / 1000);
-    // Wheel order in the dialect is FL, FR, RL, RR (§4.4 / D9). The motor
-    // array enumerates in the same order — both stacks rely on this.
+    // Wheel order: FL, FR, RL, RR — matches MotorArray and the dialect.
     float position[4] = {data.data.position[0], data.data.position[1],
                          data.data.position[2], data.data.position[3]};
     float velocity[4] = {data.data.velocity[0], data.data.velocity[1],

@@ -44,10 +44,8 @@ class MavlinkBatteryPublisher : public MavlinkPublisherInterface {
     uint16_t voltages[10];
     for (uint8_t i = 0; i < 10; ++i) voltages[i] = UINT16_MAX;
 
-    // Each cell carries an equal share of the pack voltage. Spec §4.1
-    // accepts pack-only voltage when per-cell instrumentation is absent;
-    // splitting evenly keeps the SUM(voltages) identity intact for any
-    // consumer that totals them.
+    // No per-cell instrumentation — split the pack voltage evenly so any
+    // consumer that sums voltages still gets the right total.
     const float per_cell_v =
         (cfg_.num_cells > 0) ? data.data.voltage / cfg_.num_cells : 0.0f;
     for (uint8_t i = 0; i < cfg_.num_cells && i < 10; ++i) {
@@ -63,9 +61,6 @@ class MavlinkBatteryPublisher : public MavlinkPublisherInterface {
       percent = static_cast<int8_t>(data.data.percentage * 100.0f);
     }
 
-    // voltages_ext / mode / fault_bitmask / time_remaining / charge_state
-    // are MAVLink-2 extensions we don't expose. Pass UINT16_MAX / 0 to keep
-    // the wire bytes deterministic.
     uint16_t voltages_ext[4] = {0, 0, 0, 0};
     mavlink_message_t m;
     mavlink_msg_battery_status_pack(

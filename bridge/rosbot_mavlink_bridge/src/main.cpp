@@ -23,10 +23,8 @@
 int main(int argc, char** argv) {
   rclcpp::init(argc, argv);
 
-  // Pull transport-selection params off a temporary node so we can pass
-  // them in before constructing BridgeNode (its constructor opens the
-  // transport). All ROS-side parameters of the bridge proper are declared
-  // inside BridgeNode itself.
+  // Transport params come off a temporary node so they can be applied
+  // before BridgeNode's constructor opens the transport.
   auto bootstrap = std::make_shared<rclcpp::Node>("rosbot_mavlink_bridge_boot");
   const std::string transport =
       bootstrap->declare_parameter<std::string>("transport", "udp");
@@ -41,9 +39,6 @@ int main(int argc, char** argv) {
   const std::string ros_namespace =
       bootstrap->declare_parameter<std::string>("ros_namespace", "");
 
-  // Construct the actual node under the requested namespace. rclcpp prefixes
-  // every relative topic / service / node name with it — the same prefixing
-  // the rcl-based micro-ROS firmware does today (§10.1 mechanics).
   rclcpp::NodeOptions opts;
   std::vector<std::string> args = {"--ros-args"};
   if (!ros_namespace.empty()) {

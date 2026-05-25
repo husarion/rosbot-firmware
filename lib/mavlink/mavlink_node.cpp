@@ -24,21 +24,14 @@
 #include "subscribers/subscriber_interface.hpp"
 
 namespace {
-// Single MAVLink channel — only one MavlinkNode exists per firmware build.
 constexpr uint8_t kChannel = MAVLINK_COMM_0;
-// Largest MAVLink v2 frame.
 constexpr size_t kMaxFrame = MAVLINK_MAX_PACKET_LEN;
-// Bigger than any STATUSTEXT we emit, generously sized.
 constexpr size_t kLogBufSize = 64;
 }  // namespace
 
+// Folds the uint32 micros() delta into a uint64 accumulator so the value
+// stays monotonic across the ~71 min wrap. Single-writer (uRos task).
 uint64_t MavlinkNode::timeBootUs() {
-  // micros() wraps every 2^32 us (~71 min). Accumulate uint32 deltas into a
-  // 64-bit monotonic counter so time_boot_us never steps backwards — the
-  // bridge's TIMESYNC EWMA filter assumes monotonic samples. Called from
-  // the uRos task only (heartbeat, timesync emit/reply, publishers); no
-  // cross-task contention today. If a second writer appears, this needs a
-  // mutex — the static state would otherwise lose a delta.
   static uint32_t s_last_us = 0;
   static uint64_t s_accum_us = 0;
   const uint32_t now = micros();
@@ -62,10 +55,6 @@ bool MavlinkNode::sendMessage(mavlink_message_t& msg) {
   uint8_t buf[kMaxFrame];
   uint16_t len = mavlink_msg_to_send_buffer(buf, &msg);
   if (tx_mutex_ == nullptr) return transport_.write(buf, len) == len;
-  // Mutex guards the transport against concurrent publish() calls. Publishers
-  // run on the uRos task today so contention is zero, but the contract holds
-  // if a future task posts a STATUSTEXT or wheel-stop from a different
-  // context.
   xSemaphoreTake(tx_mutex_, portMAX_DELAY);
   const size_t written = transport_.write(buf, len);
   xSemaphoreGive(tx_mutex_);
@@ -84,10 +73,9 @@ void MavlinkNode::log(uint8_t severity, const char* fmt, ...) {
   }
 
   if (!transport_open_) return;
+  // kLogBufSize stays ≤ 50 so the firmware string survives MAVLink's
+  // STATUSTEXT truncation intact.
   mavlink_message_t m;
-  // mavlink_msg_statustext_pack truncates text to 50 chars internally —
-  // kLogBufSize stays under that to keep the firmware string == bridge
-  // log line.
   mavlink_msg_statustext_pack(cfg_.sysid, cfg_.compid, &m, severity, buf,
                               /*id=*/0, /*chunk_seq=*/0);
   sendMessage(m);
@@ -101,9 +89,6 @@ void MavlinkNode::loop() {
   const uint32_t now = millis();
 
   emitHeartbeatIfDue(now);
-  // Banner emission is independent of state — a bridge that joins late
-  // (within the kBannerAttempts × 1 s window) still gets to see it. After
-  // that window the bridge auto-promotes, so reboots survive too.
   emitBootBannerIfDue(now);
   drainRx();
 
@@ -116,9 +101,6 @@ void MavlinkNode::loop() {
       break;
 
     case AWAIT_TIMESYNC:
-      // Phase 2 fills this in — for the skeleton we move straight on once we
-      // see any peer activity, which is enough for Phase 1's CI exit
-      // criterion (HEARTBEAT visible).
       emitTimesyncIfDue(now);
       state_ = CONNECTED;
       break;
@@ -135,8 +117,6 @@ void MavlinkNode::loop() {
       break;
 
     case DISCONNECTED:
-      // Motor watchdog has already cut motors after 500 ms (D12). Reset
-      // and wait for the peer to re-appear.
       peer_seen_ = false;
       boot_banner_sent_ = false;
       boot_banner_attempts_ = 0;
@@ -161,21 +141,13 @@ void MavlinkNode::emitHeartbeatIfDue(uint32_t now_ms) {
 }
 
 void MavlinkNode::emitBootBannerIfDue(uint32_t now_ms) {
-  // Emit the banner up to kBannerAttempts times at 1 s intervals after
-  // boot. The bridge auto-promotes after a similar timeout (§10.2 +
-  // pragmatic note), so a bridge that misses the window still works on
-  // subsequent reconnects.
   constexpr uint8_t kBannerAttempts = 10;
   if (boot_banner_sent_) return;
-  // CONNECTED means we exchanged HEARTBEATs both ways; banner was emitted
-  // in the same loop iteration as our first HEARTBEAT, so the bridge has
-  // already seen it (or will auto-promote via banner_grace_seconds_).
-  // Keeps STATUSTEXT off the channel once the link is established.
   if (state_ == CONNECTED) {
     boot_banner_sent_ = true;
     return;
   }
-  if (last_heartbeat_ms_ == 0) return;  // wait until first heartbeat lands
+  if (last_heartbeat_ms_ == 0) return;
   if ((now_ms - last_boot_banner_ms_) < 1000 && last_boot_banner_ms_ != 0) {
     return;
   }
@@ -186,9 +158,6 @@ void MavlinkNode::emitBootBannerIfDue(uint32_t now_ms) {
 }
 
 void MavlinkNode::emitTimesyncIfDue(uint32_t now_ms) {
-  // Phase 1: send periodic TIMESYNC requests so the bridge can warm its
-  // offset filter early. We don't apply the reply on the firmware side —
-  // bridge owns the wall-clock translation (D15).
   const uint32_t period = (state_ == CONNECTED)
                               ? cfg_.timesync_period_ms
                               : cfg_.timesync_active_period_ms;
@@ -196,7 +165,6 @@ void MavlinkNode::emitTimesyncIfDue(uint32_t now_ms) {
   last_timesync_ms_ = now_ms;
 
   mavlink_message_t m;
-  // MCU-initiated: tc1=0, ts1=mcu_now_ns. Bridge echoes ts1 and fills tc1.
   const int64_t ts1_ns = static_cast<int64_t>(timeBootUs() * 1000ULL);
   mavlink_msg_timesync_pack(cfg_.sysid, cfg_.compid, &m,
                             /*tc1=*/0, ts1_ns);
@@ -205,9 +173,6 @@ void MavlinkNode::emitTimesyncIfDue(uint32_t now_ms) {
 
 void MavlinkNode::drainRx() {
   uint8_t byte;
-  // Pull whatever the transport has buffered. The serial transport blocks
-  // up to 1 ms internally and UDP returns immediately on empty; using a
-  // 0 ms timeout keeps the spin tight either way.
   while (transport_.read(&byte, 1, 0) == 1) {
     if (mavlink_parse_char(kChannel, byte, &rx_msg_, &rx_status_)) {
       dispatchMessage(rx_msg_);
@@ -224,9 +189,7 @@ void MavlinkNode::dispatchMessage(const mavlink_message_t& msg) {
     case MAVLINK_MSG_ID_TIMESYNC: {
       mavlink_timesync_t ts;
       mavlink_msg_timesync_decode(&msg, &ts);
-      // If tc1==0 it's a request — echo our own clock back. Bridge does the
-      // same when *it* receives our request; this branch only matters if
-      // the bridge ever initiates one (current bridge does not).
+      // tc1==0 marks a peer-initiated request — echo our clock back.
       if (ts.tc1 == 0) {
         mavlink_message_t reply;
         const int64_t tc1_ns = static_cast<int64_t>(timeBootUs() * 1000ULL);

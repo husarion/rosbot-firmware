@@ -16,21 +16,16 @@
 
 #include <HardwareSerial.h>
 
-// Abstract upstream-link backend. Both RosNode and MavlinkNode implement
-// it so the uRos task drives either via g_link.
+// Common interface so the uRos task can drive either RosNode or
+// MavlinkNode through g_link.
 class RoboticsLink {
  public:
   virtual ~RoboticsLink() = default;
-  /// State-machine + spin tick. Called at the uRos task period.
   virtual void loop() = 0;
-  /// True when the upstream peer is reachable and entities exist.
   virtual bool isConnected() const = 0;
-  /// Logical namespace selected on boot via CommunicationManager.
   virtual void setNamespace(const char* ns) = 0;
-  /// Optional FTDI serial for STATUSTEXT / log forwarding.
   virtual void setDiagnosticSerial(HardwareSerial* serial) = 0;
 };
 
-// nullptr until setup() assigns it before vTaskStartScheduler();
-// tasks only read it from their loop bodies, past that point.
+// Assigned in setup() before vTaskStartScheduler(); read-only thereafter.
 extern RoboticsLink* g_link;

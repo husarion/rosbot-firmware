@@ -27,11 +27,8 @@
 #include "robotics_link.hpp"
 #include "ros/ros_node.hpp"
 
-// Assigned in setup() before vTaskStartScheduler; tasks read it only
-// from their loop bodies, so the nullptr window is unobservable.
 RoboticsLink* g_link = nullptr;
 
-// ──── Queues ────
 void createQueues() {
   battery_queue = xQueueCreate(1, sizeof(BatteryStamped));
   imu_queue = xQueueCreate(1, sizeof(ImuStamped));
@@ -39,7 +36,6 @@ void createQueues() {
   ranges_queue = xQueueCreate(1, sizeof(RangesStamped));
 }
 
-// ──── Create all tasks ────
 void batteryTask(void* p);
 void imuTask(void* p);
 void ledIndicatorTask(void* p);
@@ -68,7 +64,6 @@ void createTasks() {
   }
 }
 
-// ──── Task functions ────
 void batteryTask(void* p) {
   TickType_t period = taskGetPeriod(p);
   TickType_t wake_time = xTaskGetTickCount();

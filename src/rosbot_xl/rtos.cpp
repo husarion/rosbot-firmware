@@ -33,15 +33,11 @@
 #include "robotics_link.hpp"
 #include "ros/ros_node.hpp"
 
-// ───── Externs ─────
 extern FanController g_fan;
 extern PowerBoard power_board;
 
-// Assigned in setup() before vTaskStartScheduler; nullptr window is
-// unobservable to tasks (they read it only from their loop bodies).
 RoboticsLink* g_link = nullptr;
 
-// ───── Queues ─────
 void createQueues() {
   battery_queue = xQueueCreate(1, sizeof(BatteryStamped));
   imu_queue = xQueueCreate(1, sizeof(ImuStamped));
@@ -49,7 +45,6 @@ void createQueues() {
   led_strip_queue = xQueueCreate(1, sizeof(LedFrameMsg));
 }
 
-// ───── Create all tasks ─────
 void hwMonitorTask(
     void* p);  // Bat + Fan + Indicator: Merged due limited stack size
 void imuTask(void* p);
@@ -78,8 +73,6 @@ void createTasks() {
     taskHandles[i].create(tasks[i]);
   }
 }
-
-// ───── Task functions ─────
 
 void hwMonitorTask(void* p) {
   TickType_t period = taskGetPeriod(p);

@@ -23,11 +23,8 @@
 #include "range_array.hpp"
 #endif
 
-// Producer-task → publisher queue wrappers. The micro-ROS stack declares the
-// same shapes inside lib/ros/ros/publishers/*.hpp (which pulls in
-// sensor_msgs headers); we duplicate the wrappers here so the MAVLink build
-// has no micro-ROS dependency. The struct layout is identical to the
-// micro-ROS variant, so the FreeRTOS queue size matches in either build.
+// Duplicates lib/ros/ros/publishers/*.hpp shapes so the MAVLink build pulls
+// no sensor_msgs / micro-ROS headers. Layout must stay binary-compatible.
 struct BatteryStamped {
   BatteryData data;
   int64_t timestamp_ns;
@@ -49,6 +46,3 @@ struct RangesStamped {
   int64_t timestamp_ns;
 };
 #endif
-
-// LedFrameMsg is declared by lib/led_strip; reuse it unchanged so the
-// queue payload matches what the LED-strip task already dequeues.

@@ -31,8 +31,7 @@ bool UdpTransport::open() {
   int fd = ::socket(AF_INET, SOCK_DGRAM, 0);
   if (fd < 0) return false;
 
-  // Re-bind on restart instead of waiting out TIME_WAIT — the bridge is
-  // expected to be restartable without a kernel-level delay.
+  // Skip TIME_WAIT so bridge restarts are immediate.
   int reuse = 1;
   ::setsockopt(fd, SOL_SOCKET, SO_REUSEADDR, &reuse, sizeof(reuse));
 

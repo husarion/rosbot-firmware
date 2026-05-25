@@ -25,8 +25,8 @@ namespace rosbot_mavlink_bridge {
 
 struct UdpConfig {
   std::string peer_ip;
-  std::uint16_t peer_port = 14555;   // MCU bind port
-  std::uint16_t local_port = 14550;  // bridge bind port
+  std::uint16_t peer_port = 14555;
+  std::uint16_t local_port = 14550;
 };
 
 class UdpTransport : public Transport {

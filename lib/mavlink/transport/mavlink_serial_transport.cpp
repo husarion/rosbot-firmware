@@ -73,8 +73,7 @@ void txCpltCallback(DMA_HandleTypeDef* /*hdma*/) {
 
 }  // namespace
 
-// Strong overrides of lib/ros's weak no-op hooks; the actual ISRs live
-// there and call these in the shared single-binary build.
+// Strong overrides of lib/ros's weak no-op DMA hooks (shared single binary).
 extern "C" void mavlink_serial_dma2_stream7_isr(void) {
   if (s_hdma_tx.Instance == DMA2_Stream7) HAL_DMA_IRQHandler(&s_hdma_tx);
 }
@@ -152,14 +151,10 @@ size_t MavlinkSerialTransport::write(const uint8_t* buf, size_t len) {
   const size_t sent = xStreamBufferSend(s_tx_stream, buf, len,
                                         pdMS_TO_TICKS(kTxStreamSendTimeoutMs));
 
-  // Kick the DMA pipeline only when no transfer is in flight. The whole
-  // check-receive-start-or-clear sequence must be atomic w.r.t. both the
-  // txCpltCallback ISR (which mutates s_dma_active and s_dma_buf) and any
-  // concurrent writer task — otherwise a writer that saw s_dma_active=true
-  // could be stranded while we later set it back to false on an empty
-  // stream. taskENTER_CRITICAL masks ISRs up to configMAX_SYSCALL_INTERRUPT
-  // _PRIORITY and disables preemption; the FromISR receive is the only
-  // stream-buffer API safe in that context.
+  // The whole check-receive-arm sequence must be atomic vs txCpltCallback
+  // and any concurrent writer; otherwise a writer can be stranded with a
+  // full stream and s_dma_active=false. The FromISR receive is the only
+  // stream-buffer API legal inside taskENTER_CRITICAL.
   taskENTER_CRITICAL();
   if (!s_dma_active) {
     BaseType_t hpw = pdFALSE;

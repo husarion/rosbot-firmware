@@ -20,10 +20,8 @@
 
 class MavlinkNode;
 
-// Command-side dispatcher for the MAVLink stack. The node iterates all
-// registered subscribers for each incoming frame; the one whose msgId()
-// matches consumes it. Single-pass linear scan keeps the table small and
-// branch-predictable (≤ 4 entries on each variant).
+// The node linear-scans the subscriber table per incoming frame; the
+// first whose msgId() matches consumes it.
 class MavlinkSubscriberInterface {
  public:
   virtual ~MavlinkSubscriberInterface() = default;

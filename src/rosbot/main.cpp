@@ -147,8 +147,7 @@ void setup() {
   g_motors.init();  // motors own encoders → enc init happens here
   g_ranges.init();
 
-  // Only the chosen backend's begin()/transport-init runs; the other
-  // singleton stays inert at its ctor-stored config.
+  // Only the chosen backend's transport is opened; the other stays inert.
   if (g_comm_mgr.getSelectedBackend() == CommBackend::MAVLINK) {
     g_mavlink_node.setNamespace(g_comm_mgr.getNamespace());
     g_mavlink_node.setDiagnosticSerial(g_comm_mgr.debugSerial());

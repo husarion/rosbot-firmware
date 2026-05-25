@@ -31,16 +31,15 @@ class McuIdCommand : public MavlinkSubscriberInterface {
     mavlink_msg_command_long_decode(&msg, &cmd);
     if (cmd.command != MAV_CMD_USER_1) return;
 
-    // §5.4 step 2: ACK first so the bridge can correlate retries.
+    // ACK first so the bridge can correlate retries.
     mavlink_message_t ack;
     mavlink_msg_command_ack_pack(
         node.sysid(), node.compid(), &ack, MAV_CMD_USER_1, MAV_RESULT_ACCEPTED,
         /*progress=*/255, /*result_param2=*/0, msg.sysid, msg.compid);
     node.sendMessage(ack);
 
-    // §5.4 step 3: payload. STM32 UID lives at 0x1FFF7A10 — 96 bits, hex
-    // encoded as 24 chars. The wire field carries no terminator, but the
-    // local buffer needs room for snprintf's NUL on the final byte pair.
+    // STM32 UID @ 0x1FFF7A10 — 96 bits → 24 hex chars (no wire terminator),
+    // +1 byte for snprintf's NUL on the final byte pair.
     char hex[25];
     const uint8_t* uid_bytes = reinterpret_cast<const uint8_t*>(0x1FFF7A10);
     for (int i = 0; i < 12; ++i) {

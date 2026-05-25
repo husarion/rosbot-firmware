@@ -191,8 +191,8 @@ void setup() {
   g_motors.init();
   power_board.init();
 
-  // MAVLink on rosbot_xl runs over UDP (transport baked into
-  // g_mavlink_node's ctor); micro-ROS picks serial vs ethernet here.
+  // MAVLink uses the UDP transport bound in g_mavlink_node's ctor;
+  // micro-ROS chooses serial vs ethernet at runtime.
   if (g_comm_mgr.getSelectedBackend() == CommBackend::MAVLINK) {
     g_mavlink_node.setNamespace(g_comm_mgr.getNamespace());
     g_mavlink_node.setDiagnosticSerial(g_comm_mgr.debugSerial());

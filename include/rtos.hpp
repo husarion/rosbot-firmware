@@ -21,14 +21,10 @@
 #include "comm_backend.hpp"
 #include "communication_manager.hpp"
 
-// Runtime-dispatched per the backend chosen during boot:
-//   MAVLink  — bridge owns wall-clock translation via TIMESYNC, so the
-//              MCU stamps with monotonic time_boot_ns. micros() wraps
-//              every ~71 min; folding the uint32 delta into a uint64
-//              accumulator stays monotonic across the wrap, provided the
-//              function is called ≥1/wrap (publishers run ≥1 Hz, so OK).
-//   micro-ROS — only enqueue once the agent has synced the wall clock, so
-//               publishers stamp sec/nsec that match the ROS-side time.
+// MAVLink stamps with monotonic time_boot_ns (bridge owns wall-clock via
+// TIMESYNC); the accumulator folds the uint32 micros() delta into uint64
+// so the value survives the ~71 min wrap. micro-ROS gates publishing
+// until the agent has synced wall time.
 static inline bool rtos_get_timestamp_ns(int64_t& timestamp_ns) {
   if (g_comm_mgr.getSelectedBackend() == CommBackend::MAVLINK) {
     static uint32_t s_last_us = 0;

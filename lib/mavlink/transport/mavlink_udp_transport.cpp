@@ -25,23 +25,18 @@ extern "C" {
 
 namespace {
 
-// MAVLink v2 max frame is 280 B. Holds ~7 frames before drop. uRos task is
-// expected to drain fast enough that this floor is never hit; if it is, we
-// have a starvation bug to chase, not a queue-size to tune.
-constexpr size_t kRxStreamSize = 2048;
+constexpr size_t kRxStreamSize = 2048;  // ~7 MAVLink v2 frames.
 
 struct udp_pcb* s_pcb = nullptr;
 StreamBufferHandle_t s_rx_stream = nullptr;
 ip_addr_t s_peer_addr;
 uint16_t s_peer_port = 0;
 
-// Runs on LwIP scheduler thread (not ISR). Plain stream-buffer send is OK.
 void rxCallback(void* /*arg*/, struct udp_pcb* /*pcb*/, struct pbuf* p,
                 const ip_addr_t* /*addr*/, u16_t /*port*/) {
   if (p == nullptr) return;
   for (struct pbuf* q = p; q != nullptr; q = q->next) {
-    // timeout=0 — drop on overflow rather than block LwIP. MAVLink frames
-    // missed here will be re-tried at the next telemetry tick anyway.
+    // timeout=0 — drop on overflow rather than block LwIP.
     xStreamBufferSend(s_rx_stream, q->payload, q->len, 0);
   }
   pbuf_free(p);
@@ -84,13 +79,9 @@ void MavlinkUdpTransport::close() {
 size_t MavlinkUdpTransport::write(const uint8_t* buf, size_t len) {
   if (s_pcb == nullptr || buf == nullptr || len == 0) return 0;
 
-  // lwIP runs with NO_SYS=1; the same raw API is touched from a TIM IRQ
-  // (stm32_eth_scheduler → ethernetif_input → udp_recv → rxCallback) and
-  // from this task. Without serialization the pbuf pool and pcb chain race
-  // and can corrupt. taskENTER_CRITICAL masks the TIM IRQ (priority 15) up
-  // to configMAX_SYSCALL_INTERRUPT_PRIORITY, holding lwIP single-threaded
-  // for the duration of the call. Kept narrow: pbuf_alloc/take/sendto/free
-  // are all bounded and short.
+  // lwIP runs NO_SYS=1; the same raw API is also touched from the
+  // stm32_eth_scheduler TIM IRQ. taskENTER_CRITICAL masks that IRQ to keep
+  // the pbuf pool / pcb chain single-threaded for the call.
   taskENTER_CRITICAL();
   struct pbuf* p = pbuf_alloc(PBUF_TRANSPORT, len, PBUF_RAM);
   if (p == nullptr) {

@@ -24,9 +24,7 @@
 #include "subscribers/wheel_cmd_subscriber.hpp"
 #include "transport/mavlink_udp_transport.hpp"
 
-// rosbot_xl talks MAVLink over UDP using the mavros default port layout
-// (D17): MCU bound on 14555, peer on 14550 at the same SBC IP that the
-// micro-ROS build targets today.
+// MAVROS-default UDP port layout: MCU bound on 14555, peer on 14550.
 static MavlinkUdpConfig udp_cfg = {
     .peer_ip = AGENT_IP,
     .peer_port = 14550,
@@ -34,9 +32,7 @@ static MavlinkUdpConfig udp_cfg = {
 };
 static MavlinkUdpTransport udp_transport(udp_cfg);
 
-// ─────── Publishers (telemetry: MCU → bridge) ───────
-// Periods per MAVLINK_MIGRATION.md §4 / D21:
-//   battery 1 Hz, imu 100 Hz, joint_state 200 Hz, buttons 20 Hz.
+// Publishers (telemetry: MCU → bridge)
 static MavlinkBatteryPublisher battery_pub({.queue = battery_queue,
                                             .num_cells = BATTERY_NUM_CELLS,
                                             .period_ms = 1000});
@@ -50,7 +46,7 @@ static MavlinkButtonsPublisher buttons_pub({.pins = buttons_pins,
 static MavlinkPublisherInterface* s_publishers[] = {
     &battery_pub, &imu_pub, &joint_state_pub, &buttons_pub};
 
-// ─────── Subscribers (commands: bridge → MCU) ───────
+// Subscribers (commands: bridge → MCU)
 static const PanelLedConfig s_panel_leds[] = {
     {.pin = GRN_LED, .bit_mask = 0x01},
 };

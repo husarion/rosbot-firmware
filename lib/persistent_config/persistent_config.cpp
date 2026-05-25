@@ -70,7 +70,6 @@ Config load() {
       return out;
     }
   }
-  // Fresh flash (or corruption) — defaults.
   out.backend = CommBackend::MAVLINK;
   out.ns[0] = '\0';
   s_cached = out;
@@ -79,12 +78,9 @@ Config load() {
 }
 
 void save(const Config& cfg) {
-  // HAL_FLASHEx_Erase on sector 11 stalls the instruction bus for 1-3 s
-  // while erasing — every task and ISR that fetches code from flash blocks
-  // for that whole window. That budget overruns the 500 ms motor watchdog
-  // and starves any pending MAVLink TX. Only call before the scheduler
-  // starts (during setup()), when no tasks are running and no time-
-  // critical ISRs are armed yet.
+  // Sector erase stalls the instruction bus for 1-3 s, exceeding the motor
+  // watchdog and starving MAVLink TX. Caller must invoke before scheduler
+  // start; see the header.
   configASSERT(xTaskGetSchedulerState() != taskSCHEDULER_RUNNING);
 
   if (s_loaded && cfg.backend == s_cached.backend &&

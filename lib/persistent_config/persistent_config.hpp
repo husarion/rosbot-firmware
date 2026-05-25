@@ -19,15 +19,11 @@
 
 #include "comm_backend.hpp"
 
-// Last-known good handshake state, persisted in STM32F407 flash sector 11
-// (0x080E0000, 128 KB). Sector 11 is well past our ~22 % code-fill, but the
-// linker is not asked to reserve it — keep the code under sector 10.
-//
-// Fresh flash (erased to 0xFF) reads back as defaults: MAVLINK + empty
-// namespace. main.cpp uses load() to seed the handshake fallbacks, then
-// save()s after the handshake settles. save() is no-op when the new
-// values match the last load(), so flash wear scales with config changes,
-// not boots.
+// Persisted in STM32F407 flash sector 11 (0x080E0000, 128 KB). The linker
+// does not reserve the sector — keep total .text under sector 10.
+// load() returns defaults (MAVLINK, empty namespace) on a fresh or
+// corrupt sector. save() is a no-op when the cached value matches, so
+// wear scales with config changes, not boots.
 namespace persistent_config {
 
 inline constexpr size_t kNamespaceMaxLen = 32;
@@ -39,10 +35,9 @@ struct Config {
 
 Config load();
 
-// Must be called before vTaskStartScheduler(). Flash sector erase stalls
-// the instruction bus for 1-3 s and is not safe once RTOS tasks or
-// time-critical ISRs (motor watchdog, MAVLink TX DMA) are armed. Asserts
-// at runtime if invoked once the scheduler is running.
+// Must run before vTaskStartScheduler(); the 1-3 s sector erase stalls
+// the instruction bus and starves the motor watchdog / MAVLink TX DMA.
+// Asserts if invoked once the scheduler is running.
 void save(const Config& cfg);
 
 }  // namespace persistent_config

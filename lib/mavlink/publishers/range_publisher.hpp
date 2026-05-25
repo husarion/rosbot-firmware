@@ -42,15 +42,11 @@ class MavlinkRangePublisher : public MavlinkPublisherInterface {
     RangesStamped data;
     if (xQueueReceive(cfg_.queue, &data, 0) != pdPASS) return;
 
-    // DISTANCE_SENSOR uses time_boot_ms (uint32_t) so the upper bits get
-    // truncated. Acceptable: it's monotonic for any 49-day window.
+    // time_boot_ms truncates to uint32_t — monotonic over any 49-day window.
     const uint32_t t_ms = static_cast<uint32_t>(data.timestamp_ns / 1000000);
     const uint16_t min_cm = static_cast<uint16_t>(cfg_.min_range_m * 100.0f);
     const uint16_t max_cm = static_cast<uint16_t>(cfg_.max_range_m * 100.0f);
 
-    // horizontal_fov / vertical_fov / quaternion / signal_quality are
-    // MAVLink-2 extensions. We don't have meaningful values for the ToF
-    // sensors here; pass 0s.
     float quaternion[4] = {0.0f, 0.0f, 0.0f, 0.0f};
     for (uint8_t i = 0; i < data.data.count && i < 4; ++i) {
       const uint16_t current_cm =

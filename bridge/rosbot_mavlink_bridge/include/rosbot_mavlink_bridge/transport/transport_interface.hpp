@@ -24,9 +24,7 @@ class Transport {
   virtual ~Transport() = default;
   virtual bool open() = 0;
   virtual void close() = 0;
-  /// Returns bytes accepted (== len on success).
   virtual std::size_t write(const std::uint8_t* buf, std::size_t len) = 0;
-  /// Blocks up to @p timeout_ms; returns bytes copied (may be 0 on timeout).
   virtual std::size_t read(std::uint8_t* buf, std::size_t len,
                            int timeout_ms) = 0;
 };

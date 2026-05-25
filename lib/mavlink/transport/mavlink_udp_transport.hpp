@@ -18,10 +18,8 @@
 
 #include "mavlink_transport_interface.hpp"
 
-// LwIP raw-API UDP transport for MAVLink. Same pattern as the micro-ROS
-// lwip_udp_transport but without xrce framing. MCU binds @p local_port and
-// sends to (@p peer_ip, @p peer_port). Per MAVLINK_MIGRATION.md D17 the
-// mavros default ports are local=14555 / peer=14550.
+// LwIP raw-API UDP transport. MCU binds local_port and sends to
+// (peer_ip, peer_port). MAVROS default: local=14555, peer=14550.
 struct MavlinkUdpConfig {
   IPAddress peer_ip;
   uint16_t peer_port;

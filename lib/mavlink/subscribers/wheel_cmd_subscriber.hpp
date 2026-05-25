@@ -28,8 +28,8 @@ class WheelCmdSubscriber : public MavlinkSubscriberInterface {
   void onMessage(const mavlink_message_t& msg, MavlinkNode& /*node*/) override {
     mavlink_rosbot_wheel_setpoints_t s;
     mavlink_msg_rosbot_wheel_setpoints_decode(&msg, &s);
-    // setVelocities already feeds the 500 ms motor watchdog (D12), so any
-    // bridge dropout cuts the wheels without us touching the timer here.
+    // setVelocities feeds the 500 ms motor watchdog; bridge dropout
+    // auto-stops the wheels.
     motors_.setVelocities(s.velocity);
   }
 

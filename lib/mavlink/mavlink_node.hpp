@@ -28,20 +28,16 @@ class MavlinkPublisherInterface;
 class MavlinkSubscriberInterface;
 
 struct MavlinkNodeConfig {
-  // System / component identity (D6 — sysid=1, compid=1).
   uint8_t sysid = 1;
   uint8_t compid = MAV_COMP_ID_AUTOPILOT1;
-  // HEARTBEAT type/autopilot (D6).
   uint8_t mav_type = MAV_TYPE_GROUND_ROVER;
   uint8_t autopilot = MAV_AUTOPILOT_GENERIC;
-  // Boot banner per D19. Bridge requires this before declaring CONNECTED.
+  // Bridge gates the CONNECTED transition on seeing this banner.
   const char* boot_banner = "rosbot mavlink";
-  // Cadence (ms). Telemetry rates are enforced inside the publishers.
   uint32_t heartbeat_period_ms = 1000;
-  uint32_t timesync_period_ms = 2000;        // 0.5 Hz once CONNECTED
-  uint32_t timesync_active_period_ms = 200;  // 5 Hz during AWAIT_TIMESYNC
-  uint32_t peer_timeout_ms = 3000;  // D10 — disconnect after 3 s silence
-  // Publisher/subscriber tables (populated by mavlink_entities.cpp).
+  uint32_t timesync_period_ms = 2000;
+  uint32_t timesync_active_period_ms = 200;
+  uint32_t peer_timeout_ms = 3000;
   MavlinkPublisherInterface** publishers = nullptr;
   size_t pub_count = 0;
   MavlinkSubscriberInterface** subscribers = nullptr;
@@ -55,10 +51,8 @@ class MavlinkNode : public RoboticsLink {
   MavlinkNode(MavlinkTransport& transport, const MavlinkNodeConfig& cfg)
       : transport_(transport), cfg_(cfg) {}
 
-  /// Open transport and start emitting HEARTBEAT. Idempotent.
   bool begin();
 
-  // ── RoboticsLink ────────────────────────────────────────
   void loop() override;
   bool isConnected() const override { return state_ == CONNECTED; }
   void setNamespace(const char* ns) override { ns_ = ns; }
@@ -66,21 +60,10 @@ class MavlinkNode : public RoboticsLink {
     diag_serial_ = serial;
   }
 
-  // ── Wire helpers ────────────────────────────────────────
-  /// Serialize @p msg and write it to the transport. Returns true on full
-  /// frame written. Safe to call from any task — the transport handles its
-  /// own concurrency.
   bool sendMessage(mavlink_message_t& msg);
-
-  /// MCU boot timestamp in microseconds, monotonic.
   static uint64_t timeBootUs();
-
-  /// MCU-side log line. Emits a STATUSTEXT with `severity` and mirrors to
-  /// the diagnostic serial when available. `severity` follows MAVLink
-  /// MAV_SEVERITY_* (DEBUG=7, INFO=6, WARNING=4, ERROR=3).
   void log(uint8_t severity, const char* fmt, ...);
 
-  // ── Accessors ──────────────────────────────────────────
   uint8_t sysid() const { return cfg_.sysid; }
   uint8_t compid() const { return cfg_.compid; }
   State state() const { return state_; }
@@ -111,5 +94,4 @@ class MavlinkNode : public RoboticsLink {
   SemaphoreHandle_t tx_mutex_ = nullptr;
 };
 
-// Defined in the variant's mavlink_entities.cpp (mirrors g_ros_node).
 extern MavlinkNode g_mavlink_node;
