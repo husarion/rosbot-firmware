@@ -35,14 +35,16 @@ add_library(${PROJECT_NAME} SHARED
 target_include_directories(${PROJECT_NAME} PUBLIC
   $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
   $<INSTALL_INTERFACE:include>
+)
+# Vendored mavgen output trips -Wpedantic (anonymous structs in MAVPACKED)
+# and -Waddress-of-packed-member; treating it as SYSTEM masks both without
+# loosening warnings on our own code.
+target_include_directories(${PROJECT_NAME} SYSTEM PUBLIC
   ${MAVLINK_DIALECT_DIR}
 )
 ament_target_dependencies(${PROJECT_NAME}
   rclcpp sensor_msgs std_msgs std_srvs
 )
-# The dialect headers take packed-member addresses internally; silence the
-# warning rather than risk turning it into an error in CI.
-target_compile_options(${PROJECT_NAME} PRIVATE -Wno-address-of-packed-member)
 
 add_executable(bridge_node src/main.cpp)
 target_link_libraries(bridge_node ${PROJECT_NAME})

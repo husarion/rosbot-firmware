@@ -152,21 +152,26 @@ size_t MavlinkSerialTransport::write(const uint8_t* buf, size_t len) {
   const size_t sent = xStreamBufferSend(s_tx_stream, buf, len,
                                         pdMS_TO_TICKS(kTxStreamSendTimeoutMs));
 
+  // Kick the DMA pipeline only when no transfer is in flight. The whole
+  // check-receive-start-or-clear sequence must be atomic w.r.t. both the
+  // txCpltCallback ISR (which mutates s_dma_active and s_dma_buf) and any
+  // concurrent writer task — otherwise a writer that saw s_dma_active=true
+  // could be stranded while we later set it back to false on an empty
+  // stream. taskENTER_CRITICAL masks ISRs up to configMAX_SYSCALL_INTERRUPT
+  // _PRIORITY and disables preemption; the FromISR receive is the only
+  // stream-buffer API safe in that context.
   taskENTER_CRITICAL();
-  const bool was_idle = !s_dma_active;
-  if (was_idle) s_dma_active = true;
-  taskEXIT_CRITICAL();
-
-  if (was_idle) {
-    const size_t to_send =
-        xStreamBufferReceive(s_tx_stream, s_dma_buf, kTxDmaBufSize, 0);
+  if (!s_dma_active) {
+    BaseType_t hpw = pdFALSE;
+    const size_t to_send = xStreamBufferReceiveFromISR(s_tx_stream, s_dma_buf,
+                                                       kTxDmaBufSize, &hpw);
     if (to_send > 0) {
+      s_dma_active = true;
       HAL_DMA_Start_IT(&s_hdma_tx, reinterpret_cast<uint32_t>(s_dma_buf),
                        reinterpret_cast<uint32_t>(&s_uart->DR), to_send);
-    } else {
-      s_dma_active = false;
     }
   }
+  taskEXIT_CRITICAL();
   return sent;
 }
 

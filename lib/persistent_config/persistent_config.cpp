@@ -14,6 +14,7 @@
 
 #include "persistent_config.hpp"
 
+#include <STM32FreeRTOS.h>
 #include <stm32f4xx_hal.h>
 
 #include <cstddef>
@@ -78,6 +79,14 @@ Config load() {
 }
 
 void save(const Config& cfg) {
+  // HAL_FLASHEx_Erase on sector 11 stalls the instruction bus for 1-3 s
+  // while erasing — every task and ISR that fetches code from flash blocks
+  // for that whole window. That budget overruns the 500 ms motor watchdog
+  // and starves any pending MAVLink TX. Only call before the scheduler
+  // starts (during setup()), when no tasks are running and no time-
+  // critical ISRs are armed yet.
+  configASSERT(xTaskGetSchedulerState() != taskSCHEDULER_RUNNING);
+
   if (s_loaded && cfg.backend == s_cached.backend &&
       std::memcmp(cfg.ns, s_cached.ns, kNamespaceMaxLen) == 0) {
     return;

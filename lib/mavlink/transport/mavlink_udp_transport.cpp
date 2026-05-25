@@ -84,15 +84,27 @@ void MavlinkUdpTransport::close() {
 size_t MavlinkUdpTransport::write(const uint8_t* buf, size_t len) {
   if (s_pcb == nullptr || buf == nullptr || len == 0) return 0;
 
+  // lwIP runs with NO_SYS=1; the same raw API is touched from a TIM IRQ
+  // (stm32_eth_scheduler → ethernetif_input → udp_recv → rxCallback) and
+  // from this task. Without serialization the pbuf pool and pcb chain race
+  // and can corrupt. taskENTER_CRITICAL masks the TIM IRQ (priority 15) up
+  // to configMAX_SYSCALL_INTERRUPT_PRIORITY, holding lwIP single-threaded
+  // for the duration of the call. Kept narrow: pbuf_alloc/take/sendto/free
+  // are all bounded and short.
+  taskENTER_CRITICAL();
   struct pbuf* p = pbuf_alloc(PBUF_TRANSPORT, len, PBUF_RAM);
-  if (p == nullptr) return 0;
-  if (pbuf_take(p, buf, len) != ERR_OK) {
-    pbuf_free(p);
+  if (p == nullptr) {
+    taskEXIT_CRITICAL();
     return 0;
   }
-
-  err_t err = udp_sendto(s_pcb, p, &s_peer_addr, s_peer_port);
+  if (pbuf_take(p, buf, len) != ERR_OK) {
+    pbuf_free(p);
+    taskEXIT_CRITICAL();
+    return 0;
+  }
+  const err_t err = udp_sendto(s_pcb, p, &s_peer_addr, s_peer_port);
   pbuf_free(p);
+  taskEXIT_CRITICAL();
   return (err == ERR_OK) ? len : 0;
 }
 

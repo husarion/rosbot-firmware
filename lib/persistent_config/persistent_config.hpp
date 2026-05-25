@@ -38,6 +38,11 @@ struct Config {
 };
 
 Config load();
+
+// Must be called before vTaskStartScheduler(). Flash sector erase stalls
+// the instruction bus for 1-3 s and is not safe once RTOS tasks or
+// time-critical ISRs (motor watchdog, MAVLink TX DMA) are armed. Asserts
+// at runtime if invoked once the scheduler is running.
 void save(const Config& cfg);
 
 }  // namespace persistent_config

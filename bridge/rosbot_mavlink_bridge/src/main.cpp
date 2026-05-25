@@ -55,16 +55,13 @@ int main(int argc, char** argv) {
   std::unique_ptr<rosbot_mavlink_bridge::Transport> tp;
   if (transport == "udp") {
     rosbot_mavlink_bridge::UdpConfig cfg{
-        .peer_ip = peer_ip,
-        .peer_port = static_cast<std::uint16_t>(peer_port),
-        .local_port = static_cast<std::uint16_t>(local_port),
+        peer_ip,
+        static_cast<std::uint16_t>(peer_port),
+        static_cast<std::uint16_t>(local_port),
     };
     tp = std::make_unique<rosbot_mavlink_bridge::UdpTransport>(cfg);
   } else if (transport == "serial") {
-    rosbot_mavlink_bridge::SerialConfig cfg{
-        .port = serial_port,
-        .baudrate = serial_baudrate,
-    };
+    rosbot_mavlink_bridge::SerialConfig cfg{serial_port, serial_baudrate};
     tp = std::make_unique<rosbot_mavlink_bridge::SerialTransport>(cfg);
   } else {
     RCLCPP_FATAL(bootstrap->get_logger(),
