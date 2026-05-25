@@ -39,8 +39,9 @@ class McuIdCommand : public MavlinkSubscriberInterface {
     node.sendMessage(ack);
 
     // §5.4 step 3: payload. STM32 UID lives at 0x1FFF7A10 — 96 bits, hex
-    // encoded as 24 chars (no terminator in the wire field).
-    char hex[24];
+    // encoded as 24 chars. The wire field carries no terminator, but the
+    // local buffer needs room for snprintf's NUL on the final byte pair.
+    char hex[25];
     const uint8_t* uid_bytes = reinterpret_cast<const uint8_t*>(0x1FFF7A10);
     for (int i = 0; i < 12; ++i) {
       snprintf(&hex[i * 2], 3, "%02X", uid_bytes[i]);
