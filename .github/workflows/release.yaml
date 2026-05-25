@@ -675,32 +675,28 @@ jobs:
           python3 - <<PY
           import re, os, pathlib
           tag = os.environ["NEW_TAG"]
-          ver = os.environ["NEW_VERSION"]
           p = pathlib.Path("snapcraft_template.yaml.jinja2")
           text = p.read_text()
           orig = text
-          # The rosbot-firmware part: source-tag: "<tag>"
+          # Two pins to bump in the rosbot-firmware story:
+          #   1. `source-tag: "v..."` — the rosbot-firmware part clones the
+          #      source tree at this tag (snap rebuilds against firmware src).
+          #      The regex requires the leading `v` so it doesn't catch the
+          #      husarion-snap-common or other parts' `source-tag` lines,
+          #      which use a different version style.
+          #   2. `FW_TAG="v..."` — the rosbot-firmware-binaries part uses
+          #      this to build the GitHub-release download URL for the
+          #      pre-built .bin artefacts.
+          # Both should track the same rosbot-firmware release.
           text = re.sub(
               r'(source-tag:\s*)"v[0-9]+\.[0-9]+\.[0-9]+-[A-Za-z0-9.\-]+"',
               r'\g<1>"' + tag + '"',
               text,
               count=1,
           )
-          # MAVLINK_TAG / MICROROS_TAG both track the same rosbot-firmware
-          # release until the firmware track unifies back into jazzy.
           text = re.sub(
-              r'MAVLINK_TAG="v[0-9]+\.[0-9]+\.[0-9]+-[A-Za-z0-9.\-]+"',
-              f'MAVLINK_TAG="{tag}"',
-              text,
-          )
-          text = re.sub(
-              r'MICROROS_TAG="v[0-9]+\.[0-9]+\.[0-9]+-[A-Za-z0-9.\-]+"',
-              f'MICROROS_TAG="{tag}"',
-              text,
-          )
-          text = re.sub(
-              r'MAVLINK_VER="v[0-9]+\.[0-9]+\.[0-9]+"',
-              f'MAVLINK_VER="{ver}"',
+              r'FW_TAG="v[0-9]+\.[0-9]+\.[0-9]+-[A-Za-z0-9.\-]+"',
+              f'FW_TAG="{tag}"',
               text,
           )
           if text == orig:
@@ -743,7 +739,7 @@ jobs:
           Automated firmware-bump PR opened by [rosbot-firmware release pipeline](${release_url}).
 
           ### What this PR changes
-          - \`snapcraft_template.yaml.jinja2\` — \`source-tag\`, \`MAVLINK_TAG\`, \`MAVLINK_VER\`, \`MICROROS_TAG\` bumped to \`${NEW_TAG}\` / \`${NEW_VERSION}\`
+          - \`snapcraft_template.yaml.jinja2\` — \`source-tag\` (rosbot-firmware part) + \`FW_TAG\` (rosbot-firmware-binaries part) bumped to \`${NEW_TAG}\`
 
           ### Release notes
           See ${release_url} for the upstream release notes (auto-generated from PR history).
