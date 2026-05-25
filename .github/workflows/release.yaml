@@ -10,7 +10,7 @@
 #                 `.pre.<run_number>`, the GitHub Release is flagged
 #                 `prerelease`, and the cross-repo bump jobs (5 + 6) are
 #                 SKIPPED so an experimental build doesn't pollute
-#                 rosbot_ros / rosbot-snap. The .pre.* tags are also
+#                 rosbot_ros. The .pre.* tags are also
 #                 excluded from the next-stable-version lookup.
 #
 # Sequential jobs:
@@ -31,14 +31,16 @@
 #                       bumping bundled-firmware paths. Labelled
 #                       `auto-firmware-bump` so the companion auto-merge
 #                       workflow squash-merges on green CI.
-#   6. bump-rosbot-snap — open auto-PR in husarion/rosbot-snap@jazzy-mavlink
-#                       bumping firmware pins in snapcraft_template.yaml.jinja2.
-#                       NOT auto-merged — snap rebuilds publish to the store.
 #
-# Required repo secrets (for steps 5 + 6):
+# Not done here: bumping rosbot-snap. The snap sources its firmware via
+# rosbot_ros (vendored on the jazzy branch), so a firmware release has
+# no direct snap impact — the snap follows when rosbot_ros cuts its
+# next release. Don't add a snap-bump job here.
+#
+# Required repo secret (for step 5):
 #   HUSARION_BOT_APP_ID       — GitHub App ID with contents:write +
 #                               pull-requests:write installed on
-#                               husarion/rosbot_ros AND husarion/rosbot-snap.
+#                               husarion/rosbot_ros.
 #   HUSARION_BOT_PRIVATE_KEY  — PEM-encoded private key for that App.
 #   See https://docs.github.com/apps for App + installation setup.
 # ============================================================================
@@ -61,7 +63,7 @@ on:
         description: >-
           Pre-release run — dispatch from any branch, tag suffixed with
           `.pre.<run_number>`, GitHub Release flagged as pre-release,
-          cross-repo bumps to rosbot_ros / rosbot-snap SKIPPED.
+          cross-repo bump to rosbot_ros SKIPPED.
         required: false
         default: false
         type: boolean
@@ -376,14 +378,15 @@ jobs:
           push: true
 
   # ----------------------------------------------------------------------
-  # Cross-repo bump PRs (auto-firmware-bump).
+  # Cross-repo bump PR (auto-firmware-bump).
   #
   # `firmware-release` has just published the GitHub release with the new
-  # binaries attached. These two jobs open PRs in rosbot_ros and rosbot-snap
-  # that swap the bundled artefacts to the new tag. PRs are labelled
-  # `auto-firmware-bump` so the target repos' auto-merge workflow can pick
-  # them up (rosbot_ros has `firmware-bump-automerge.yaml` for this; on
-  # rosbot-snap a human reviews — snap rebuilds publish to the store).
+  # binaries attached. This job opens a PR in rosbot_ros that swaps the
+  # bundled artefacts to the new tag, labelled `auto-firmware-bump` so
+  # rosbot_ros's companion `firmware-bump-automerge.yaml` squash-merges
+  # it on green CI. rosbot-snap is intentionally not bumped here —
+  # snap pulls firmware via rosbot_ros, so the snap follows when
+  # rosbot_ros cuts its next release.
   #
   # Auth is via a GitHub App (HUSARION_BOT_APP_ID + HUSARION_BOT_PRIVATE_KEY)
   # — `actions/create-github-app-token@v1` mints a short-lived (1h) token
@@ -628,131 +631,6 @@ jobs:
           PR opened via the **husarion-bot** GitHub App. Required secrets in
           rosbot-firmware: \`HUSARION_BOT_APP_ID\`, \`HUSARION_BOT_PRIVATE_KEY\`.
           App must be installed on \`husarion/rosbot_ros\` with
-          \`contents: write\` + \`pull-requests: write\`.
-          EOF
-          )
-
-          gh pr create \
-              --repo "$TARGET_REPO" \
-              --base "$TARGET_BRANCH" \
-              --head "$branch" \
-              --title "chore(firmware): bump to ${NEW_TAG}" \
-              --body "$body" \
-              --label auto-firmware-bump
-
-  bump-rosbot-snap:
-    name: Bump firmware pin in rosbot-snap
-    needs: [bump-tag, firmware-release]
-    if: needs.bump-tag.outputs.is_prerelease != 'true'
-    runs-on: ubuntu-latest
-    env:
-      NEW_TAG: ${{ needs.bump-tag.outputs.tag_name }}
-      NEW_VERSION: ${{ needs.bump-tag.outputs.version }}
-      TARGET_REPO: husarion/rosbot-snap
-      TARGET_BRANCH: jazzy-mavlink
-    steps:
-      - name: Mint Husarion bot token
-        id: bot_token
-        uses: actions/create-github-app-token@v1
-        with:
-          app-id: ${{ secrets.HUSARION_BOT_APP_ID }}
-          private-key: ${{ secrets.HUSARION_BOT_PRIVATE_KEY }}
-          owner: husarion
-          repositories: rosbot-snap
-
-      - name: Checkout target repo
-        uses: actions/checkout@v4
-        with:
-          repository: ${{ env.TARGET_REPO }}
-          ref: ${{ env.TARGET_BRANCH }}
-          token: ${{ steps.bot_token.outputs.token }}
-          path: target
-
-      - name: Bump firmware pins in snapcraft template
-        run: |
-          set -euo pipefail
-          cd target
-          python3 - <<PY
-          import re, os, pathlib
-          tag = os.environ["NEW_TAG"]
-          p = pathlib.Path("snapcraft_template.yaml.jinja2")
-          text = p.read_text()
-          orig = text
-          # Two pins to bump in the rosbot-firmware story:
-          #   1. `source-tag: "v..."` — the rosbot-firmware part clones the
-          #      source tree at this tag (snap rebuilds against firmware src).
-          #      The regex requires the leading `v` so it doesn't catch the
-          #      husarion-snap-common or other parts' `source-tag` lines,
-          #      which use a different version style.
-          #   2. `FW_TAG="v..."` — the rosbot-firmware-binaries part uses
-          #      this to build the GitHub-release download URL for the
-          #      pre-built .bin artefacts.
-          # Both should track the same rosbot-firmware release.
-          text = re.sub(
-              r'(source-tag:\s*)"v[0-9]+\.[0-9]+\.[0-9]+-[A-Za-z0-9.\-]+"',
-              r'\g<1>"' + tag + '"',
-              text,
-              count=1,
-          )
-          text = re.sub(
-              r'FW_TAG="v[0-9]+\.[0-9]+\.[0-9]+-[A-Za-z0-9.\-]+"',
-              f'FW_TAG="{tag}"',
-              text,
-          )
-          if text == orig:
-              raise SystemExit("No version pins matched in snapcraft_template.yaml.jinja2 — bailing")
-          p.write_text(text)
-          PY
-          echo "--- git diff after edits ---"
-          git -c color.ui=always diff --stat || true
-
-      - name: Open PR in rosbot-snap
-        env:
-          GH_TOKEN: ${{ steps.bot_token.outputs.token }}
-        run: |
-          set -euo pipefail
-          cd target
-
-          branch="auto-firmware-bump/${NEW_TAG}"
-          git config user.name  "husarion-bot[bot]"
-          git config user.email "husarion-bot[bot]@users.noreply.github.com"
-          git checkout -b "$branch"
-          git add -A
-          if git diff --cached --quiet; then
-              echo "::warning::No diff for ${NEW_TAG} — nothing to PR (already on this version?)."
-              exit 0
-          fi
-          git commit -m "chore(firmware): bump to ${NEW_TAG}"
-          git push --set-upstream origin "$branch" --force-with-lease
-
-          gh label create auto-firmware-bump \
-              --color FBCA04 \
-              --description "Cross-repo bump opened by rosbot-firmware release pipeline" \
-              --repo "$TARGET_REPO" \
-              --force || true
-
-          release_url="https://github.com/${{ github.repository }}/releases/tag/${NEW_TAG}"
-
-          # Snap PRs intentionally do NOT auto-merge: a snap rebuild
-          # publishes to the Snap Store and is not trivially reversible.
-          body=$(cat <<EOF
-          Automated firmware-bump PR opened by [rosbot-firmware release pipeline](${release_url}).
-
-          ### What this PR changes
-          - \`snapcraft_template.yaml.jinja2\` — \`source-tag\` (rosbot-firmware part) + \`FW_TAG\` (rosbot-firmware-binaries part) bumped to \`${NEW_TAG}\`
-
-          ### Release notes
-          See ${release_url} for the upstream release notes (auto-generated from PR history).
-
-          ### Merge behaviour
-          **Human review required.** Snap rebuilds publish to the Snap
-          Store and are not trivially reversible — auto-merge is not
-          enabled here. Build & smoke-test, then merge by hand.
-
-          ### Auth (one-off, manual)
-          PR opened via the **husarion-bot** GitHub App. Required secrets in
-          rosbot-firmware: \`HUSARION_BOT_APP_ID\`, \`HUSARION_BOT_PRIVATE_KEY\`.
-          App must be installed on \`husarion/rosbot-snap\` with
           \`contents: write\` + \`pull-requests: write\`.
           EOF
           )
