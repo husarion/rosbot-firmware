@@ -154,6 +154,14 @@ void MavlinkNode::emitBootBannerIfDue(uint32_t now_ms) {
   // subsequent reconnects.
   constexpr uint8_t kBannerAttempts = 10;
   if (boot_banner_sent_) return;
+  // CONNECTED means we exchanged HEARTBEATs both ways; banner was emitted
+  // in the same loop iteration as our first HEARTBEAT, so the bridge has
+  // already seen it (or will auto-promote via banner_grace_seconds_).
+  // Keeps STATUSTEXT off the channel once the link is established.
+  if (state_ == CONNECTED) {
+    boot_banner_sent_ = true;
+    return;
+  }
   if (last_heartbeat_ms_ == 0) return;  // wait until first heartbeat lands
   if ((now_ms - last_boot_banner_ms_) < 1000 && last_boot_banner_ms_ != 0) {
     return;
