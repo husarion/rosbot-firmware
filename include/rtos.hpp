@@ -14,33 +14,30 @@
 
 #pragma once
 
-#include <STM32FreeRTOS.h>
-
-#include "communication_manager.hpp"
-
-#ifdef USE_MAVLINK
 #include <Arduino.h>
-
-// MAVLink build: the bridge owns wall-clock translation via TIMESYNC, so
-// the MCU stamps everything with monotonic time_boot_ns (= micros() * 1000)
-// and the producer never has to gate on a sync handshake.
-static inline bool rtos_get_timestamp_ns(int64_t& timestamp_ns) {
-  timestamp_ns = static_cast<int64_t>(micros()) * 1000LL;
-  return true;
-}
-#else
+#include <STM32FreeRTOS.h>
 #include <micro_ros_arduino.h>
 
-// micro-ROS build: only enqueue once the agent has synced the wall clock,
-// so publishers can stamp with sec/nsec that match the ROS-side time.
+#include "comm_backend.hpp"
+#include "communication_manager.hpp"
+
+// Runtime-dispatched per the backend chosen during boot:
+//   MAVLink  — bridge owns wall-clock translation via TIMESYNC, so the MCU
+//              stamps with monotonic time_boot_ns (= micros() * 1000) and
+//              never gates on a sync handshake.
+//   micro-ROS — only enqueue once the agent has synced the wall clock, so
+//               publishers stamp with sec/nsec that match the ROS-side time.
 static inline bool rtos_get_timestamp_ns(int64_t& timestamp_ns) {
+  if (g_comm_mgr.getSelectedBackend() == CommBackend::MAVLINK) {
+    timestamp_ns = static_cast<int64_t>(micros()) * 1000LL;
+    return true;
+  }
   if (rmw_uros_epoch_synchronized()) {
     timestamp_ns = rmw_uros_epoch_nanos();
     return true;
   }
   return false;
 }
-#endif
 
 void createQueues();
 void createTasks();
