@@ -22,16 +22,15 @@
 #include "mavlink_types.hpp"
 #include "publisher_interface.hpp"
 
-struct MavlinkBatteryPublisherConfig {
+struct BatteryPublisherConfig {
   QueueHandle_t& queue;
   uint8_t num_cells;
   uint32_t period_ms;
 };
 
-class MavlinkBatteryPublisher : public MavlinkPublisherInterface {
+class BatteryPublisher : public MavlinkPublisherInterface {
  public:
-  explicit MavlinkBatteryPublisher(const MavlinkBatteryPublisherConfig& cfg)
-      : cfg_(cfg) {}
+  explicit BatteryPublisher(const BatteryPublisherConfig& cfg) : cfg_(cfg) {}
 
   void publish(MavlinkNode& node) override {
     const uint32_t now = millis();
@@ -79,6 +78,6 @@ class MavlinkBatteryPublisher : public MavlinkPublisherInterface {
   }
 
  private:
-  MavlinkBatteryPublisherConfig cfg_;
+  BatteryPublisherConfig cfg_;
   uint32_t last_pub_ms_ = 0;
 };

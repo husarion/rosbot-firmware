@@ -1,4 +1,4 @@
-// Copyright 2022 Husarion sp. z o.o.
+// Copyright 2026 Husarion sp. z o.o.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -21,11 +21,16 @@
 #include "imu_bno055.hpp"
 #include "led_indicator.hpp"
 #include "led_strip.hpp"
+#include "mavlink_node.hpp"
 #include "motor_array.hpp"
 #include "motor_hi_z.hpp"
 #include "power_board.hpp"
-#include "ros/ros_node.hpp"
 #include "rtos.hpp"
+
+// Mirrors main.cpp: same board peripherals, same component graph, same RTOS
+// startup — only the upstream link layer changes. The variant globals
+// (g_motors, g_battery, ...) are the SAME singletons either build wires up
+// because they live behind config.hpp / lib/<not-ros>/ headers.
 
 // ───────── Board Revision ─────────
 static BoardRevision board_revision(board_revision_config);
@@ -45,8 +50,7 @@ static ImuBno055 imu_bno055(imu_bno055_config);
 // ───────── LED Strip ─────────
 static SpiTransport s_transport(spi_config);
 
-// ───────── Motors (compatible with MAX22205) ─────────
-// TODO: Can be improved and used tourque control
+// ───────── Motors ─────────
 static MotorHiZ motor_fl(motor_fl_config, &enc_fl, PIDController(pid_config));
 static MotorHiZ motor_fr(motor_fr_config, &enc_fr, PIDController(pid_config));
 static MotorHiZ motor_rl(motor_rl_config, &enc_rl, PIDController(pid_config));
@@ -59,7 +63,7 @@ static constexpr uint8_t DRIVER_GROUP_COUNT =
 // ───────── Power Board ─────────
 PowerBoard power_board(power_board_config);
 
-// ─────────Extern variables─────────
+// ───────── Externs ─────────
 BatteryInterface* g_battery = &power_board;
 ImuInterface* g_imu = &imu_bno055;
 LedIndicator g_indicator(led_status_config);
@@ -67,7 +71,6 @@ LedStrip g_led_strip;
 MotorArray g_motors(motors, MOTOR_COUNT, driver_groups, DRIVER_GROUP_COUNT);
 
 bool useAlt() { return digitalRead(PUSH_BUTTON1) == LOW; }
-
 void confirmAlt() { digitalWrite(GRN_LED, HIGH); }
 
 CommunicationManagerConfig communication_config = {
@@ -81,33 +84,26 @@ CommunicationManager g_comm_mgr(communication_config);
 static float supplyVoltage() { return g_battery->getData().voltage; }
 
 void boardPheripheralsInit() {
-  // Audio
   pinMode(AUDIO_SHDN, OUTPUT);
   digitalWrite(AUDIO_SHDN, HIGH);
 
-  // Buttons
   pinMode(PUSH_BUTTON1, INPUT_PULLUP);
   pinMode(PUSH_BUTTON2, INPUT_PULLUP);
 
-  // Fan
   pinMode(FAN_PP_PIN, OUTPUT);
   digitalWrite(FAN_PP_PIN, LOW);
 
-  // LEDs
   pinMode(RED_LED, OUTPUT);
   pinMode(GRN_LED, OUTPUT);
   digitalWrite(RED_LED, HIGH);
 
-  // Peripheral Power
   pinMode(EN_LOC_5V, OUTPUT);
   digitalWrite(EN_LOC_5V, HIGH);
 
-  // Power board
   pinMode(PB_SHD_DETECT, INPUT_PULLUP);
   pinMode(PB_SHD_CONFIRM, OUTPUT);
   digitalWrite(PB_SHD_CONFIRM, LOW);
 
-  // I2C
   i2c.begin();
   i2c.setClock(400000);
 
@@ -122,7 +118,6 @@ void setMaxMotorsCurrent(Revision rev) {
       pinMode(ILIM3, INPUT);
       pinMode(ILIM4, INPUT);
       break;
-
     case Revision::V1_1:
       pinMode(ILIM1, OUTPUT);
       pinMode(ILIM2, OUTPUT);
@@ -132,36 +127,34 @@ void setMaxMotorsCurrent(Revision rev) {
       digitalWrite(ILIM2, HIGH);
       digitalWrite(ILIM3, HIGH);
       digitalWrite(ILIM4, HIGH);
-      // V1_1 uses DRV8870 do not have a real current sensor.
       motor_fl.disableCurrentSensor();
       motor_fr.disableCurrentSensor();
       motor_rl.disableCurrentSensor();
       motor_rr.disableCurrentSensor();
       break;
-
     default:
       break;
   }
 }
 
-/*───────── Setup ─────────*/
+extern MavlinkNode g_mavlink_node;
+
 void setup() {
   boardPheripheralsInit();
 
-  // Pre-communication
+  // Pre-communication: FTDI banner + namespace handshake stay unchanged
+  // (D22 — namespace negotiation stays on FTDI for the MVP).
   g_comm_mgr.init();
-  const auto* transport = g_comm_mgr.selectTransport();
+  g_comm_mgr.selectTransport();
   g_comm_mgr.configureNamespace();
-  g_ros_node.setNamespace(g_comm_mgr.getNamespace());
+  g_mavlink_node.setNamespace(g_comm_mgr.getNamespace());
 
-  // Revision specific configuration
   board_revision.init();
   auto rev = board_revision.revision();
   setMaxMotorsCurrent(rev);
   auto fan_config =
       (rev == Revision::V1_1) ? rev1_1_fan_config : rev1_2_fan_config;
 
-  // Components initialization
   Ethernet.begin(MAC, CLIENT_IP);
   ntc.init();
   g_fan.init(fan_config);
@@ -173,28 +166,23 @@ void setup() {
   }
   g_motors.init();
   power_board.init();
-  if (g_comm_mgr.isSerialTransport()) {
-    g_ros_node.serialTransportInit(*transport);
-  } else {
-    g_ros_node.ethernetTransportInit(AGENT_IP, AGENT_PORT);
-  }
-  g_ros_node.setDiagnosticSerial(g_comm_mgr.debugSerial());
 
-  // RTOS
+  g_mavlink_node.setDiagnosticSerial(g_comm_mgr.debugSerial());
+  g_mavlink_node.begin();
+
   createQueues();
   createTasks();
   vTaskStartScheduler();
 }
 
-/*───────── Loop ─────────*/
 void loop() {}
 
-/*───────── Runtime stats ─────────*/
+// Runtime stats — identical wiring to main.cpp, the FreeRTOS hook calls
+// these in both builds.
 HardwareTimer RunTimeStatsTimer(TIM5);
 
 void vConfigureTimerForRunTimeStats(void) {
-  RunTimeStatsTimer.setPrescaleFactor(
-      1680);  // every 10 µs (168MHz / 1680 = 100kHz)
+  RunTimeStatsTimer.setPrescaleFactor(1680);
   RunTimeStatsTimer.setOverflow(0xFFFFFFFF);
   RunTimeStatsTimer.refresh();
   RunTimeStatsTimer.resume();

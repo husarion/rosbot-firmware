@@ -19,16 +19,15 @@
 #include "mavlink.h"
 #include "publisher_interface.hpp"
 
-struct MavlinkButtonsPublisherConfig {
+struct ButtonsPublisherConfig {
   const uint8_t* pins;
   uint8_t num_buttons;
   uint32_t period_ms;
 };
 
-class MavlinkButtonsPublisher : public MavlinkPublisherInterface {
+class ButtonsPublisher : public MavlinkPublisherInterface {
  public:
-  explicit MavlinkButtonsPublisher(const MavlinkButtonsPublisherConfig& cfg)
-      : cfg_(cfg) {}
+  explicit ButtonsPublisher(const ButtonsPublisherConfig& cfg) : cfg_(cfg) {}
 
   void publish(MavlinkNode& node) override {
     const uint32_t now = millis();
@@ -48,6 +47,6 @@ class MavlinkButtonsPublisher : public MavlinkPublisherInterface {
   }
 
  private:
-  MavlinkButtonsPublisherConfig cfg_;
+  ButtonsPublisherConfig cfg_;
   uint32_t last_pub_ms_ = 0;
 };

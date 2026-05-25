@@ -22,17 +22,16 @@
 
 #ifdef ROSBOT
 
-struct MavlinkRangePublisherConfig {
+struct RangePublisherConfig {
   QueueHandle_t& queue;
   float min_range_m;
   float max_range_m;
   uint32_t period_ms;
 };
 
-class MavlinkRangePublisher : public MavlinkPublisherInterface {
+class RangePublisher : public MavlinkPublisherInterface {
  public:
-  explicit MavlinkRangePublisher(const MavlinkRangePublisherConfig& cfg)
-      : cfg_(cfg) {}
+  explicit RangePublisher(const RangePublisherConfig& cfg) : cfg_(cfg) {}
 
   void publish(MavlinkNode& node) override {
     const uint32_t now = millis();
@@ -68,7 +67,7 @@ class MavlinkRangePublisher : public MavlinkPublisherInterface {
   }
 
  private:
-  MavlinkRangePublisherConfig cfg_;
+  RangePublisherConfig cfg_;
   uint32_t last_pub_ms_ = 0;
 };
 

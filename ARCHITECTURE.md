@@ -448,25 +448,23 @@ concrete envs select variant + debug/release:
   `build_src_filter = -<rosbot/*> +<rosbot_xl/*>`.
 - `[env:rosbot_xl_release]` — release variant of the above.
 
-There are no separate `_mavlink` envs anymore. Both upstream-link
-backends (micro-ROS and MAVLink) live in the same binary; the choice
-happens at boot via the BACKEND: handshake line — see the MAVLink build
-section below for the runtime-switch mechanism.
+In addition there are four MAVLink envs (`rosbot_mavlink`,
+`rosbot_mavlink_release`, `rosbot_xl_mavlink`, `rosbot_xl_mavlink_release`)
+that swap the upstream link for MAVLink v2. They use the same `[env]` base,
+add `-D USE_MAVLINK` and an `-I` for the generated dialect headers, use
+`build_src_filter` to include the variant's `main_mavlink.cpp` /
+`ros_mavlink.cpp` in place of `main.cpp` / `ros.cpp`, and `lib_ignore`s
+out the other stack so PlatformIO's LDF doesn't drag in unused includes.
+See the MAVLink build section below.
 
 `-D FW_VERSION=\"vX.Y.Z-jazzy\"` carries the firmware version. The release
 workflow (`.github/workflows/release.yaml`) bumps it before tagging.
 
-Build output sizes (release, both backends linked):
-- rosbot ~200 KB Flash (19 %), ~54 KB RAM (41 %)
-- rosbot_xl ~238 KB Flash (23 %), ~96 KB RAM (74 %)
-
-The single-binary variants weigh ~12 KB more than the previous
-micro-ROS-only release builds — the MAVLink stack adds publishers,
-subscribers, the dialect-encoder fast paths and the `MavlinkNode`
-itself on top of what the micro-ROS path already linked. With both
-stacks in one image RAM grew ~2 KB (the second link's globals;
-neither stack's queues are doubled because the producer tasks feed
-both via the same `lib/mavlink/mavlink_types.hpp` queue wrappers).
+Build output sizes (representative, debug):
+- rosbot ~188 KB Flash, ~50 KB RAM
+- rosbot_xl ~226 KB Flash, ~93 KB RAM
+- rosbot_mavlink ~78 KB Flash, ~10 KB RAM (no micro-ROS linked)
+- rosbot_xl_mavlink ~115 KB Flash, ~53 KB RAM
 
 CCM RAM usage is implicit (compiler may place stack/BSS there). DMA
 buffers are explicitly declared with `alignas(4)` at file scope to land
@@ -476,48 +474,14 @@ in regular SRAM.
 
 ## MAVLink build
 
-The MAVLink stack lives in the same binary as the micro-ROS stack; the
-firmware picks between them at boot. The wire protocol on the MCU↔SBC
-link is **MAVLink v2** with a custom `rosbot` dialect when MAVLink is
-selected; an in-tree ROS 2 bridge (`bridge/rosbot_mavlink_bridge/`)
+The MAVLink stack ships alongside micro-ROS as a per-env alternative. The
+wire protocol on the MCU↔SBC link becomes **MAVLink v2** with a custom
+`rosbot` dialect; an in-tree ROS 2 bridge (`bridge/rosbot_mavlink_bridge/`)
 re-exposes the same node name, topic names, types and QoS that the
 existing micro-ROS firmware advertises today. From a downstream consumer
 (`rosbot_ros`) point of view the wire protocol switch is invisible.
 
 Full design and rollout plan: [MAVLINK_MIGRATION.md](./MAVLINK_MIGRATION.md).
-
-### Runtime backend dispatch
-
-`CommunicationManager::waitForHostConfig` accepts three line types in
-any order during the boot-time handshake window (~2.5 s after MCU
-reset): `BACKEND:microros|mavlink`, `NS:<namespace>`, and `END`. `END`
-(or the timeout) closes the handshake; the others are independently
-optional. The chosen backend drives the upstream-link selection in
-`setup()`:
-
-```cpp
-if (g_comm_mgr.getSelectedBackend() == CommBackend::MAVLINK) {
-  g_mavlink_node.setNamespace(...); g_mavlink_node.begin();
-  g_link = &g_mavlink_node;
-} else {
-  g_ros_node.setNamespace(...); g_ros_node.serialTransportInit(...);
-  g_link = &g_ros_node;
-}
-```
-
-Both `g_ros_node` and `g_mavlink_node` are constructed as globals
-(their constructors only store config — no HW touched), so they
-coexist in `.bss` without contention. Only the chosen one's `init()`/
-`begin()` is called, so only one drives peripherals. `g_link` is a
-pointer assigned in `setup()` before `vTaskStartScheduler()`, so any
-task body sees a non-null pointer when it first dereferences.
-
-Default backend on handshake timeout is `MICRO_ROS` — that preserves
-the legacy behaviour for older host drivers that don't emit the
-`BACKEND:` line. The `rosbot_ros/configure_robot` script in the
-matching `feat/runtime-comm-impl` branch passes `--backend
-microros|mavlink` based on which launch file (microros.launch.py /
-mavlink.launch.py) ran.
 
 ### Layout
 
@@ -538,15 +502,11 @@ mavlink.launch.py) ran.
     holds the checked-in `mavgen.py` output that both the firmware and
     the bridge consume.
 - `include/robotics_link.hpp` — abstract base both `RosNode` and
-  `MavlinkNode` inherit; `src/<variant>/rtos.cpp` calls `g_link->loop()` /
-  `g_link->isConnected()` uniformly. `g_link` is `RoboticsLink*` now —
-  `main.cpp` assigns it to whichever singleton the boot handshake picked.
-- `src/<variant>/main.cpp` — variant entry point. Both backends linked.
-- `src/<variant>/mavlink_entities.cpp` — MAVLink publisher/subscriber
-  registration + the `g_mavlink_node` definition. Always compiled; its
-  `begin()` only runs when the backend dispatch picks MAVLink. (Renamed
-  from `ros_mavlink.cpp` so the filename matches its role — the file no
-  longer contains a separate `main_*`.)
+  `MavlinkNode` inherit; `src/<variant>/rtos.cpp` calls `g_link.loop()` /
+  `g_link.isConnected()` uniformly. The variant's `rtos.cpp` defines
+  `RoboticsLink& g_link` to point at whichever singleton was instantiated.
+- `src/<variant>/main_mavlink.cpp` / `ros_mavlink.cpp` — variant entry
+  points selected by `build_src_filter` when `USE_MAVLINK` is set.
 
 ### Topology
 
@@ -595,22 +555,12 @@ rcl-based micro-ROS firmware does not). These are additive and do not
 affect downstream consumers. Topic type hashes are `RIHS01_*` (valid) on
 the bridge vs `INVALID` on micro-ROS — also additive.
 
-### Sizes (single-binary release)
+### Sizes vs. micro-ROS
 
-| variant | Flash | RAM | headroom |
-|---|---:|---:|---:|
-| `rosbot_release` | 200 KB / 1024 KB (19 %) | 54 KB / 128 KB (41 %) | ~80 % |
-| `rosbot_xl_release` | 238 KB / 1024 KB (23 %) | 96 KB / 128 KB (74 %) | ~77 % |
-
-For reference, the previous separate builds measured:
-- rosbot (micro-ROS only): 188 KB Flash / 52 KB RAM
-- rosbot_mavlink (MAVLink only): 82 KB Flash / 12 KB RAM
-- rosbot_xl (micro-ROS only): 226 KB Flash / 94 KB RAM
-- rosbot_xl_mavlink (MAVLink only): 119 KB Flash / 55 KB RAM
-
-The single-binary merge cost is ~12 KB Flash + ~2 KB RAM per variant —
-much less than the naive `µROS_only + MAVLink_only` upper bound because
-the Arduino core, FreeRTOS, motor/encoder/IMU stacks are linked once.
+- rosbot: micro-ROS ~188 KB Flash, MAVLink ~78 KB (no micro-ROS or
+  XRCE-DDS linked thanks to `lib_ignore = ros`).
+- rosbot_xl: micro-ROS ~226 KB Flash, MAVLink ~115 KB (LwIP / Ethernet
+  remain — the size delta is mostly micro-ROS).
 
 ### Bridge package
 

@@ -1,4 +1,4 @@
-// Copyright 2022 Husarion sp. z o.o.
+// Copyright 2026 Husarion sp. z o.o.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -21,26 +21,25 @@
 #include "hardware_encoder.hpp"
 #include "imu_bno055.hpp"
 #include "led_indicator.hpp"
+#include "mavlink_node.hpp"
 #include "motor_array.hpp"
 #include "motor_hi_z.hpp"
 #include "range_array.hpp"
 #include "range_vl53l0.hpp"
-#include "ros/ros_node.hpp"
 #include "rtos.hpp"
 
-// ───────── Battery ─────────
+// Mirrors main.cpp wiring. See src/rosbot_xl/main_mavlink.cpp for the
+// rationale on duplication — only the upstream link object changes.
+
 BatteryAdc battery_adc(battery_adc_config);
 
-// ───────── Encoders ─────────
 static HardwareEncoder enc_fl(enc_fl_config);
 static HardwareEncoder enc_fr(enc_fr_config);
 static HardwareEncoder enc_rl(enc_rl_config);
 static HardwareEncoder enc_rr(enc_rr_config);
 
-// ───────── IMU ─────────
 ImuBno055 imu_bno055(imu_bno055_config);
 
-// ───────── Motors ─────────
 static MotorHiZ motor_fl(motor_fl_config, &enc_fl, PIDController(pid_config));
 static MotorHiZ motor_fr(motor_fr_config, &enc_fr, PIDController(pid_config));
 static MotorHiZ motor_rl(motor_rl_config, &enc_rl, PIDController(pid_config));
@@ -50,7 +49,6 @@ static constexpr uint8_t MOTOR_COUNT = sizeof(motors) / sizeof(motors[0]);
 static constexpr uint8_t DRIVER_GROUP_COUNT =
     sizeof(driver_groups) / sizeof(driver_groups[0]);
 
-// ───────── Ranges ─────────
 RangeVl53l0x range_fl(range_fl_config);
 RangeVl53l0x range_fr(range_fr_config);
 RangeVl53l0x range_rl(range_rl_config);
@@ -60,7 +58,6 @@ static RangeInterface* range_sensors[] = {&range_fl, &range_fr, &range_rl,
 static constexpr uint8_t RANGE_COUNT =
     sizeof(range_sensors) / sizeof(range_sensors[0]);
 
-// ───────── Extern variables ─────────
 BatteryInterface* g_battery = &battery_adc;
 ImuInterface* g_imu = &imu_bno055;
 LedIndicator g_indicator(led_status_config);
@@ -87,21 +84,17 @@ CommunicationManager g_comm_mgr(communication_config);
 static float supplyVoltage() { return g_battery->getData().voltage; }
 
 void boardPheripheralsInit() {
-  // Initialize Buttons
   pinMode(PUSH_BUTTON1, INPUT_PULLUP);
   pinMode(PUSH_BUTTON2, INPUT_PULLUP);
 
-  // Initialize LEDs
   pinMode(RED_LED, OUTPUT);
   pinMode(GRN_LED, OUTPUT);
   pinMode(GRN_LED2, OUTPUT);
   digitalWrite(RED_LED, HIGH);
 
-  // Enable power for IMU sensor
   pinMode(IMU_POWER_ON, OUTPUT);
   digitalWrite(IMU_POWER_ON, HIGH);
 
-  // Initialize I2C
   imu_i2c.begin();
   imu_i2c.setClock(400000);
   range_i2c.begin();
@@ -110,44 +103,39 @@ void boardPheripheralsInit() {
   delay(20);
 }
 
-/*───────── Setup ─────────*/
+extern MavlinkNode g_mavlink_node;
+
 void setup() {
-  // Peripherals initialization
   boardPheripheralsInit();
 
-  // Pre-communication
   g_comm_mgr.init();
-  const auto& transport = g_comm_mgr.selectTransport();
+  g_comm_mgr.selectTransport();
   g_comm_mgr.configureNamespace();
-  g_ros_node.setNamespace(g_comm_mgr.getNamespace());
+  g_mavlink_node.setNamespace(g_comm_mgr.getNamespace());
 
-  // Sensors initialization
   battery_adc.init();
   imu_bno055.init();
   g_indicator.init();
   for (auto* m : {&motor_fl, &motor_fr, &motor_rl, &motor_rr}) {
     m->setSupplyVoltageProvider(supplyVoltage);
   }
-  g_motors.init();  // motors own encoders → enc init happens here
+  g_motors.init();
   g_ranges.init();
-  g_ros_node.serialTransportInit(*transport);
-  g_ros_node.setDiagnosticSerial(g_comm_mgr.debugSerial());
 
-  // RTOS
+  g_mavlink_node.setDiagnosticSerial(g_comm_mgr.debugSerial());
+  g_mavlink_node.begin();
+
   createQueues();
   createTasks();
   vTaskStartScheduler();
 }
 
-/*───────── Loop ─────────*/
 void loop() {}
 
-/*───────── Runtime stats ─────────*/
 HardwareTimer RunTimeStatsTimer(TIM5);
 
 void vConfigureTimerForRunTimeStats(void) {
-  RunTimeStatsTimer.setPrescaleFactor(
-      1680);  // every 10 µs (168MHz / 1680 = 100kHz)
+  RunTimeStatsTimer.setPrescaleFactor(1680);
   RunTimeStatsTimer.setOverflow(0xFFFFFFFF);
   RunTimeStatsTimer.refresh();
   RunTimeStatsTimer.resume();

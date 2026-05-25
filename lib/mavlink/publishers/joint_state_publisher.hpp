@@ -20,15 +20,14 @@
 #include "mavlink_types.hpp"
 #include "publisher_interface.hpp"
 
-struct MavlinkJointStatePublisherConfig {
+struct JointStatePublisherConfig {
   QueueHandle_t& queue;
   uint32_t period_ms;
 };
 
-class MavlinkJointStatePublisher : public MavlinkPublisherInterface {
+class JointStatePublisher : public MavlinkPublisherInterface {
  public:
-  explicit MavlinkJointStatePublisher(
-      const MavlinkJointStatePublisherConfig& cfg)
+  explicit JointStatePublisher(const JointStatePublisherConfig& cfg)
       : cfg_(cfg) {}
 
   void publish(MavlinkNode& node) override {
@@ -56,6 +55,6 @@ class MavlinkJointStatePublisher : public MavlinkPublisherInterface {
   }
 
  private:
-  MavlinkJointStatePublisherConfig cfg_;
+  JointStatePublisherConfig cfg_;
   uint32_t last_pub_ms_ = 0;
 };

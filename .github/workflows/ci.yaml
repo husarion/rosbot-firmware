@@ -19,11 +19,17 @@ jobs:
       fail-fast: false
       matrix:
         env:
+          - rosbot
           - rosbot_release
+          - rosbot_xl
           - rosbot_xl_release
+          - rosbot_mavlink
+          - rosbot_mavlink_release
+          - rosbot_xl_mavlink
+          - rosbot_xl_mavlink_release
     steps:
-      - uses: actions/checkout@v6
-      - uses: actions/setup-python@v6
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
         with:
           python-version: '3.12'
       - name: Install PlatformIO
@@ -37,14 +43,15 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        distro: [jazzy]
+        distro: [jazzy, humble]
     container: ros:${{ matrix.distro }}-ros-base
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v4
       - name: Resolve deps and build bridge
         shell: bash
         run: |
-          # No -u: ROS's setup.bash trips on unset AMENT_TRACE_SETUP_FILES.
+          # Drop `-u` while sourcing ROS overlays — setup.bash references
+          # AMENT_TRACE_SETUP_FILES without setting it first.
           set -eo pipefail
           source /opt/ros/${{ matrix.distro }}/setup.bash
           apt-get update
@@ -59,22 +66,22 @@ jobs:
     name: Verify checked-in MAVLink dialect headers
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v6
-      - uses: actions/setup-python@v6
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
         with:
           python-version: '3.12'
       - name: Install pymavlink
-        # Must match the version the committed headers were generated with.
+        # Pin to the version the committed headers were generated with.
+        # Bumping the pin should accompany a `just mavgen` + re-commit so
+        # the diff check stays meaningful.
         run: pip3 install 'pymavlink==2.4.49'
       - name: Regenerate and diff
         shell: bash
         run: |
           set -euo pipefail
+          # Vendored common.xml etc. must accompany rosbot.xml so mavgen
+          # finds them without an internet round-trip.
           tmp=$(mktemp -d)
-          # PYTHONHASHSEED=0 pins the MAVLINK_*_XML_HASH macros which
-          # would otherwise drift per process. MAVLINK_BUILD_DATE is
-          # a wall-clock string mavgen always rewrites — ignore it.
-          PYTHONHASHSEED=0 mavgen.py --lang=C --wire-protocol=2.0 \
+          mavgen.py --lang=C --wire-protocol=2.0 \
             --output="$tmp/generated" lib/mavlink/dialect/rosbot.xml
-          diff -ruN -I 'MAVLINK_BUILD_DATE' \
-            lib/mavlink/dialect/generated "$tmp/generated"
+          diff -ruN lib/mavlink/dialect/generated "$tmp/generated"

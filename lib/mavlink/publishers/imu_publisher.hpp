@@ -20,15 +20,14 @@
 #include "mavlink_types.hpp"
 #include "publisher_interface.hpp"
 
-struct MavlinkImuPublisherConfig {
+struct ImuPublisherConfig {
   QueueHandle_t& queue;
   uint32_t period_ms;
 };
 
-class MavlinkImuPublisher : public MavlinkPublisherInterface {
+class ImuPublisher : public MavlinkPublisherInterface {
  public:
-  explicit MavlinkImuPublisher(const MavlinkImuPublisherConfig& cfg)
-      : cfg_(cfg) {}
+  explicit ImuPublisher(const ImuPublisherConfig& cfg) : cfg_(cfg) {}
 
   void publish(MavlinkNode& node) override {
     const uint32_t now = millis();
@@ -54,6 +53,6 @@ class MavlinkImuPublisher : public MavlinkPublisherInterface {
   }
 
  private:
-  MavlinkImuPublisherConfig cfg_;
+  ImuPublisherConfig cfg_;
   uint32_t last_pub_ms_ = 0;
 };

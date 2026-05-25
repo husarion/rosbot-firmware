@@ -1,11 +1,15 @@
 ---
 name: Release
 
-# Triggered by `just release` pushing a `v<X>.<Y>.<Z>[-<distro>]` tag.
+# Fired by `just release` pushing a `v<X>.<Y>.<Z>[-<distro>]` tag.
+# The recipe has already bumped FW_VERSION, written the CHANGELOG.md
+# section, committed, and tagged — this workflow's job is to build, name
+# the artefacts and publish the GitHub Release with the CHANGELOG section
+# as the body.
 on:
   push:
     tags:
-      - v*
+      - 'v*'
 
 permissions:
   contents: write
@@ -42,7 +46,7 @@ jobs:
       VERSION: ${{ needs.parse-tag.outputs.version }}
     steps:
       - name: Checkout tag
-        uses: actions/checkout@v6
+        uses: actions/checkout@v4
 
       - name: Verify FW_VERSION matches tag
         run: |
@@ -53,17 +57,26 @@ jobs:
       - name: Install PlatformIO
         run: pip3 install -U platformio
 
-      - name: Build all release envs
+      - name: Build all release envs (micro-ROS + MAVLink)
         run: |
-          pio run -e rosbot_release -e rosbot_xl_release
+          pio run -e rosbot_release -e rosbot_xl_release \
+                  -e rosbot_mavlink_release -e rosbot_xl_mavlink_release
 
       - name: Rename binaries
         run: |
           mkdir -p release
-          # -${TAG_NAME} keeps the -<distro> suffix — micro_ros_arduino
-          # is still jazzy-pinned per platformio.ini.
+          # micro-ROS firmware stays jazzy-pinned by micro_ros_arduino;
+          # keep the -<distro> suffix on those artefacts.
           cp .pio/build/rosbot_release/firmware.bin    "release/rosbot-${TAG_NAME}.bin"
-          cp .pio/build/rosbot_xl_release/firmware.bin "release/rosbot_xl-${TAG_NAME}.bin"
+          cp .pio/build/rosbot_xl_release/firmware.bin  "release/rosbot_xl-${TAG_NAME}.bin"
+          # MAVLink firmware is distro-agnostic (D24 in MAVLINK_MIGRATION.md) —
+          # drop the suffix so operators see one binary covers every supported
+          # SBC distro.
+          cp .pio/build/rosbot_mavlink_release/firmware.bin \
+             "release/rosbot_mavlink-${VERSION}.bin"
+          cp .pio/build/rosbot_xl_mavlink_release/firmware.bin \
+             "release/rosbot_xl_mavlink-${VERSION}.bin"
+          echo "--- Release artifacts ---"
           ls -la release/
 
       - name: Extract release body from CHANGELOG.md
@@ -81,12 +94,13 @@ jobs:
             grep -nE '^## \[' CHANGELOG.md || true
             exit 1
           fi
-          # Strip leading/trailing blank lines.
+          # Trim leading and trailing blank lines.
           sed -i -e '/./,$!d' -e ':a' -e '/^\n*$/{$d;N;ba' -e '}' release_body.md
+          echo "--- release body ---"
           cat release_body.md
 
       - name: Create GitHub Release
-        uses: softprops/action-gh-release@v3
+        uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ env.TAG_NAME }}
           name: ${{ env.TAG_NAME }}
@@ -94,6 +108,8 @@ jobs:
           files: |
             release/rosbot-${{ env.TAG_NAME }}.bin
             release/rosbot_xl-${{ env.TAG_NAME }}.bin
+            release/rosbot_mavlink-${{ env.VERSION }}.bin
+            release/rosbot_xl_mavlink-${{ env.VERSION }}.bin
             LICENSE
 
   bridge-release:
@@ -109,11 +125,13 @@ jobs:
       VERSION: ${{ needs.parse-tag.outputs.version }}
     container: ros:${{ matrix.distro }}-ros-base
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v4
       - name: Build bridge package
         shell: bash
         run: |
-          # No -u: ROS's setup.bash trips on unset AMENT_TRACE_SETUP_FILES.
+          # Drop `-u` while sourcing ROS overlays — ROS's setup.bash trips
+          # on AMENT_TRACE_SETUP_FILES under nounset. -e and pipefail keep
+          # genuine errors fatal.
           set -eo pipefail
           source /opt/ros/${{ matrix.distro }}/setup.bash
           apt-get update
@@ -126,20 +144,24 @@ jobs:
           set -euo pipefail
           mkdir -p release
           tarball="rosbot_mavlink_bridge-${VERSION}-${{ matrix.distro }}-src.tar.gz"
-          # Dialect headers ride along; bridge/CMakeLists.txt's relative
-          # include path is the contract.
+          # Include both the bridge package and the dialect headers it depends
+          # on. The relative path inside `bridge/`'s CMakeLists.txt is the
+          # contract — the tarball preserves it.
           tar --transform "s,^,rosbot_mavlink_bridge-${VERSION}/," \
               -czf "release/${tarball}" \
               bridge lib/mavlink/dialect/generated lib/mavlink/dialect/rosbot.xml \
               MAVLINK_MIGRATION.md LICENSE
           ls -la release/
       - name: Attach to release
-        uses: softprops/action-gh-release@v3
+        uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ env.TAG_NAME }}
           files: release/rosbot_mavlink_bridge-${{ env.VERSION }}-${{ matrix.distro }}-src.tar.gz
 
-  # Multi-arch GHCR image, independent of bridge-release.
+  # Container images on GHCR — built from bridge/Dockerfile, multi-arch
+  # (amd64 + arm64 so the SBC can pull native). Runs in parallel with
+  # bridge-release, against the same release tag. Independent — failure
+  # here doesn't roll back the firmware/tarball publication.
   bridge-image:
     name: Bridge container image (${{ matrix.distro }})
     needs: parse-tag
@@ -154,13 +176,13 @@ jobs:
     env:
       VERSION: ${{ needs.parse-tag.outputs.version }}
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v4
       - name: Set up QEMU
-        uses: docker/setup-qemu-action@v4
+        uses: docker/setup-qemu-action@v3
       - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v4
+        uses: docker/setup-buildx-action@v3
       - name: Log in to GHCR
-        uses: docker/login-action@v4
+        uses: docker/login-action@v3
         with:
           registry: ghcr.io
           username: ${{ github.actor }}
@@ -170,7 +192,11 @@ jobs:
         run: |
           owner=$(echo "${{ github.repository_owner }}" | tr '[:upper:]' '[:lower:]')
           name="ghcr.io/${owner}/rosbot-mavlink-bridge"
-          version_tag="${VERSION#v}"  # docker tag convention drops the 'v'
+          # Strip leading 'v' from version (docker tag convention).
+          # ${{ matrix.distro }} is the bridge's ROS distro, not the
+          # firmware tag's distro suffix — see the table in the release
+          # notes for the user-facing pairing.
+          version_tag="${VERSION#v}"
           {
             echo "tags<<EOF"
             echo "${name}:${version_tag}-${{ matrix.distro }}"
@@ -178,7 +204,7 @@ jobs:
             echo "EOF"
           } >> $GITHUB_OUTPUT
       - name: Build and push (multi-arch)
-        uses: docker/build-push-action@v7
+        uses: docker/build-push-action@v5
         with:
           context: .
           file: bridge/Dockerfile

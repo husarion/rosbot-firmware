@@ -51,7 +51,7 @@ bool consumeAvailable(HardwareSerial& s, char* buf, size_t* idx,
 }  // namespace
 
 CommunicationManager::CommunicationManager(CommunicationManagerConfig cfg)
-    : cfg_(cfg), selected_backend_(cfg.backend_default) {}
+    : cfg_(cfg) {}
 
 void CommunicationManager::init() {
   initSerial(cfg_.diagnostic_serial);
@@ -127,35 +127,16 @@ bool CommunicationManager::waitForHostConfig(HardwareSerial& serial,
 
   sendVersionPrompt(serial);
 
-  // END terminates explicitly so BACKEND:/NS: lines may arrive in any
-  // order. Timeout terminates implicitly — preserves whatever was set
-  // for legacy hosts that don't emit END.
-  bool received_ns = false;
   while ((millis() - start) < timeout_ms) {
     if (consumeAvailable(serial, buffer.data(), &idx, NS_MAX_LENGTH)) {
-      if (parseAndStoreBackend(serial, buffer.data(), idx)) {
-        idx = 0;
-        buffer.fill('\0');
-        continue;
-      }
-      if (parseAndStoreNamespace(serial, buffer.data(), idx)) {
-        received_ns = true;
-        idx = 0;
-        buffer.fill('\0');
-        continue;
-      }
-      if (parseEnd(serial, buffer.data(), idx)) {
-        return received_ns;
-      }
-      idx = 0;
-      buffer.fill('\0');
+      return parseAndStoreNamespace(serial, buffer.data(), idx);
     }
     if ((millis() - last_prompt) >= cfg_.resend_ready_interval_ms) {
       sendVersionPrompt(serial);
       last_prompt = millis();
     }
   }
-  return received_ns;
+  return false;
 }
 
 bool CommunicationManager::parseAndStoreNamespace(HardwareSerial& serial,
@@ -169,49 +150,6 @@ bool CommunicationManager::parseAndStoreNamespace(HardwareSerial& serial,
 
   std::strncpy(namespace_.data(), buf + kPrefixLen, NS_MAX_LENGTH);
   namespace_[NS_MAX_LENGTH - 1] = '\0';
-
-  serial.println("ACK");
-  serial.flush();
-  return true;
-}
-
-bool CommunicationManager::parseEnd(HardwareSerial& serial, const char* buf,
-                                    size_t len) {
-  constexpr const char* kEnd = "END";
-  constexpr size_t kEndLen = 3;
-  if (len != kEndLen || std::strncmp(buf, kEnd, kEndLen) != 0) {
-    return false;
-  }
-  serial.println("ACK");
-  serial.flush();
-  return true;
-}
-
-bool CommunicationManager::parseAndStoreBackend(HardwareSerial& serial,
-                                                const char* buf, size_t len) {
-  constexpr const char* kPrefix = "BACKEND:";
-  constexpr size_t kPrefixLen = 8;
-  constexpr const char* kMavlink = "mavlink";
-  constexpr const char* kMicroRos = "microros";
-
-  if (len < kPrefixLen || std::strncmp(buf, kPrefix, kPrefixLen) != 0) {
-    return false;
-  }
-
-  const char* value = buf + kPrefixLen;
-  const size_t value_len = len - kPrefixLen;
-
-  if (value_len == std::strlen(kMavlink) &&
-      std::strncmp(value, kMavlink, value_len) == 0) {
-    selected_backend_ = CommBackend::MAVLINK;
-  } else if (value_len == std::strlen(kMicroRos) &&
-             std::strncmp(value, kMicroRos, value_len) == 0) {
-    selected_backend_ = CommBackend::MICRO_ROS;
-  } else {
-    serial.println("NAK");
-    serial.flush();
-    return true;
-  }
 
   serial.println("ACK");
   serial.flush();
