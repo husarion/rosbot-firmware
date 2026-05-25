@@ -73,6 +73,10 @@ jobs:
         run: |
           set -euo pipefail
           tmp=$(mktemp -d)
-          mavgen.py --lang=C --wire-protocol=2.0 \
+          # PYTHONHASHSEED=0 pins the MAVLINK_*_XML_HASH macros which
+          # would otherwise drift per process. MAVLINK_BUILD_DATE is
+          # a wall-clock string mavgen always rewrites — ignore it.
+          PYTHONHASHSEED=0 mavgen.py --lang=C --wire-protocol=2.0 \
             --output="$tmp/generated" lib/mavlink/dialect/rosbot.xml
-          diff -ruN lib/mavlink/dialect/generated "$tmp/generated"
+          diff -ruN -I 'MAVLINK_BUILD_DATE' \
+            lib/mavlink/dialect/generated "$tmp/generated"
