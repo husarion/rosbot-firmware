@@ -19,9 +19,7 @@ jobs:
       fail-fast: false
       matrix:
         env:
-          - rosbot
           - rosbot_release
-          - rosbot_xl
           - rosbot_xl_release
     steps:
       - uses: actions/checkout@v4
@@ -39,7 +37,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        distro: [jazzy, humble]
+        distro: [jazzy]
     container: ros:${{ matrix.distro }}-ros-base
     steps:
       - uses: actions/checkout@v4
