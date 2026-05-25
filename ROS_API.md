@@ -1,12 +1,20 @@
 # ROS API
 
+This contract is **identical for both firmware flavours** — micro-ROS and
+MAVLink. Downstream nodes (e.g. `rosbot_ros`) consume the same node name,
+topic list, types, namespacing and QoS regardless of which firmware is
+flashed. The bridge (or agent) on the SBC absorbs the wire-protocol
+difference; see [README.md](README.md) and [ARCHITECTURE.md](ARCHITECTURE.md)
+for which process advertises the API in each case.
+
 ## Nodes
 
 [micro_ros_agent/micro_ros_agent]: https://github.com/micro-ROS/micro-ROS-Agent
+[rosbot_mavlink_bridge]: ./bridge/rosbot_mavlink_bridge
 
-| NODE             | DESCRIPTION                                                                                                  |
-| ---------------- | ------------------------------------------------------------------------------------------------------------ |
-| **`rosbot_mcu`** | Micro-ROS node responsible for communication with the ROSbot MCU. <br /> _[micro_ros_agent/micro_ros_agent]_ |
+| NODE             | DESCRIPTION                                                                                                                                                                                       |
+| ---------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **`rosbot_mcu`** | Node exposing the ROSbot MCU's topics and services. Advertised by [micro_ros_agent/micro_ros_agent] against the micro-ROS firmware, or by [rosbot_mavlink_bridge] against the MAVLink firmware. |
 
 ## Topics
 

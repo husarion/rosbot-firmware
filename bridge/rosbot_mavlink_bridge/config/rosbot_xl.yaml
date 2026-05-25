@@ -1,0 +1,13 @@
+---
+/**:
+  ros__parameters:
+    transport: udp
+    peer_ip: 192.168.77.3            # MCU CLIENT_IP (matches firmware config)
+    peer_port: 14555                  # MCU bind port (D17)
+    local_port: 14550                 # mavros default ground-station port
+    ros_namespace: ''                # match the namespace negotiated over FTDI
+    enable_ranges: false
+    enable_led_strip: true
+    publish_link_state: false
+    timesync_alpha: 0.05
+    expected_banner_regex: rosbot_xl .* mavlink

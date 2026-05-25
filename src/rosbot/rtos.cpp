@@ -21,14 +21,14 @@
 #include "config.hpp"
 #include "imu_interface.hpp"
 #include "led_indicator.hpp"
+#include "mavlink_node.hpp"
+#include "mavlink_types.hpp"
 #include "motor_array.hpp"
-#include "ros/publishers/battery_publisher.hpp"
-#include "ros/publishers/imu_publisher.hpp"
-#include "ros/publishers/joint_state_publisher.hpp"
-#include "ros/publishers/range_publisher.hpp"
+#include "robotics_link.hpp"
 #include "ros/ros_node.hpp"
 
-// ──── Queues ────
+RoboticsLink* g_link = nullptr;
+
 void createQueues() {
   battery_queue = xQueueCreate(1, sizeof(BatteryStamped));
   imu_queue = xQueueCreate(1, sizeof(ImuStamped));
@@ -36,7 +36,6 @@ void createQueues() {
   ranges_queue = xQueueCreate(1, sizeof(RangesStamped));
 }
 
-// ──── Create all tasks ────
 void batteryTask(void* p);
 void imuTask(void* p);
 void ledIndicatorTask(void* p);
@@ -65,7 +64,6 @@ void createTasks() {
   }
 }
 
-// ──── Task functions ────
 void batteryTask(void* p) {
   TickType_t period = taskGetPeriod(p);
   TickType_t wake_time = xTaskGetTickCount();
@@ -108,7 +106,7 @@ void ledIndicatorTask(void* p) {
     bool battery_low = g_battery->isLow();
     bool error_state = false;
 
-    g_indicator.update(battery_low, !g_ros_node.isConnected(), error_state);
+    g_indicator.update(battery_low, !g_link->isConnected(), error_state);
     vTaskDelayUntil(&wake_time, period);
   }
 }
@@ -177,7 +175,7 @@ void uRosTask(void* p) {
   TickType_t period = taskGetPeriod(p);
   TickType_t wake_time = xTaskGetTickCount();
   while (true) {
-    g_ros_node.loop();
+    g_link->loop();
     vTaskDelayUntil(&wake_time, period);
   }
 }

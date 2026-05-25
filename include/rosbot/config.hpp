@@ -25,11 +25,6 @@
 #include "motor_hi_z.hpp"
 #include "pid.hpp"
 #include "range_vl53l0.hpp"
-#include "ros/publishers/battery_publisher.hpp"
-#include "ros/publishers/buttons_publisher.hpp"
-#include "ros/publishers/imu_publisher.hpp"
-#include "ros/publishers/joint_state_publisher.hpp"
-#include "ros/publishers/range_publisher.hpp"
 
 // ───────── Arduino settings ─────────
 inline constexpr uint32_t ADC_MAX_VALUE =
@@ -277,40 +272,11 @@ inline constexpr uint8_t BATTERY_NUM_CELLS = 3;
 inline constexpr float BATTERY_CELL_CAPACITY = 2.6f;  // Ah
 inline constexpr float BATTERY_DESIGN_CAPACITY =
     BATTERY_NUM_CELLS * BATTERY_CELL_CAPACITY;
-inline constexpr BatteryPublisherConfig battery_pub_config = {
-    .topic = "battery",
-    .queue = battery_queue,
-    .frame_id = "base_link",
-    .design_capacity = BATTERY_DESIGN_CAPACITY,
-    .num_cells = BATTERY_NUM_CELLS,
-};
-
 inline constexpr uint8_t buttons_pins[2] = {PUSH_BUTTON2, PUSH_BUTTON1};
-inline constexpr ButtonsPublisherConfig buttons_pub_config = {
-    .topic = "buttons",
-    .pins = buttons_pins,
-    .num_buttons = 2,
-};
 
-inline constexpr ImuPublisherConfig imu_pub_config = {
-    .topic = "_imu/data",
-    .queue = imu_queue,
-    .frame_id = "imu_link",
-};
-
-inline constexpr JointStatePublisherConfig joint_state_pub_config = {
-    .topic = "_motors/feedback",
-    .queue = joint_state_queue,
-    .frame_id = "base_link",
-};
-
-inline constexpr RangePublisherConfig range_pub_config = {
-    .topic = "ranges",
-    .queue = ranges_queue,
-    .fov = 0.26f,
-    .min_range = 0.01f,
-    .max_range = 0.9f,
-};
+// Publisher configs live in src/rosbot/ros.cpp — keeping lib/ros headers
+// out of here prevents ODR collisions with lib/mavlink's identically-
+// named queue payload structs.
 
 // ───────── SBC Interface ─────────
 inline constexpr uint32_t SBC_SERIAL_TIMEOUT_MS = 100;

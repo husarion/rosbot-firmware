@@ -11,3 +11,70 @@ jobs:
     uses: ros-controls/ros2_control_ci/.github/workflows/reusable-pre-commit.yml@master
     with:
       ros_distro: jazzy
+
+  build-firmware:
+    name: Build firmware (${{ matrix.env }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        env:
+          - rosbot_release
+          - rosbot_xl_release
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.12'
+      - name: Install PlatformIO
+        run: pip3 install -U platformio
+      - name: Build env ${{ matrix.env }}
+        run: pio run -e ${{ matrix.env }}
+
+  build-bridge:
+    name: Build bridge (${{ matrix.distro }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        distro: [jazzy]
+    container: ros:${{ matrix.distro }}-ros-base
+    steps:
+      - uses: actions/checkout@v6
+      - name: Resolve deps and build bridge
+        shell: bash
+        run: |
+          # No -u: ROS's setup.bash trips on unset AMENT_TRACE_SETUP_FILES.
+          set -eo pipefail
+          source /opt/ros/${{ matrix.distro }}/setup.bash
+          apt-get update
+          rosdep update --rosdistro=${{ matrix.distro }}
+          rosdep install --from-paths bridge --ignore-src -y
+          colcon build --packages-select rosbot_mavlink_bridge --base-paths bridge \
+            --event-handlers console_direct+
+          colcon test --packages-select rosbot_mavlink_bridge --base-paths bridge \
+            --return-code-on-test-failure --event-handlers console_direct+
+
+  verify-dialect:
+    name: Verify checked-in MAVLink dialect headers
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.12'
+      - name: Install pymavlink
+        # Must match the version the committed headers were generated with.
+        run: pip3 install 'pymavlink==2.4.49'
+      - name: Regenerate and diff
+        shell: bash
+        run: |
+          set -euo pipefail
+          tmp=$(mktemp -d)
+          # PYTHONHASHSEED=0 pins the MAVLINK_*_XML_HASH macros which
+          # would otherwise drift per process. MAVLINK_BUILD_DATE is
+          # a wall-clock string mavgen always rewrites — ignore it.
+          PYTHONHASHSEED=0 mavgen.py --lang=C --wire-protocol=2.0 \
+            --output="$tmp/generated" lib/mavlink/dialect/rosbot.xml
+          diff -ruN -I 'MAVLINK_BUILD_DATE' \
+            lib/mavlink/dialect/generated "$tmp/generated"

@@ -1,0 +1,12 @@
+---
+/**:
+  ros__parameters:
+    transport: serial
+    serial_port: /dev/ttyS4        # adjust to your SBC's SBC<->MCU UART
+    serial_baudrate: 921600
+    ros_namespace: ''               # match the namespace negotiated over FTDI
+    enable_ranges: true
+    enable_led_strip: false
+    publish_link_state: false
+    timesync_alpha: 0.05
+    expected_banner_regex: rosbot .* mavlink

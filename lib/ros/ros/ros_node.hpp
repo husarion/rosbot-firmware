@@ -25,6 +25,7 @@
 #include "clients/client_interface.hpp"
 #include "communication_manager.hpp"
 #include "publishers/publisher_interface.hpp"
+#include "robotics_link.hpp"
 #include "types.hpp"
 
 #define RC_CHECK(fn)                                                  \
@@ -59,7 +60,7 @@ struct RosNodeConfig {
   uint16_t ping_timeout_ms = 100;
 };
 
-class RosNode {
+class RosNode : public RoboticsLink {
  public:
   enum State : uint8_t { WAITING, AGENT_AVAILABLE, CONNECTED, DISCONNECTED };
 
@@ -72,7 +73,7 @@ class RosNode {
   bool pingAgent();
 
   /// State machine + spin.
-  void loop();
+  void loop() override;
   void publish();
 
   static void timerCallback(rcl_timer_t* timer, int64_t last_call_time) {
@@ -84,10 +85,12 @@ class RosNode {
   }
 
   State state() const { return state_; }
-  bool isConnected() const { return state_ == CONNECTED; }
+  bool isConnected() const override { return state_ == CONNECTED; }
 
-  void setNamespace(const char* ns) { ns_ = ns; };
-  void setDiagnosticSerial(HardwareSerial* serial) { serial_ = serial; }
+  void setNamespace(const char* ns) override { ns_ = ns; };
+  void setDiagnosticSerial(HardwareSerial* serial) override {
+    serial_ = serial;
+  }
 
  private:
   bool createEntities();

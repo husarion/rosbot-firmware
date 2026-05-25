@@ -6,3 +6,16 @@
 .vscode/ipch
 .vscode-server
 .devcontainer
+
+# colcon build artifacts when working out of the repo root
+build/
+install/
+log/
+
+# Staged MAVLink firmware binaries for the rosbot-snap build (populated by
+# `just stage-snap-firmware`). The .pio/ source files are the truth.
+bridge/rosbot_mavlink_bridge/firmware/*.bin
+
+# Local scratch dir for screenshots, paste targets, ad-hoc files.
+# Never committed.
+temp/

@@ -14,17 +14,23 @@
 
 #include <Arduino.h>
 
+#include <cstring>
+
 #include "battery_adc.hpp"
 #include "battery_interface.hpp"
+#include "comm_backend.hpp"
 #include "communication_manager.hpp"
 #include "config.hpp"
 #include "hardware_encoder.hpp"
 #include "imu_bno055.hpp"
 #include "led_indicator.hpp"
+#include "mavlink_node.hpp"
 #include "motor_array.hpp"
 #include "motor_hi_z.hpp"
+#include "persistent_config.hpp"
 #include "range_array.hpp"
 #include "range_vl53l0.hpp"
+#include "robotics_link.hpp"
 #include "ros/ros_node.hpp"
 #include "rtos.hpp"
 
@@ -110,18 +116,28 @@ void boardPheripheralsInit() {
   delay(20);
 }
 
+// Lives in .data so g_comm_mgr's ns_default pointer stays valid.
+static persistent_config::Config s_persistent;
+
 /*───────── Setup ─────────*/
 void setup() {
-  // Peripherals initialization
   boardPheripheralsInit();
 
-  // Pre-communication
-  g_comm_mgr.init();
-  const auto& transport = g_comm_mgr.selectTransport();
-  g_comm_mgr.configureNamespace();
-  g_ros_node.setNamespace(g_comm_mgr.getNamespace());
+  s_persistent = persistent_config::load();
+  g_comm_mgr.setBackendDefault(s_persistent.backend);
+  g_comm_mgr.setNamespaceDefault(s_persistent.ns);
 
-  // Sensors initialization
+  g_comm_mgr.init();
+  const SerialConfig* transport = g_comm_mgr.selectTransport();
+  g_comm_mgr.configureNamespace();
+
+  persistent_config::Config now{};
+  now.backend = g_comm_mgr.getSelectedBackend();
+  std::strncpy(now.ns, g_comm_mgr.getNamespace(),
+               persistent_config::kNamespaceMaxLen);
+  now.ns[persistent_config::kNamespaceMaxLen - 1] = '\0';
+  persistent_config::save(now);
+
   battery_adc.init();
   imu_bno055.init();
   g_indicator.init();
@@ -130,8 +146,19 @@ void setup() {
   }
   g_motors.init();  // motors own encoders → enc init happens here
   g_ranges.init();
-  g_ros_node.serialTransportInit(*transport);
-  g_ros_node.setDiagnosticSerial(g_comm_mgr.debugSerial());
+
+  // Only the chosen backend's transport is opened; the other stays inert.
+  if (g_comm_mgr.getSelectedBackend() == CommBackend::MAVLINK) {
+    g_mavlink_node.setNamespace(g_comm_mgr.getNamespace());
+    g_mavlink_node.setDiagnosticSerial(g_comm_mgr.debugSerial());
+    g_mavlink_node.begin();
+    g_link = &g_mavlink_node;
+  } else {
+    g_ros_node.setNamespace(g_comm_mgr.getNamespace());
+    g_ros_node.serialTransportInit(*transport);
+    g_ros_node.setDiagnosticSerial(g_comm_mgr.debugSerial());
+    g_link = &g_ros_node;
+  }
 
   // RTOS
   createQueues();

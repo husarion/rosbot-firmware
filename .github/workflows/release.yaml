@@ -1,4 +1,50 @@
 ---
+# ============================================================================
+# Release workflow — manually dispatched from the Actions UI.
+#
+# Inputs:
+#   bump_type   — major / minor / patch (semver bump for the track suffix
+#                 attached to this branch, see EXPECTED_DISTRO below).
+#   pre_release — when true, dispatch is allowed from any branch (not just
+#                 the EXPECTED_DISTRO one). Tag is suffixed with
+#                 `.pre.<run_number>`, the GitHub Release is flagged
+#                 `prerelease`, and the cross-repo bump jobs (5 + 6) are
+#                 SKIPPED so an experimental build doesn't pollute
+#                 rosbot_ros. The .pre.* tags are also
+#                 excluded from the next-stable-version lookup.
+#
+# Sequential jobs:
+#   1. bump-tag       — find latest v*-<distro> tag, compute next version,
+#                       rewrite FW_VERSION in platformio.ini, commit, push, tag.
+#   2. firmware-release — build 2 release envs (`rosbot_release`,
+#                       `rosbot_xl_release` — single binary per platform
+#                       since runtime picks the comm backend), publish
+#                       GitHub Release with auto-generated notes + the
+#                       .bin artefacts attached.
+#   3. bridge-release  — bridge package source tarball for ROS jazzy,
+#                       attached to the same release. (humble not built —
+#                       rosbot_ros doesn't ship a humble track.)
+#   4. bridge-image    — multi-arch (amd64+arm64) GHCR image for jazzy,
+#                       built from bridge/Dockerfile.
+#   5. bump-rosbot-ros — open auto-PR in husarion/rosbot_ros@jazzy-mavlink-v2
+#                       bumping the vcs pin, swapping .bin artefacts, and
+#                       bumping bundled-firmware paths. Labelled
+#                       `auto-firmware-bump` so the companion auto-merge
+#                       workflow squash-merges on green CI.
+#
+# Not done here: bumping rosbot-snap. The snap sources its firmware via
+# rosbot_ros (vendored on the jazzy branch), so a firmware release has
+# no direct snap impact — the snap follows when rosbot_ros cuts its
+# next release. Don't add a snap-bump job here.
+#
+# Required repo secret (for step 5):
+#   HUSARION_BOT_APP_ID       — GitHub App ID with contents:write +
+#                               pull-requests:write installed on
+#                               husarion/rosbot_ros.
+#   HUSARION_BOT_PRIVATE_KEY  — PEM-encoded private key for that App.
+#   See https://docs.github.com/apps for App + installation setup.
+# ============================================================================
+
 name: Release
 
 on:
@@ -13,17 +59,38 @@ on:
           - major
           - minor
           - patch
+      pre_release:
+        description: >-
+          Pre-release run — dispatch from any branch, tag suffixed with
+          `.pre.<run_number>`, GitHub Release flagged as pre-release,
+          cross-repo bump to rosbot_ros SKIPPED.
+        required: false
+        default: false
+        type: boolean
 
 permissions:
   contents: write
 
+env:
+  # The ROS distro this branch ships firmware for. Single source of truth
+  # for the workflow — the value is used as the tag suffix (`v*-${distro}`)
+  # and asserted against the dispatching branch name. When a new distro is
+  # forked off (e.g. `jazzy` -> `lyric`), the ONLY edit needed on the new
+  # branch is changing this value. Post-Task-2 the firmware is one binary
+  # per platform with a runtime comm switch, so there's no separate
+  # `-jazzy-mavlink` track — just `jazzy`.
+  EXPECTED_DISTRO: jazzy
+
 jobs:
+
   bump-tag:
+    name: Bump version and tag
     runs-on: ubuntu-latest
     outputs:
       tag_name: ${{ steps.bump.outputs.tag_name }}
       version: ${{ steps.bump.outputs.version }}
       distro: ${{ steps.bump.outputs.distro }}
+      is_prerelease: ${{ steps.bump.outputs.is_prerelease }}
       sha: ${{ steps.push.outputs.sha }}
     steps:
       - name: Checkout repository
@@ -32,30 +99,45 @@ jobs:
           fetch-depth: 0
           token: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Resolve distro from branch name
+      - name: Resolve and verify distro
         id: distro
+        env:
+          PRE_RELEASE: ${{ inputs.pre_release }}
         run: |
-          distro=$(echo "${GITHUB_REF_NAME}" | awk -F'/' '{print $NF}')
-          echo "distro=$distro" >> $GITHUB_OUTPUT
-          echo "Distro: $distro"
+          branch=$(echo "${GITHUB_REF_NAME}" | awk -F'/' '{print $NF}')
+          if [ "${PRE_RELEASE}" = "true" ]; then
+            echo "Pre-release run on branch '${branch}' (distro check skipped)."
+          elif [ "${branch}" != "${EXPECTED_DISTRO}" ]; then
+            echo "::error::Workflow is configured for distro '${EXPECTED_DISTRO}' but was dispatched on branch '${branch}'. Set the 'pre_release' input to true to dispatch from a feature branch, or fork this branch and change EXPECTED_DISTRO if you're starting a new track."
+            exit 1
+          fi
+          echo "distro=${EXPECTED_DISTRO}" >> "$GITHUB_OUTPUT"
+          echo "Distro: ${EXPECTED_DISTRO}"
 
-      - name: Get latest tag for distro
+      - name: Get latest stable tag for distro
         id: get_tag
         run: |
           distro=${{ steps.distro.outputs.distro }}
-          # Tag format produced by this workflow: v<major>.<minor>.<patch>-<distro>
-          latest_tag=$(git tag -l "v*-${distro}" --sort=-v:refname | head -n1)
+          # Tag format produced by this workflow:
+          #   stable      : v<X>.<Y>.<Z>-<distro>
+          #   pre-release : v<X>.<Y>.<Z>-<distro>.pre.<run_number>
+          # Exclude .pre.* tags from the "latest stable" lookup so pre-release
+          # runs don't shift the next stable version.
+          latest_tag=$(git tag -l "v*-${distro}" --sort=-v:refname | grep -v '\.pre\.' | head -n1)
           if [ -z "$latest_tag" ]; then
             latest_tag="v0.0.0-${distro}"
           fi
-          echo "Latest tag: $latest_tag"
-          echo "latest=$latest_tag" >> $GITHUB_OUTPUT
+          echo "Latest stable tag: $latest_tag"
+          echo "latest=$latest_tag" >> "$GITHUB_OUTPUT"
 
       - name: Bump version
         id: bump
+        env:
+          PRE_RELEASE: ${{ inputs.pre_release }}
+          RUN_NUMBER: ${{ github.run_number }}
         run: |
           latest="${{ steps.get_tag.outputs.latest }}"
-          bump_type="${{ github.event.inputs.bump_type }}"
+          bump_type="${{ inputs.bump_type }}"
           distro="${{ steps.distro.outputs.distro }}"
 
           # Strip leading "v" and trailing "-<distro>" to get bare X.Y.Z
@@ -71,12 +153,21 @@ jobs:
           fi
 
           version="v${major}.${minor}.${patch}"
-          tag_name="${version}-${distro}"
+          if [ "${PRE_RELEASE}" = "true" ]; then
+            tag_name="${version}-${distro}.pre.${RUN_NUMBER}"
+            is_prerelease=true
+          else
+            tag_name="${version}-${distro}"
+            is_prerelease=false
+          fi
 
-          echo "version=$version"   >> $GITHUB_OUTPUT
-          echo "tag_name=$tag_name" >> $GITHUB_OUTPUT
-          echo "distro=$distro"     >> $GITHUB_OUTPUT
-          echo "New tag: $tag_name"
+          {
+            echo "version=$version"
+            echo "tag_name=$tag_name"
+            echo "distro=$distro"
+            echo "is_prerelease=$is_prerelease"
+          } >> "$GITHUB_OUTPUT"
+          echo "New tag: $tag_name (prerelease=$is_prerelease)"
 
       - name: Update FW_VERSION in platformio.ini
         run: |
@@ -99,7 +190,7 @@ jobs:
           git push
 
           NEW_SHA=$(git rev-parse HEAD)
-          echo "sha=$NEW_SHA" >> $GITHUB_OUTPUT
+          echo "sha=$NEW_SHA" >> "$GITHUB_OUTPUT"
           echo "New commit SHA: $NEW_SHA"
 
       - name: Create tag on new commit
@@ -113,9 +204,9 @@ jobs:
               owner: context.repo.owner,
               repo: context.repo.repo,
               ref: 'refs/tags/' + tag,
-              sha: sha
+              sha: sha,
             });
-            console.log(`Created tag ${tag} → ${sha}`);
+            console.log(`Created tag ${tag} -> ${sha}`);
 
   firmware-release:
     name: Firmware release
@@ -123,35 +214,449 @@ jobs:
     runs-on: ubuntu-latest
     env:
       TAG_NAME: ${{ needs.bump-tag.outputs.tag_name }}
+      VERSION: ${{ needs.bump-tag.outputs.version }}
+    outputs:
+      sha256_rosbot: ${{ steps.sha.outputs.sha256_rosbot }}
+      sha256_rosbot_xl: ${{ steps.sha.outputs.sha256_rosbot_xl }}
     steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
+      - name: Checkout repository at bumped commit
+        uses: actions/checkout@v6
         with:
           ref: ${{ needs.bump-tag.outputs.sha }}
 
-      - name: Verify FW_VERSION
-        run: grep "FW_VERSION" platformio.ini
+      - name: Verify FW_VERSION matches tag
+        run: |
+          expected="-D FW_VERSION=\\\"${TAG_NAME}\\\""
+          grep -F -- "${expected}" platformio.ini \
+            || { echo "::error::FW_VERSION in platformio.ini doesn't match tag ${TAG_NAME}"; grep FW_VERSION platformio.ini; exit 1; }
 
       - name: Install PlatformIO
         run: pip3 install -U platformio
 
-      - name: Build firmware
-        run: pio run -e rosbot_release -e rosbot_xl_release
+      - name: Build all release envs
+        run: |
+          pio run -e rosbot_release -e rosbot_xl_release
 
       - name: Rename binaries
         run: |
+          # Single binary per platform — runtime picks the comm backend
+          # (micro-ROS or MAVLink) from EEPROM. -${TAG_NAME} keeps the
+          # -<distro> suffix since micro_ros_arduino is still jazzy-pinned.
           mkdir -p release
           cp .pio/build/rosbot_release/firmware.bin    "release/rosbot-${TAG_NAME}.bin"
-          cp .pio/build/rosbot_xl_release/firmware.bin  "release/rosbot_xl-${TAG_NAME}.bin"
-          echo "--- Release artifacts ---"
+          cp .pio/build/rosbot_xl_release/firmware.bin "release/rosbot_xl-${TAG_NAME}.bin"
           ls -la release/
 
+      - name: Compute SHA-256
+        id: sha
+        run: |
+          set -euo pipefail
+          cd release
+          SHA_ROSBOT=$(sha256sum "rosbot-${TAG_NAME}.bin"     | awk '{print $1}')
+          SHA_XL=$(sha256sum     "rosbot_xl-${TAG_NAME}.bin"  | awk '{print $1}')
+          {
+            echo "sha256_rosbot=${SHA_ROSBOT}"
+            echo "sha256_rosbot_xl=${SHA_XL}"
+          } >> "$GITHUB_OUTPUT"
+          {
+            echo "## SHA-256"
+            echo
+            echo '```'
+            echo "${SHA_ROSBOT}  rosbot-${TAG_NAME}.bin"
+            echo "${SHA_XL}  rosbot_xl-${TAG_NAME}.bin"
+            echo '```'
+          } > sha256.md
+
       - name: Create GitHub Release
-        uses: softprops/action-gh-release@v2
+        uses: softprops/action-gh-release@v3
         with:
           tag_name: ${{ env.TAG_NAME }}
+          name: ${{ env.TAG_NAME }}
           generate_release_notes: true
+          body_path: release/sha256.md
+          append_body: true
+          prerelease: ${{ needs.bump-tag.outputs.is_prerelease == 'true' }}
           files: |
             release/rosbot-${{ env.TAG_NAME }}.bin
             release/rosbot_xl-${{ env.TAG_NAME }}.bin
             LICENSE
+
+  bridge-release:
+    name: Bridge release tarball (${{ matrix.distro }})
+    needs: bump-tag
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        distro: [jazzy]
+    env:
+      TAG_NAME: ${{ needs.bump-tag.outputs.tag_name }}
+      VERSION: ${{ needs.bump-tag.outputs.version }}
+    container: ros:${{ matrix.distro }}-ros-base
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: ${{ needs.bump-tag.outputs.sha }}
+      - name: Build bridge package
+        shell: bash
+        run: |
+          # No -u: ROS's setup.bash trips on unset AMENT_TRACE_SETUP_FILES.
+          set -eo pipefail
+          source /opt/ros/${{ matrix.distro }}/setup.bash
+          apt-get update
+          rosdep update --rosdistro=${{ matrix.distro }}
+          rosdep install --from-paths bridge --ignore-src -y
+          colcon build --packages-select rosbot_mavlink_bridge --base-paths bridge
+      - name: Package source tarball
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p release
+          tarball="rosbot_mavlink_bridge-${VERSION}-${{ matrix.distro }}-src.tar.gz"
+          # Dialect headers ride along; bridge/CMakeLists.txt's relative
+          # include path is the contract.
+          tar --transform "s,^,rosbot_mavlink_bridge-${VERSION}/," \
+              -czf "release/${tarball}" \
+              bridge lib/mavlink/dialect/generated lib/mavlink/dialect/rosbot.xml \
+              MAVLINK_MIGRATION.md LICENSE
+          ls -la release/
+      - name: Attach to release
+        uses: softprops/action-gh-release@v3
+        with:
+          tag_name: ${{ env.TAG_NAME }}
+          files: release/rosbot_mavlink_bridge-${{ env.VERSION }}-${{ matrix.distro }}-src.tar.gz
+
+  # Multi-arch GHCR image, independent of bridge-release.
+  bridge-image:
+    name: Bridge container image (${{ matrix.distro }})
+    needs: bump-tag
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    strategy:
+      fail-fast: false
+      matrix:
+        distro: [jazzy]
+    env:
+      VERSION: ${{ needs.bump-tag.outputs.version }}
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: ${{ needs.bump-tag.outputs.sha }}
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v4
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v4
+      - name: Log in to GHCR
+        uses: docker/login-action@v4
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Compute image tags
+        id: img
+        run: |
+          owner=$(echo "${{ github.repository_owner }}" | tr '[:upper:]' '[:lower:]')
+          name="ghcr.io/${owner}/rosbot-mavlink-bridge"
+          version_tag="${VERSION#v}"  # docker tag convention drops the 'v'
+          {
+            echo "tags<<EOF"
+            echo "${name}:${version_tag}-${{ matrix.distro }}"
+            echo "${name}:latest-${{ matrix.distro }}"
+            echo "EOF"
+          } >> $GITHUB_OUTPUT
+      - name: Build and push (multi-arch)
+        uses: docker/build-push-action@v7
+        with:
+          context: .
+          file: bridge/Dockerfile
+          platforms: linux/amd64,linux/arm64
+          build-args: |
+            ROS_DISTRO=${{ matrix.distro }}
+          tags: ${{ steps.img.outputs.tags }}
+          push: true
+
+  # ----------------------------------------------------------------------
+  # Cross-repo bump PR (auto-firmware-bump).
+  #
+  # `firmware-release` has just published the GitHub release with the new
+  # binaries attached. This job opens a PR in rosbot_ros that swaps the
+  # bundled artefacts to the new tag, labelled `auto-firmware-bump` so
+  # rosbot_ros's companion `firmware-bump-automerge.yaml` squash-merges
+  # it on green CI. rosbot-snap is intentionally not bumped here —
+  # snap pulls firmware via rosbot_ros, so the snap follows when
+  # rosbot_ros cuts its next release.
+  #
+  # Auth is via a GitHub App (HUSARION_BOT_APP_ID + HUSARION_BOT_PRIVATE_KEY)
+  # — `actions/create-github-app-token@v1` mints a short-lived (1h) token
+  # scoped to the target repo. GITHUB_TOKEN can't be used because it has no
+  # write access cross-repo.
+  # ----------------------------------------------------------------------
+
+  bump-rosbot-ros:
+    name: Bump firmware pin in rosbot_ros
+    needs: [bump-tag, firmware-release]
+    if: needs.bump-tag.outputs.is_prerelease != 'true'
+    runs-on: ubuntu-latest
+    env:
+      NEW_TAG: ${{ needs.bump-tag.outputs.tag_name }}
+      NEW_VERSION: ${{ needs.bump-tag.outputs.version }}
+      TARGET_REPO: husarion/rosbot_ros
+      TARGET_BRANCH: jazzy-mavlink-v2
+      SHA_ROSBOT: ${{ needs.firmware-release.outputs.sha256_rosbot }}
+      SHA_ROSBOT_XL: ${{ needs.firmware-release.outputs.sha256_rosbot_xl }}
+    steps:
+      - name: Mint Husarion bot token
+        id: bot_token
+        uses: actions/create-github-app-token@v1
+        with:
+          app-id: ${{ secrets.HUSARION_BOT_APP_ID }}
+          private-key: ${{ secrets.HUSARION_BOT_PRIVATE_KEY }}
+          owner: husarion
+          repositories: rosbot_ros
+
+      - name: Checkout target repo
+        uses: actions/checkout@v4
+        with:
+          repository: ${{ env.TARGET_REPO }}
+          ref: ${{ env.TARGET_BRANCH }}
+          token: ${{ steps.bot_token.outputs.token }}
+          path: target
+
+      - name: Download firmware .bin artefacts from this release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          mkdir -p /tmp/fwbins
+          gh release download "$NEW_TAG" \
+              --repo "${{ github.repository }}" \
+              --pattern '*.bin' \
+              --dir /tmp/fwbins
+          if [ -z "$(ls /tmp/fwbins/*.bin 2>/dev/null || true)" ]; then
+              echo "::error::Release $NEW_TAG attaches no .bin artefacts"
+              exit 1
+          fi
+          ls -la /tmp/fwbins/
+
+      - name: Replace binaries + bump pins in target
+        run: |
+          set -euo pipefail
+          cd target
+
+          # 1) Bump the vcs pin in rosbot_hardware.repos
+          python3 - <<'PY'
+          import re, os, pathlib
+          tag = os.environ["NEW_TAG"]
+          p = pathlib.Path("rosbot/rosbot_hardware.repos")
+          text = p.read_text()
+          new = re.sub(
+              r"(rosbot-firmware:\s*\n(?:\s+[^\n]+\n)*?\s+version:\s*)\S+",
+              r"\g<1>" + tag,
+              text,
+              count=1,
+          )
+          if new == text:
+              raise SystemExit("rosbot-firmware entry not found in rosbot/rosbot_hardware.repos")
+          p.write_text(new)
+          PY
+
+          # 2) Swap .bin files in rosbot_utils/firmware/ via prefix match.
+          #    Post-Task-2 firmware ships one binary per platform:
+          #    `rosbot-${VERSION}.bin`, `rosbot_xl-${VERSION}.bin` — both
+          #    distro-agnostic (no `-jazzy` suffix in the filename).
+          shopt -s nullglob
+          cd rosbot_utils/firmware
+          for new in /tmp/fwbins/*.bin; do
+              new_name=$(basename "$new")
+              # Strip the version (and optional distro/track suffix) to
+              # derive the prefix. Matches both old-style names
+              # ("rosbot-v1.1.0-jazzy.bin", "rosbot_mavlink-v0.1.1.bin") and
+              # the new distro-agnostic ones ("rosbot-v0.2.0.bin").
+              prefix=$(echo "$new_name" | sed -E 's/-v[0-9]+\.[0-9]+\.[0-9]+(-[A-Za-z0-9.\-]+)?\.bin$/-/')
+              if [ "$prefix" = "$new_name" ]; then
+                  echo "::warning::No version pattern in '$new_name', skipping"
+                  continue
+              fi
+              old_matches=( ${prefix}*.bin )
+              for old in "${old_matches[@]}"; do
+                  if [ "$old" = "$new_name" ]; then continue; fi
+                  echo "Removing stale $old"
+                  rm -- "$old"
+              done
+              # Also clean up any stale `_mavlink-` variant from the
+              # pre-Task-2 dual-binary world. The new single binary covers
+              # both transports, so the legacy file is dead weight.
+              legacy_prefix=$(echo "$prefix" | sed -E 's/-$/_mavlink-/')
+              legacy_matches=( ${legacy_prefix}*.bin )
+              for old in "${legacy_matches[@]}"; do
+                  echo "Removing legacy mavlink-variant $old (superseded by unified binary)"
+                  rm -- "$old"
+              done
+              cp -- "$new" "./$new_name"
+              echo "Installed $new_name"
+          done
+          ls -la
+          cd ../..
+
+          # 3) Bump the bundled-firmware paths in flash_firmware. Post-Task-2
+          #    the firmware is one binary per platform; the bundled_firmware
+          #    dict in rosbot_ros may still carry separate "micro-ros" /
+          #    "mavlink" keys (Task 2 doesn't touch rosbot_ros) but both
+          #    values should point at the same new file.
+          shopt -s nullglob
+          rosbot_bins=( rosbot_utils/firmware/rosbot-v*.bin )
+          if [ ${#rosbot_bins[@]} -ge 1 ]; then
+              # Pick the newest matching the new tag — fall back to first.
+              new_bin=$(basename "${rosbot_bins[0]}")
+              new_ver_suffix=$(echo "$new_bin" | sed -E 's/^rosbot-(.+)\.bin$/\1/')
+              echo "Bumping flash_firmware bundled paths to version $new_ver_suffix"
+              python3 - <<PY
+          import re, pathlib
+          ver = "${new_ver_suffix}"
+          p = pathlib.Path("rosbot_utils/scripts/flash_firmware")
+          if not p.exists():
+              raise SystemExit(0)
+          text = p.read_text()
+          # Rewrite any entry like
+          #   "<key>": f"{robot_model}<anything>-v<old>.bin"
+          # to point at f"{robot_model}-{ver}.bin". Drops the legacy
+          # `_mavlink-` infix when present.
+          new = re.sub(
+              r'(f"\{robot_model\})(?:_mavlink)?-[^"]+(\.bin")',
+              r'\g<1>-' + ver + r'\g<2>',
+              text,
+          )
+          if new == text:
+              print("flash_firmware bundled paths already up-to-date or pattern unmatched")
+          else:
+              p.write_text(new)
+              print("Bumped flash_firmware bundled paths")
+          PY
+          fi
+
+          # 4) Bump expected-firmware tag in any rosbot_bringup launch file
+          #    that pins it. Narrow scope: only `mavlink*.launch.py` —
+          #    `microros.launch.py` / `configure_robot` pin the old jazzy
+          #    track explicitly and are out of scope until a human migrates
+          #    them to the unified firmware.
+          shopt -s nullglob
+          for f in rosbot_bringup/launch/mavlink_bridge.launch.py \
+                   rosbot_bringup/launch/mavlink.launch.py; do
+              [ -f "$f" ] || continue
+              python3 - "$f" <<PY
+          import re, sys, pathlib, os
+          tag = os.environ["NEW_TAG"]
+          p = pathlib.Path(sys.argv[1])
+          text = p.read_text()
+          # Match v<X.Y.Z>-jazzy or v<X.Y.Z>-jazzy-mavlink (pre-Task-2).
+          new = re.sub(
+              r'"v\d+\.\d+\.\d+-jazzy(?:-mavlink)?"',
+              f'"{tag}"',
+              text,
+          )
+          if new != text:
+              p.write_text(new)
+              print(f"Updated expected firmware tag in {p}")
+          PY
+          done
+
+          echo "--- git diff after edits ---"
+          git -c color.ui=always diff --stat || true
+
+      - name: Open PR in rosbot_ros
+        env:
+          GH_TOKEN: ${{ steps.bot_token.outputs.token }}
+        run: |
+          set -euo pipefail
+          cd target
+
+          branch="auto-firmware-bump/${NEW_TAG}"
+          git config user.name  "husarion-bot[bot]"
+          git config user.email "husarion-bot[bot]@users.noreply.github.com"
+          git checkout -b "$branch"
+          git add -A
+          if git diff --cached --quiet; then
+              echo "::warning::No diff for ${NEW_TAG} — nothing to PR (already on this version?)."
+              exit 0
+          fi
+          git commit -m "chore(firmware): bump to ${NEW_TAG}"
+          git push --set-upstream origin "$branch" --force-with-lease
+
+          gh label create auto-firmware-bump \
+              --color FBCA04 \
+              --description "Cross-repo bump opened by rosbot-firmware release pipeline" \
+              --repo "$TARGET_REPO" \
+              --force || true
+
+          # Major bumps = breaking change = downstream rosbot_ros may need
+          # manual code edits before merging. Block auto-merge by attaching
+          # `block-automerge` here so the companion workflow leaves the PR
+          # open for review. An operator removes the label once the manual
+          # changes are in.
+          labels="auto-firmware-bump"
+          breaking_note=""
+          if [ "${{ inputs.bump_type }}" = "major" ]; then
+              gh label create block-automerge \
+                  --color D93F0B \
+                  --description "Stop firmware-bump auto-merge — manual review/fixes required" \
+                  --repo "$TARGET_REPO" \
+                  --force || true
+              labels="${labels},block-automerge"
+              breaking_note=$'\n### :warning: Breaking change (major bump)\nThis is a **major** firmware bump — the upstream public API / wire protocol / build interface changed in a backwards-incompatible way. The `block-automerge` label is set so the PR stays open even on green CI; rosbot_ros most likely needs manual code edits (launch args, hardware-interface ABI, configure_robot pins, etc.) before merging. Remove the label once those edits are in and the PR will auto-merge on green.\n'
+          fi
+
+          release_url="https://github.com/${{ github.repository }}/releases/tag/${NEW_TAG}"
+
+          body=$(cat <<EOF
+          Automated firmware-bump PR opened by [rosbot-firmware release pipeline](${release_url}).
+          ${breaking_note}
+          ### What this PR changes
+          - \`rosbot/rosbot_hardware.repos\` — \`rosbot-firmware\` version pinned to \`${NEW_TAG}\`
+          - \`rosbot_utils/firmware/\` — \`.bin\` files swapped to release artefacts (single binary per platform — runtime picks the comm backend)
+          - \`rosbot_utils/scripts/flash_firmware\` — bundled-firmware paths bumped
+          - \`rosbot_bringup/launch/mavlink_bridge.launch.py\` / \`mavlink.launch.py\` — expected firmware tag bumped
+
+          ### Artefact SHA-256
+          \`\`\`
+          ${SHA_ROSBOT}  rosbot-${NEW_TAG}.bin
+          ${SHA_ROSBOT_XL}  rosbot_xl-${NEW_TAG}.bin
+          \`\`\`
+
+          ### Release notes
+          See ${release_url} for the upstream release notes (auto-generated from PR history).
+
+          ### Merge behaviour
+          PR carries the \`auto-firmware-bump\` label so
+          \`firmware-bump-automerge.yaml\` enables GitHub auto-merge (squash);
+          the merge only fires once every required status check goes green.
+          A \`block-automerge\` label pauses auto-merge — set automatically on
+          \`major\` (breaking) bumps, can also be added by a human to stop
+          a patch/minor PR from merging.
+
+          ### Required repository settings (one-off, manual)
+          For auto-merge to work, the repo owner needs:
+          - **Settings -> General -> Pull Requests -> Allow auto-merge** — ON
+          - **Branch protection on \`${TARGET_BRANCH}\`** with at least one required status check
+            (e.g. \`integration / Pre-commit\`, \`integration / ROS Test\`).
+
+          Without those, GitHub refuses to enable auto-merge and the
+          companion workflow surfaces a yellow warning + actionable
+          checklist in the Job Summary (the workflow run stays green).
+
+          ### Auth (one-off, manual)
+          PR opened via the **husarion-bot** GitHub App. Required secrets in
+          rosbot-firmware: \`HUSARION_BOT_APP_ID\`, \`HUSARION_BOT_PRIVATE_KEY\`.
+          App must be installed on \`husarion/rosbot_ros\` with
+          \`contents: write\` + \`pull-requests: write\`.
+          EOF
+          )
+
+          gh pr create \
+              --repo "$TARGET_REPO" \
+              --base "$TARGET_BRANCH" \
+              --head "$branch" \
+              --title "chore(firmware): bump to ${NEW_TAG}" \
+              --body "$body" \
+              --label "$labels"

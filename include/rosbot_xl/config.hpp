@@ -29,10 +29,6 @@
 #include "ntc.hpp"
 #include "pid.hpp"
 #include "power_board.hpp"
-#include "ros/publishers/battery_publisher.hpp"
-#include "ros/publishers/buttons_publisher.hpp"
-#include "ros/publishers/imu_publisher.hpp"
-#include "ros/publishers/joint_state_publisher.hpp"
 #include "transport/spi_transport.hpp"
 
 // ───────── Arduino settings ─────────
@@ -374,32 +370,10 @@ inline constexpr uint8_t BATTERY_NUM_CELLS = 3;
 inline constexpr float BATTERY_CELL_CAPACITY = 2.6f;  // Ah
 inline constexpr float BATTERY_DESIGN_CAPACITY =
     BATTERY_NUM_CELLS * BATTERY_CELL_CAPACITY;
-inline constexpr BatteryPublisherConfig battery_pub_config = {
-    .topic = "battery",
-    .queue = battery_queue,
-    .frame_id = "base_link",
-    .design_capacity = BATTERY_DESIGN_CAPACITY,
-    .num_cells = BATTERY_NUM_CELLS,
-};
-
 inline constexpr uint8_t buttons_pins[] = {PUSH_BUTTON1};
-inline constexpr ButtonsPublisherConfig buttons_pub_config = {
-    .topic = "buttons",
-    .pins = buttons_pins,
-    .num_buttons = sizeof(buttons_pins) / sizeof(buttons_pins[0]),
-};
 
-inline constexpr ImuPublisherConfig imu_pub_config = {
-    .topic = "_imu/data",
-    .queue = imu_queue,
-    .frame_id = "imu_link",
-};
-
-inline constexpr JointStatePublisherConfig joint_state_pub_config = {
-    .topic = "_motors/feedback",
-    .queue = joint_state_queue,
-    .frame_id = "base_link",
-};
+// Publisher configs live in src/rosbot_xl/ros.cpp — see
+// include/rosbot/config.hpp for the ODR rationale.
 
 // ───────── Power Board - Battery ─────────
 inline constexpr PowerBoardConfig power_board_config = {

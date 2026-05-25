@@ -14,12 +14,27 @@
 
 #pragma once
 
+#include <Arduino.h>
 #include <STM32FreeRTOS.h>
 #include <micro_ros_arduino.h>
 
+#include "comm_backend.hpp"
 #include "communication_manager.hpp"
 
+// MAVLink stamps with monotonic time_boot_ns (bridge owns wall-clock via
+// TIMESYNC); the accumulator folds the uint32 micros() delta into uint64
+// so the value survives the ~71 min wrap. micro-ROS gates publishing
+// until the agent has synced wall time.
 static inline bool rtos_get_timestamp_ns(int64_t& timestamp_ns) {
+  if (g_comm_mgr.getSelectedBackend() == CommBackend::MAVLINK) {
+    static uint32_t s_last_us = 0;
+    static uint64_t s_accum_us = 0;
+    const uint32_t now = micros();
+    s_accum_us += static_cast<uint32_t>(now - s_last_us);
+    s_last_us = now;
+    timestamp_ns = static_cast<int64_t>(s_accum_us * 1000ULL);
+    return true;
+  }
   if (rmw_uros_epoch_synchronized()) {
     timestamp_ns = rmw_uros_epoch_nanos();
     return true;

@@ -14,16 +14,22 @@
 
 #include <Arduino.h>
 
+#include <cstring>
+
 #include "battery_interface.hpp"
+#include "comm_backend.hpp"
 #include "communication_manager.hpp"
 #include "config.hpp"
 #include "hardware_encoder.hpp"
 #include "imu_bno055.hpp"
 #include "led_indicator.hpp"
 #include "led_strip.hpp"
+#include "mavlink_node.hpp"
 #include "motor_array.hpp"
 #include "motor_hi_z.hpp"
+#include "persistent_config.hpp"
 #include "power_board.hpp"
+#include "robotics_link.hpp"
 #include "ros/ros_node.hpp"
 #include "rtos.hpp"
 
@@ -144,15 +150,27 @@ void setMaxMotorsCurrent(Revision rev) {
   }
 }
 
+// Lives in .data so g_comm_mgr's ns_default pointer stays valid.
+static persistent_config::Config s_persistent;
+
 /*───────── Setup ─────────*/
 void setup() {
   boardPheripheralsInit();
 
-  // Pre-communication
+  s_persistent = persistent_config::load();
+  g_comm_mgr.setBackendDefault(s_persistent.backend);
+  g_comm_mgr.setNamespaceDefault(s_persistent.ns);
+
   g_comm_mgr.init();
-  const auto* transport = g_comm_mgr.selectTransport();
+  const SerialConfig* transport = g_comm_mgr.selectTransport();
   g_comm_mgr.configureNamespace();
-  g_ros_node.setNamespace(g_comm_mgr.getNamespace());
+
+  persistent_config::Config now{};
+  now.backend = g_comm_mgr.getSelectedBackend();
+  std::strncpy(now.ns, g_comm_mgr.getNamespace(),
+               persistent_config::kNamespaceMaxLen);
+  now.ns[persistent_config::kNamespaceMaxLen - 1] = '\0';
+  persistent_config::save(now);
 
   // Revision specific configuration
   board_revision.init();
@@ -161,7 +179,6 @@ void setup() {
   auto fan_config =
       (rev == Revision::V1_1) ? rev1_1_fan_config : rev1_2_fan_config;
 
-  // Components initialization
   Ethernet.begin(MAC, CLIENT_IP);
   ntc.init();
   g_fan.init(fan_config);
@@ -173,12 +190,24 @@ void setup() {
   }
   g_motors.init();
   power_board.init();
-  if (g_comm_mgr.isSerialTransport()) {
-    g_ros_node.serialTransportInit(*transport);
+
+  // MAVLink uses the UDP transport bound in g_mavlink_node's ctor;
+  // micro-ROS chooses serial vs ethernet at runtime.
+  if (g_comm_mgr.getSelectedBackend() == CommBackend::MAVLINK) {
+    g_mavlink_node.setNamespace(g_comm_mgr.getNamespace());
+    g_mavlink_node.setDiagnosticSerial(g_comm_mgr.debugSerial());
+    g_mavlink_node.begin();
+    g_link = &g_mavlink_node;
   } else {
-    g_ros_node.ethernetTransportInit(AGENT_IP, AGENT_PORT);
+    g_ros_node.setNamespace(g_comm_mgr.getNamespace());
+    if (g_comm_mgr.isSerialTransport()) {
+      g_ros_node.serialTransportInit(*transport);
+    } else {
+      g_ros_node.ethernetTransportInit(AGENT_IP, AGENT_PORT);
+    }
+    g_ros_node.setDiagnosticSerial(g_comm_mgr.debugSerial());
+    g_link = &g_ros_node;
   }
-  g_ros_node.setDiagnosticSerial(g_comm_mgr.debugSerial());
 
   // RTOS
   createQueues();
