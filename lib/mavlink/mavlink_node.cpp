@@ -32,7 +32,20 @@ constexpr size_t kMaxFrame = MAVLINK_MAX_PACKET_LEN;
 constexpr size_t kLogBufSize = 64;
 }  // namespace
 
-uint64_t MavlinkNode::timeBootUs() { return static_cast<uint64_t>(micros()); }
+uint64_t MavlinkNode::timeBootUs() {
+  // micros() wraps every 2^32 us (~71 min). Accumulate uint32 deltas into a
+  // 64-bit monotonic counter so time_boot_us never steps backwards — the
+  // bridge's TIMESYNC EWMA filter assumes monotonic samples. Called from
+  // the uRos task only (heartbeat, timesync emit/reply, publishers); no
+  // cross-task contention today. If a second writer appears, this needs a
+  // mutex — the static state would otherwise lose a delta.
+  static uint32_t s_last_us = 0;
+  static uint64_t s_accum_us = 0;
+  const uint32_t now = micros();
+  s_accum_us += static_cast<uint32_t>(now - s_last_us);
+  s_last_us = now;
+  return s_accum_us;
+}
 
 bool MavlinkNode::begin() {
   if (transport_open_) return true;
