@@ -51,7 +51,7 @@ bool consumeAvailable(HardwareSerial& s, char* buf, size_t* idx,
 }  // namespace
 
 CommunicationManager::CommunicationManager(CommunicationManagerConfig cfg)
-    : cfg_(cfg) {}
+    : cfg_(cfg), selected_backend_(cfg.backend_default) {}
 
 void CommunicationManager::init() {
   initSerial(cfg_.diagnostic_serial);

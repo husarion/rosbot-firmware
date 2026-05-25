@@ -14,6 +14,8 @@
 
 #include <Arduino.h>
 
+#include <cstring>
+
 #include "battery_adc.hpp"
 #include "battery_interface.hpp"
 #include "comm_backend.hpp"
@@ -25,6 +27,7 @@
 #include "mavlink_node.hpp"
 #include "motor_array.hpp"
 #include "motor_hi_z.hpp"
+#include "persistent_config.hpp"
 #include "range_array.hpp"
 #include "range_vl53l0.hpp"
 #include "robotics_link.hpp"
@@ -113,13 +116,27 @@ void boardPheripheralsInit() {
   delay(20);
 }
 
+// Lives in .data so g_comm_mgr's ns_default pointer stays valid.
+static persistent_config::Config s_persistent;
+
 /*───────── Setup ─────────*/
 void setup() {
   boardPheripheralsInit();
 
+  s_persistent = persistent_config::load();
+  g_comm_mgr.setBackendDefault(s_persistent.backend);
+  g_comm_mgr.setNamespaceDefault(s_persistent.ns);
+
   g_comm_mgr.init();
   const SerialConfig* transport = g_comm_mgr.selectTransport();
   g_comm_mgr.configureNamespace();
+
+  persistent_config::Config now{};
+  now.backend = g_comm_mgr.getSelectedBackend();
+  std::strncpy(now.ns, g_comm_mgr.getNamespace(),
+               persistent_config::kNamespaceMaxLen);
+  now.ns[persistent_config::kNamespaceMaxLen - 1] = '\0';
+  persistent_config::save(now);
 
   battery_adc.init();
   imu_bno055.init();

@@ -21,7 +21,8 @@ MAVLink merges back into `jazzy`.
 
 ### Added
 - `include/comm_backend.hpp` exposes the `CommBackend { MICRO_ROS, MAVLINK }` enum that `CommunicationManager::getSelectedBackend()` returns after the handshake.
-- `CommunicationManager::waitForHostConfig` parses `BACKEND:microros|mavlink`, `NS:<namespace>`, and `END` lines in any order. `END` (or timeout) terminates the handshake; both NS and BACKEND are independently optional. Default backend stays `MICRO_ROS`, default namespace stays `ns_default` — legacy hosts that only emit `NS:` still work, paying a one-time ~2.5 s timeout instead of a fast `END`-driven exit.
+- `CommunicationManager::waitForHostConfig` parses `BACKEND:microros|mavlink`, `NS:<namespace>`, and `END` lines in any order. `END` (or timeout) terminates the handshake; both NS and BACKEND are independently optional. Legacy hosts that only emit `NS:` still work, paying a one-time ~2.5 s timeout instead of a fast `END`-driven exit.
+- `lib/persistent_config/` stores the last-successful backend + namespace in STM32 flash sector 11 (emulated EEPROM). On boot the values seed the handshake fallbacks; after the handshake settles the manager writes them back only when they actually changed. An MCU reset without a host present therefore reuses the last-known-good config instead of dropping to compile-time defaults. Fresh flash (sector erased to `0xFF`) reads as `MAVLINK` + empty namespace.
 
 ### Flash budget
 

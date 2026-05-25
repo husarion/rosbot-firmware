@@ -14,6 +14,8 @@
 
 #include <Arduino.h>
 
+#include <cstring>
+
 #include "battery_interface.hpp"
 #include "comm_backend.hpp"
 #include "communication_manager.hpp"
@@ -25,6 +27,7 @@
 #include "mavlink_node.hpp"
 #include "motor_array.hpp"
 #include "motor_hi_z.hpp"
+#include "persistent_config.hpp"
 #include "power_board.hpp"
 #include "robotics_link.hpp"
 #include "ros/ros_node.hpp"
@@ -147,13 +150,27 @@ void setMaxMotorsCurrent(Revision rev) {
   }
 }
 
+// Lives in .data so g_comm_mgr's ns_default pointer stays valid.
+static persistent_config::Config s_persistent;
+
 /*───────── Setup ─────────*/
 void setup() {
   boardPheripheralsInit();
 
+  s_persistent = persistent_config::load();
+  g_comm_mgr.setBackendDefault(s_persistent.backend);
+  g_comm_mgr.setNamespaceDefault(s_persistent.ns);
+
   g_comm_mgr.init();
   const SerialConfig* transport = g_comm_mgr.selectTransport();
   g_comm_mgr.configureNamespace();
+
+  persistent_config::Config now{};
+  now.backend = g_comm_mgr.getSelectedBackend();
+  std::strncpy(now.ns, g_comm_mgr.getNamespace(),
+               persistent_config::kNamespaceMaxLen);
+  now.ns[persistent_config::kNamespaceMaxLen - 1] = '\0';
+  persistent_config::save(now);
 
   // Revision specific configuration
   board_revision.init();
