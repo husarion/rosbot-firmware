@@ -73,16 +73,12 @@ void txCpltCallback(DMA_HandleTypeDef* /*hdma*/) {
 
 }  // namespace
 
-// Reuse the IRQ handlers from the micro-ROS transport — they are guarded by
-// s_hdma_tx.Instance so the same code routes only the right stream at any
-// time. Because the two transports never coexist in a single firmware build
-// (USE_MAVLINK switches which translation unit is linked) we keep them as
-// `extern "C"` here too. The linker dedupes by build_src_filter excluding
-// the micro-ROS path.
-extern "C" void DMA2_Stream7_IRQHandler(void) {
+// Strong overrides of lib/ros's weak no-op hooks; the actual ISRs live
+// there and call these in the shared single-binary build.
+extern "C" void mavlink_serial_dma2_stream7_isr(void) {
   if (s_hdma_tx.Instance == DMA2_Stream7) HAL_DMA_IRQHandler(&s_hdma_tx);
 }
-extern "C" void DMA1_Stream4_IRQHandler(void) {
+extern "C" void mavlink_serial_dma1_stream4_isr(void) {
   if (s_hdma_tx.Instance == DMA1_Stream4) HAL_DMA_IRQHandler(&s_hdma_tx);
 }
 

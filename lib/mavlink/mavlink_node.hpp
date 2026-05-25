@@ -41,7 +41,7 @@ struct MavlinkNodeConfig {
   uint32_t timesync_period_ms = 2000;        // 0.5 Hz once CONNECTED
   uint32_t timesync_active_period_ms = 200;  // 5 Hz during AWAIT_TIMESYNC
   uint32_t peer_timeout_ms = 3000;  // D10 — disconnect after 3 s silence
-  // Publisher/subscriber tables (populated by ros_mavlink.cpp).
+  // Publisher/subscriber tables (populated by mavlink_entities.cpp).
   MavlinkPublisherInterface** publishers = nullptr;
   size_t pub_count = 0;
   MavlinkSubscriberInterface** subscribers = nullptr;
@@ -110,3 +110,6 @@ class MavlinkNode : public RoboticsLink {
   State state_ = WAITING;
   SemaphoreHandle_t tx_mutex_ = nullptr;
 };
+
+// Defined in the variant's mavlink_entities.cpp (mirrors g_ros_node).
+extern MavlinkNode g_mavlink_node;

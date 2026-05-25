@@ -161,8 +161,7 @@ void BridgeNode::heartbeatTimer() {
                 peer_timeout_.count());
   }
 
-  if (!banner_seen_.load() && peer_alive_.load() &&
-      banner_grace_seconds_ > 0) {
+  if (!banner_seen_.load() && peer_alive_.load() && banner_grace_seconds_ > 0) {
     if (first_peer_heartbeat_ns_ == 0) {
       first_peer_heartbeat_ns_ = last_peer_heartbeat_ns_.load();
     }

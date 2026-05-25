@@ -31,6 +31,42 @@
 #include "ros/publishers/range_publisher.hpp"
 #include "ros/subscribers/led_subscriber.hpp"
 
+// Pub configs kept here, not config.hpp, to keep lib/ros publisher
+// headers out of TUs that also see lib/mavlink — ODR safety.
+static constexpr BatteryPublisherConfig battery_pub_config = {
+    .topic = "battery",
+    .queue = battery_queue,
+    .frame_id = "base_link",
+    .design_capacity = BATTERY_DESIGN_CAPACITY,
+    .num_cells = BATTERY_NUM_CELLS,
+};
+
+static constexpr ButtonsPublisherConfig buttons_pub_config = {
+    .topic = "buttons",
+    .pins = buttons_pins,
+    .num_buttons = 2,
+};
+
+static constexpr ImuPublisherConfig imu_pub_config = {
+    .topic = "_imu/data",
+    .queue = imu_queue,
+    .frame_id = "imu_link",
+};
+
+static constexpr JointStatePublisherConfig joint_state_pub_config = {
+    .topic = "_motors/feedback",
+    .queue = joint_state_queue,
+    .frame_id = "base_link",
+};
+
+static constexpr RangePublisherConfig range_pub_config = {
+    .topic = "ranges",
+    .queue = ranges_queue,
+    .fov = 0.26f,
+    .min_range = 0.01f,
+    .max_range = 0.9f,
+};
+
 // PUBLISHERS
 static BatteryPublisher s_battery_pub(battery_pub_config);
 static ButtonsPublisher s_buttons_pub(buttons_pub_config);

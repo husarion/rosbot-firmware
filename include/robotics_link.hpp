@@ -16,10 +16,8 @@
 
 #include <HardwareSerial.h>
 
-// Abstract upstream-link layer. Both RosNode (micro-ROS) and MavlinkNode
-// implement this so the FreeRTOS task harness in src/<variant>/rtos.cpp can
-// drive either build without an #ifdef ladder. See MAVLINK_MIGRATION.md
-// §8.2 "Implementation note".
+// Abstract upstream-link backend. Both RosNode and MavlinkNode implement
+// it so the uRos task drives either via g_link.
 class RoboticsLink {
  public:
   virtual ~RoboticsLink() = default;
@@ -33,5 +31,6 @@ class RoboticsLink {
   virtual void setDiagnosticSerial(HardwareSerial* serial) = 0;
 };
 
-/// Resolved by the variant's main_*.cpp to the concrete singleton.
-extern RoboticsLink& g_link;
+// nullptr until setup() assigns it before vTaskStartScheduler();
+// tasks only read it from their loop bodies, past that point.
+extern RoboticsLink* g_link;

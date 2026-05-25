@@ -21,22 +21,15 @@
 #include "config.hpp"
 #include "imu_interface.hpp"
 #include "led_indicator.hpp"
-#include "motor_array.hpp"
-#include "robotics_link.hpp"
-
-#ifdef USE_MAVLINK
 #include "mavlink_node.hpp"
 #include "mavlink_types.hpp"
-extern MavlinkNode g_mavlink_node;
-RoboticsLink& g_link = g_mavlink_node;
-#else
-#include "ros/publishers/battery_publisher.hpp"
-#include "ros/publishers/imu_publisher.hpp"
-#include "ros/publishers/joint_state_publisher.hpp"
-#include "ros/publishers/range_publisher.hpp"
+#include "motor_array.hpp"
+#include "robotics_link.hpp"
 #include "ros/ros_node.hpp"
-RoboticsLink& g_link = g_ros_node;
-#endif
+
+// Assigned in setup() before vTaskStartScheduler; tasks read it only
+// from their loop bodies, so the nullptr window is unobservable.
+RoboticsLink* g_link = nullptr;
 
 // ──── Queues ────
 void createQueues() {
@@ -118,7 +111,7 @@ void ledIndicatorTask(void* p) {
     bool battery_low = g_battery->isLow();
     bool error_state = false;
 
-    g_indicator.update(battery_low, !g_link.isConnected(), error_state);
+    g_indicator.update(battery_low, !g_link->isConnected(), error_state);
     vTaskDelayUntil(&wake_time, period);
   }
 }
@@ -187,7 +180,7 @@ void uRosTask(void* p) {
   TickType_t period = taskGetPeriod(p);
   TickType_t wake_time = xTaskGetTickCount();
   while (true) {
-    g_link.loop();
+    g_link->loop();
     vTaskDelayUntil(&wake_time, period);
   }
 }

@@ -63,7 +63,9 @@ mavgen:
       echo "ERROR: pymavlink not in {{venv}}. Run: just install-deps" >&2
       exit 1
     fi
-    {{venv}}/bin/mavgen.py \
+    # PYTHONHASHSEED pins Python's str-hash; pymavlink embeds it as
+    # MAVLINK_*_XML_HASH and would otherwise drift per process.
+    PYTHONHASHSEED=0 {{venv}}/bin/mavgen.py \
       --lang=C --wire-protocol=2.0 \
       --output=lib/mavlink/dialect/generated \
       lib/mavlink/dialect/rosbot.xml
