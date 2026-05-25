@@ -32,7 +32,8 @@ struct Record {
   char ns[persistent_config::kNamespaceMaxLen];
   uint32_t crc;
 };
-static_assert(sizeof(Record) % 4 == 0, "Record must be word-aligned for HAL_FLASH_Program");
+static_assert(sizeof(Record) % 4 == 0,
+              "Record must be word-aligned for HAL_FLASH_Program");
 
 uint32_t crc32(const uint8_t* data, size_t len) {
   uint32_t crc = 0xFFFFFFFF;
@@ -87,8 +88,8 @@ void save(const Config& cfg) {
   record.backend = static_cast<uint8_t>(cfg.backend);
   std::memcpy(record.ns, cfg.ns, kNamespaceMaxLen);
   record.ns[kNamespaceMaxLen - 1] = '\0';
-  record.crc = crc32(reinterpret_cast<const uint8_t*>(&record),
-                     offsetof(Record, crc));
+  record.crc =
+      crc32(reinterpret_cast<const uint8_t*>(&record), offsetof(Record, crc));
 
   HAL_FLASH_Unlock();
 
