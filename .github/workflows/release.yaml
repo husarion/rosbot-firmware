@@ -3,8 +3,15 @@
 # Release workflow — manually dispatched from the Actions UI.
 #
 # Inputs:
-#   bump_type — major / minor / patch (semver bump for the track suffix
-#               attached to this branch, see EXPECTED_DISTRO below).
+#   bump_type   — major / minor / patch (semver bump for the track suffix
+#                 attached to this branch, see EXPECTED_DISTRO below).
+#   pre_release — when true, dispatch is allowed from any branch (not just
+#                 the EXPECTED_DISTRO one). Tag is suffixed with
+#                 `.pre.<run_number>`, the GitHub Release is flagged
+#                 `prerelease`, and the cross-repo bump jobs (5 + 6) are
+#                 SKIPPED so an experimental build doesn't pollute
+#                 rosbot_ros / rosbot-snap. The .pre.* tags are also
+#                 excluded from the next-stable-version lookup.
 #
 # Sequential jobs:
 #   1. bump-tag       — find latest v*-<distro> tag, compute next version,
@@ -50,6 +57,14 @@ on:
           - major
           - minor
           - patch
+      pre_release:
+        description: >-
+          Pre-release run — dispatch from any branch, tag suffixed with
+          `.pre.<run_number>`, GitHub Release flagged as pre-release,
+          cross-repo bumps to rosbot_ros / rosbot-snap SKIPPED.
+        required: false
+        default: false
+        type: boolean
 
 permissions:
   contents: write
@@ -73,6 +88,7 @@ jobs:
       tag_name: ${{ steps.bump.outputs.tag_name }}
       version: ${{ steps.bump.outputs.version }}
       distro: ${{ steps.bump.outputs.distro }}
+      is_prerelease: ${{ steps.bump.outputs.is_prerelease }}
       sha: ${{ steps.push.outputs.sha }}
     steps:
       - name: Checkout repository
@@ -83,32 +99,43 @@ jobs:
 
       - name: Resolve and verify distro
         id: distro
+        env:
+          PRE_RELEASE: ${{ inputs.pre_release }}
         run: |
           branch=$(echo "${GITHUB_REF_NAME}" | awk -F'/' '{print $NF}')
-          if [ "${branch}" != "${EXPECTED_DISTRO}" ]; then
-            echo "::error::Workflow is configured for distro '${EXPECTED_DISTRO}' but was dispatched on branch '${branch}'. If you're starting a new track, fork this branch and change EXPECTED_DISTRO at the top of release.yaml."
+          if [ "${PRE_RELEASE}" = "true" ]; then
+            echo "Pre-release run on branch '${branch}' (distro check skipped)."
+          elif [ "${branch}" != "${EXPECTED_DISTRO}" ]; then
+            echo "::error::Workflow is configured for distro '${EXPECTED_DISTRO}' but was dispatched on branch '${branch}'. Set the 'pre_release' input to true to dispatch from a feature branch, or fork this branch and change EXPECTED_DISTRO if you're starting a new track."
             exit 1
           fi
           echo "distro=${EXPECTED_DISTRO}" >> "$GITHUB_OUTPUT"
           echo "Distro: ${EXPECTED_DISTRO}"
 
-      - name: Get latest tag for distro
+      - name: Get latest stable tag for distro
         id: get_tag
         run: |
           distro=${{ steps.distro.outputs.distro }}
-          # Tag format produced by this workflow: v<major>.<minor>.<patch>-<distro>
-          latest_tag=$(git tag -l "v*-${distro}" --sort=-v:refname | head -n1)
+          # Tag format produced by this workflow:
+          #   stable      : v<X>.<Y>.<Z>-<distro>
+          #   pre-release : v<X>.<Y>.<Z>-<distro>.pre.<run_number>
+          # Exclude .pre.* tags from the "latest stable" lookup so pre-release
+          # runs don't shift the next stable version.
+          latest_tag=$(git tag -l "v*-${distro}" --sort=-v:refname | grep -v '\.pre\.' | head -n1)
           if [ -z "$latest_tag" ]; then
             latest_tag="v0.0.0-${distro}"
           fi
-          echo "Latest tag: $latest_tag"
+          echo "Latest stable tag: $latest_tag"
           echo "latest=$latest_tag" >> "$GITHUB_OUTPUT"
 
       - name: Bump version
         id: bump
+        env:
+          PRE_RELEASE: ${{ inputs.pre_release }}
+          RUN_NUMBER: ${{ github.run_number }}
         run: |
           latest="${{ steps.get_tag.outputs.latest }}"
-          bump_type="${{ github.event.inputs.bump_type }}"
+          bump_type="${{ inputs.bump_type }}"
           distro="${{ steps.distro.outputs.distro }}"
 
           # Strip leading "v" and trailing "-<distro>" to get bare X.Y.Z
@@ -124,14 +151,21 @@ jobs:
           fi
 
           version="v${major}.${minor}.${patch}"
-          tag_name="${version}-${distro}"
+          if [ "${PRE_RELEASE}" = "true" ]; then
+            tag_name="${version}-${distro}.pre.${RUN_NUMBER}"
+            is_prerelease=true
+          else
+            tag_name="${version}-${distro}"
+            is_prerelease=false
+          fi
 
           {
             echo "version=$version"
             echo "tag_name=$tag_name"
             echo "distro=$distro"
+            echo "is_prerelease=$is_prerelease"
           } >> "$GITHUB_OUTPUT"
-          echo "New tag: $tag_name"
+          echo "New tag: $tag_name (prerelease=$is_prerelease)"
 
       - name: Update FW_VERSION in platformio.ini
         run: |
@@ -239,6 +273,7 @@ jobs:
           generate_release_notes: true
           body_path: release/sha256.md
           append_body: true
+          prerelease: ${{ needs.bump-tag.outputs.is_prerelease == 'true' }}
           files: |
             release/rosbot-${{ env.TAG_NAME }}.bin
             release/rosbot_xl-${{ env.TAG_NAME }}.bin
@@ -359,6 +394,7 @@ jobs:
   bump-rosbot-ros:
     name: Bump firmware pin in rosbot_ros
     needs: [bump-tag, firmware-release]
+    if: needs.bump-tag.outputs.is_prerelease != 'true'
     runs-on: ubuntu-latest
     env:
       NEW_TAG: ${{ needs.bump-tag.outputs.tag_name }}
@@ -607,6 +643,7 @@ jobs:
   bump-rosbot-snap:
     name: Bump firmware pin in rosbot-snap
     needs: [bump-tag, firmware-release]
+    if: needs.bump-tag.outputs.is_prerelease != 'true'
     runs-on: ubuntu-latest
     env:
       NEW_TAG: ${{ needs.bump-tag.outputs.tag_name }}
