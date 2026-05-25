@@ -27,7 +27,8 @@ struct MavlinkButtonsPublisherConfig {
 
 class MavlinkButtonsPublisher : public MavlinkPublisherInterface {
  public:
-  explicit MavlinkButtonsPublisher(const MavlinkButtonsPublisherConfig& cfg) : cfg_(cfg) {}
+  explicit MavlinkButtonsPublisher(const MavlinkButtonsPublisherConfig& cfg)
+      : cfg_(cfg) {}
 
   void publish(MavlinkNode& node) override {
     const uint32_t now = millis();

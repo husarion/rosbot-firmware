@@ -27,7 +27,8 @@ struct MavlinkImuPublisherConfig {
 
 class MavlinkImuPublisher : public MavlinkPublisherInterface {
  public:
-  explicit MavlinkImuPublisher(const MavlinkImuPublisherConfig& cfg) : cfg_(cfg) {}
+  explicit MavlinkImuPublisher(const MavlinkImuPublisherConfig& cfg)
+      : cfg_(cfg) {}
 
   void publish(MavlinkNode& node) override {
     const uint32_t now = millis();

@@ -27,7 +27,8 @@ struct MavlinkJointStatePublisherConfig {
 
 class MavlinkJointStatePublisher : public MavlinkPublisherInterface {
  public:
-  explicit MavlinkJointStatePublisher(const MavlinkJointStatePublisherConfig& cfg)
+  explicit MavlinkJointStatePublisher(
+      const MavlinkJointStatePublisherConfig& cfg)
       : cfg_(cfg) {}
 
   void publish(MavlinkNode& node) override {

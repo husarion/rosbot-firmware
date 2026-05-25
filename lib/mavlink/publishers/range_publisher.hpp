@@ -31,7 +31,8 @@ struct MavlinkRangePublisherConfig {
 
 class MavlinkRangePublisher : public MavlinkPublisherInterface {
  public:
-  explicit MavlinkRangePublisher(const MavlinkRangePublisherConfig& cfg) : cfg_(cfg) {}
+  explicit MavlinkRangePublisher(const MavlinkRangePublisherConfig& cfg)
+      : cfg_(cfg) {}
 
   void publish(MavlinkNode& node) override {
     const uint32_t now = millis();

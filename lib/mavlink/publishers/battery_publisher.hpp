@@ -30,7 +30,8 @@ struct MavlinkBatteryPublisherConfig {
 
 class MavlinkBatteryPublisher : public MavlinkPublisherInterface {
  public:
-  explicit MavlinkBatteryPublisher(const MavlinkBatteryPublisherConfig& cfg) : cfg_(cfg) {}
+  explicit MavlinkBatteryPublisher(const MavlinkBatteryPublisherConfig& cfg)
+      : cfg_(cfg) {}
 
   void publish(MavlinkNode& node) override {
     const uint32_t now = millis();
