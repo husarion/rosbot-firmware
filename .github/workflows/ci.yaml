@@ -22,8 +22,8 @@ jobs:
           - rosbot_release
           - rosbot_xl_release
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - uses: actions/checkout@v6
+      - uses: actions/setup-python@v6
         with:
           python-version: '3.12'
       - name: Install PlatformIO
@@ -40,7 +40,7 @@ jobs:
         distro: [jazzy]
     container: ros:${{ matrix.distro }}-ros-base
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
       - name: Resolve deps and build bridge
         shell: bash
         run: |
@@ -59,8 +59,8 @@ jobs:
     name: Verify checked-in MAVLink dialect headers
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - uses: actions/checkout@v6
+      - uses: actions/setup-python@v6
         with:
           python-version: '3.12'
       - name: Install pymavlink
