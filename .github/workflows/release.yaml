@@ -9,7 +9,7 @@ name: Release
 on:
   push:
     tags:
-      - 'v*'
+      - v*
 
 permissions:
   contents: write
@@ -46,7 +46,7 @@ jobs:
       VERSION: ${{ needs.parse-tag.outputs.version }}
     steps:
       - name: Checkout tag
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
 
       - name: Verify FW_VERSION matches tag
         run: |
@@ -100,7 +100,7 @@ jobs:
           cat release_body.md
 
       - name: Create GitHub Release
-        uses: softprops/action-gh-release@v2
+        uses: softprops/action-gh-release@v3
         with:
           tag_name: ${{ env.TAG_NAME }}
           name: ${{ env.TAG_NAME }}
@@ -125,7 +125,7 @@ jobs:
       VERSION: ${{ needs.parse-tag.outputs.version }}
     container: ros:${{ matrix.distro }}-ros-base
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
       - name: Build bridge package
         shell: bash
         run: |
@@ -153,7 +153,7 @@ jobs:
               MAVLINK_MIGRATION.md LICENSE
           ls -la release/
       - name: Attach to release
-        uses: softprops/action-gh-release@v2
+        uses: softprops/action-gh-release@v3
         with:
           tag_name: ${{ env.TAG_NAME }}
           files: release/rosbot_mavlink_bridge-${{ env.VERSION }}-${{ matrix.distro }}-src.tar.gz
@@ -176,13 +176,13 @@ jobs:
     env:
       VERSION: ${{ needs.parse-tag.outputs.version }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
       - name: Set up QEMU
-        uses: docker/setup-qemu-action@v3
+        uses: docker/setup-qemu-action@v4
       - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3
+        uses: docker/setup-buildx-action@v4
       - name: Log in to GHCR
-        uses: docker/login-action@v3
+        uses: docker/login-action@v4
         with:
           registry: ghcr.io
           username: ${{ github.actor }}
@@ -204,7 +204,7 @@ jobs:
             echo "EOF"
           } >> $GITHUB_OUTPUT
       - name: Build and push (multi-arch)
-        uses: docker/build-push-action@v5
+        uses: docker/build-push-action@v7
         with:
           context: .
           file: bridge/Dockerfile

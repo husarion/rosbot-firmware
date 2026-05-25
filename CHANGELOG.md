@@ -29,4 +29,3 @@ MAVLink merges back into `jazzy`.
 
 ### Changed
 - `ROS_API.md` rewritten to be transport-neutral, so the same topic/service contract covers both the micro-ROS firmware and the MAVLink firmware + `rosbot_mavlink_bridge` pair.
-

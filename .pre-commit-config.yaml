@@ -3,7 +3,7 @@
 # pre-commit hooks. Edits to rosbot.xml drive a fresh regen via `just
 # mavgen`; trailing-whitespace / clang-format / codespell / copyright
 # hooks would otherwise fight the generator and break CI's diff check.
-exclude: ^lib/mavlink/dialect/generated/
+exclude: ^lib/mavlink/dialect/(generated/|common\.xml|minimal\.xml|standard\.xml)
 
 repos:
   # -------------------------

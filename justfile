@@ -63,7 +63,10 @@ mavgen:
       echo "ERROR: pymavlink not in {{venv}}. Run: just install-deps" >&2
       exit 1
     fi
-    {{venv}}/bin/mavgen.py \
+    # PYTHONHASHSEED=0 keeps the MAVLINK_*_XML_HASH macros deterministic;
+    # without it Python's per-process hash randomization makes consecutive
+    # regenerations diff against each other and break CI's verify-dialect.
+    PYTHONHASHSEED=0 {{venv}}/bin/mavgen.py \
       --lang=C --wire-protocol=2.0 \
       --output=lib/mavlink/dialect/generated \
       lib/mavlink/dialect/rosbot.xml
