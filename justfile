@@ -53,8 +53,8 @@ install-deps:
     echo "Add to PATH for an interactive shell:"
     echo "  export PATH={{venv}}/bin:\$PATH"
 
-# Regenerate the C MAVLink dialect headers from rosbot.xml. Re-run any time
-# you edit lib/mavlink/dialect/rosbot.xml; commit the generated/ diff
+# Regenerate dialect headers from rosbot.xml. Output goes inside the
+# bridge package so bloom tarballs are self-contained; commit the diff
 # alongside the XML change.
 mavgen:
     #!/bin/bash
@@ -65,11 +65,12 @@ mavgen:
     fi
     # PYTHONHASHSEED pins Python's str-hash; pymavlink embeds it as
     # MAVLINK_*_XML_HASH and would otherwise drift per process.
+    rm -rf bridge/rosbot_mavlink_bridge/mavlink_dialect
     PYTHONHASHSEED=0 {{venv}}/bin/mavgen.py \
       --lang=C --wire-protocol=2.0 \
-      --output=lib/mavlink/dialect/generated \
+      --output=bridge/rosbot_mavlink_bridge/mavlink_dialect \
       lib/mavlink/dialect/rosbot.xml
-    echo "Regenerated lib/mavlink/dialect/generated/. Commit the diff."
+    echo "Regenerated bridge/rosbot_mavlink_bridge/mavlink_dialect/. Commit the diff."
 
 # Build one PlatformIO env (default: $PIO_ENV or rosbot).
 build ENV=default_env:

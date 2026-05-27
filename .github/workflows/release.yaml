@@ -15,7 +15,11 @@
 #
 # Sequential jobs:
 #   1. bump-tag       — find latest v*-<distro> tag, compute next version,
-#                       rewrite FW_VERSION in platformio.ini, commit, push, tag.
+#                       rewrite FW_VERSION in platformio.ini and the
+#                       <version> in bridge/rosbot_mavlink_bridge/package.xml
+#                       (same numeric, bridge version tracks firmware
+#                       semver without the `-${distro}` suffix), commit,
+#                       push, tag.
 #   2. firmware-release — build 2 release envs (`rosbot_release`,
 #                       `rosbot_xl_release` — single binary per platform
 #                       since runtime picks the comm backend), publish
@@ -26,7 +30,12 @@
 #                       rosbot_ros doesn't ship a humble track.)
 #   4. bridge-image    — multi-arch (amd64+arm64) GHCR image for jazzy,
 #                       built from bridge/Dockerfile.
-#   5. bump-rosbot-ros — open auto-PR in husarion/rosbot_ros@jazzy-mavlink-v2
+#   5. bridge-bloom-release — run `bloom-release` to push debian source
+#                       branches to husarion/rosbot_mavlink_bridge-release
+#                       and open a PR to ros/rosdistro. One-shot setup
+#                       required (see job comment for details). Skipped
+#                       on pre-release runs.
+#   6. bump-rosbot-ros — open auto-PR in husarion/rosbot_ros@jazzy-mavlink-v2
 #                       bumping the vcs pin, swapping .bin artefacts, and
 #                       bumping bundled-firmware paths. Labelled
 #                       `auto-firmware-bump` so the companion auto-merge
@@ -37,10 +46,11 @@
 # no direct snap impact — the snap follows when rosbot_ros cuts its
 # next release. Don't add a snap-bump job here.
 #
-# Required repo secret (for step 5):
+# Required repo secrets:
 #   HUSARION_BOT_APP_ID       — GitHub App ID with contents:write +
 #                               pull-requests:write installed on
-#                               husarion/rosbot_ros.
+#                               husarion/rosbot_ros, husarion/rosbot_mavlink_bridge-release,
+#                               and husarion/rosdistro (fork of ros/rosdistro).
 #   HUSARION_BOT_PRIVATE_KEY  — PEM-encoded private key for that App.
 #   See https://docs.github.com/apps for App + installation setup.
 # ============================================================================
@@ -177,6 +187,18 @@ jobs:
           echo "--- Verify ---"
           grep "FW_VERSION" platformio.ini
 
+      - name: Update bridge package.xml version
+        # Bridge version mirrors the firmware semver without the
+        # `-${distro}` suffix — rosdep/bloom reject suffixes in <version>.
+        run: |
+          VERSION="${{ steps.bump.outputs.version }}"
+          BARE="${VERSION#v}"
+          echo "Setting bridge <version> to ${BARE}"
+          sed -i -E "s|(<version>)[^<]+(</version>)|\1${BARE}\2|" \
+            bridge/rosbot_mavlink_bridge/package.xml
+          echo "--- Verify ---"
+          grep "<version>" bridge/rosbot_mavlink_bridge/package.xml
+
       - name: Commit and push version bump
         id: push
         run: |
@@ -185,7 +207,7 @@ jobs:
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
 
-          git add platformio.ini
+          git add platformio.ini bridge/rosbot_mavlink_bridge/package.xml
           git commit -m "bump FW_VERSION to ${TAG}"
           git push
 
@@ -313,11 +335,12 @@ jobs:
           set -euo pipefail
           mkdir -p release
           tarball="rosbot_mavlink_bridge-${VERSION}-${{ matrix.distro }}-src.tar.gz"
-          # Dialect headers ride along; bridge/CMakeLists.txt's relative
-          # include path is the contract.
+          # Dialect headers ship inside bridge/.../mavlink_dialect/ —
+          # the bridge package is self-contained. The XML source is
+          # included alongside for traceability (not consumed at build).
           tar --transform "s,^,rosbot_mavlink_bridge-${VERSION}/," \
               -czf "release/${tarball}" \
-              bridge lib/mavlink/dialect/generated lib/mavlink/dialect/rosbot.xml \
+              bridge lib/mavlink/dialect/rosbot.xml \
               MAVLINK_MIGRATION.md LICENSE
           ls -la release/
       - name: Attach to release
@@ -376,6 +399,79 @@ jobs:
             ROS_DISTRO=${{ matrix.distro }}
           tags: ${{ steps.img.outputs.tags }}
           push: true
+
+  # ----------------------------------------------------------------------
+  # One-shot setup before this job will succeed (locally, by a maintainer):
+  #   1. Create empty `husarion/rosbot_mavlink_bridge-release` repo.
+  #   2. Add it + the maintainer's fork of ros/rosdistro to the
+  #      HUSARION_BOT App installation (push).
+  #   3. From a local checkout at the release tag:
+  #        bloom-release --new-track --rosdistro jazzy --track jazzy \
+  #          --release-repo-url git@github.com:husarion/rosbot_mavlink_bridge-release.git \
+  #          rosbot_mavlink_bridge
+  #      Release tag pattern: `v:{version}-jazzy`.
+  #   4. Re-run; subsequent releases reuse the track.
+  # ----------------------------------------------------------------------
+
+  bridge-bloom-release:
+    name: Bloom release bridge (${{ matrix.distro }})
+    needs: [bump-tag, bridge-release]
+    if: needs.bump-tag.outputs.is_prerelease != 'true'
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        distro: [jazzy]
+    container: ros:${{ matrix.distro }}-ros-base
+    env:
+      VERSION: ${{ needs.bump-tag.outputs.version }}
+      TAG: ${{ needs.bump-tag.outputs.tag_name }}
+      PACKAGE: rosbot_mavlink_bridge
+      RELEASE_REPO: husarion/rosbot_mavlink_bridge-release
+      ROSDISTRO_FORK: husarion/rosdistro
+    steps:
+      - name: Mint Husarion bot token
+        id: bot_token
+        uses: actions/create-github-app-token@v1
+        with:
+          app-id: ${{ secrets.HUSARION_BOT_APP_ID }}
+          private-key: ${{ secrets.HUSARION_BOT_PRIVATE_KEY }}
+          owner: husarion
+          repositories: rosbot_mavlink_bridge-release,rosdistro
+
+      - name: Install bloom + git
+        shell: bash
+        run: |
+          set -eo pipefail
+          apt-get update
+          apt-get install -y --no-install-recommends \
+            git python3-bloom python3-catkin-pkg
+
+      - name: Configure git for bot
+        shell: bash
+        run: |
+          git config --global user.name "husarion-bot[bot]"
+          git config --global user.email "husarion-bot@users.noreply.github.com"
+          git config --global \
+            url."https://x-access-token:${{ steps.bot_token.outputs.token }}@github.com/".insteadOf \
+            "https://github.com/"
+
+      - name: Run bloom-release
+        # --no-web: no display in CI.
+        # --unsafe: rosdep update leaves artefacts that trip bloom's
+        # uncommitted-changes check.
+        shell: bash
+        run: |
+          set -eo pipefail
+          source /opt/ros/${{ matrix.distro }}/setup.bash
+          rosdep update --rosdistro=${{ matrix.distro }}
+          bloom-release \
+            --ros-distro ${{ matrix.distro }} \
+            --track ${{ matrix.distro }} \
+            --non-interactive \
+            --no-web \
+            --unsafe \
+            "${PACKAGE}"
 
   # ----------------------------------------------------------------------
   # Cross-repo bump PR (auto-firmware-bump).

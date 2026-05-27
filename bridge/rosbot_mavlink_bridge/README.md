@@ -13,10 +13,12 @@ implementation spec.
 
 ## Build
 
-The bridge is a regular `ament_cmake` package. The MAVLink dialect headers
-live in `../../lib/mavlink/dialect/generated/rosbot/` — `CMakeLists.txt`
-includes them by relative path so the bridge and the firmware share one
-source of truth.
+The bridge is a regular `ament_cmake` package and is **self-contained** —
+the MAVLink dialect headers it needs are the canonical
+[`mavlink_dialect/`](./mavlink_dialect/) tree shipped inside the package.
+`just mavgen` (from the repo root) regenerates them in place; the
+firmware build (PlatformIO) reads from the same directory via its
+include path. Single source of truth, no duplication.
 
 ```bash
 # from the repo root
@@ -26,6 +28,13 @@ colcon build --packages-select rosbot_mavlink_bridge
 
 The CI matrix builds the same source tree against both `jazzy` and
 `humble` containers (see `.github/workflows/ci.yaml` — D24).
+
+### Apt install (rosdistro)
+
+Once released through bloom, the bridge is available as
+`ros-<distro>-rosbot-mavlink-bridge` and is pulled in automatically as an
+`exec_depend` of `rosbot_bringup`. Users on apt do not need this repo —
+the bridge ships alongside `rosbot_ros`.
 
 ## Run
 
