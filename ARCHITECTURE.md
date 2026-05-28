@@ -534,9 +534,11 @@ mavlink.launch.py) ran.
   - `transport/mavlink_{serial,udp}_transport.{hpp,cpp}` — same DMA-TX +
     yielding-poll RX (serial) / LwIP raw API (UDP) patterns as
     `lib/ros/ros/transport/`, just stripped of XRCE framing.
-  - `dialect/rosbot.xml` — dialect source of truth; `dialect/generated/`
-    holds the checked-in `mavgen.py` output that both the firmware and
-    the bridge consume.
+  - `dialect/rosbot.xml` — dialect source of truth. The mavgen C output
+    lives inside the bridge package at
+    `bridge/rosbot_mavlink_bridge/mavlink_dialect/` (single canonical
+    location); the firmware reaches it via the include path in
+    `platformio.ini`.
 - `include/robotics_link.hpp` — abstract base both `RosNode` and
   `MavlinkNode` inherit; `src/<variant>/rtos.cpp` calls `g_link->loop()` /
   `g_link->isConnected()` uniformly. `g_link` is `RoboticsLink*` now —
@@ -616,11 +618,17 @@ the Arduino core, FreeRTOS, motor/encoder/IMU stacks are linked once.
 
 [`bridge/rosbot_mavlink_bridge`](./bridge/rosbot_mavlink_bridge) — single
 `ament_cmake` package built for both jazzy and humble out of one source
-tree (D24). Reuses the checked-in dialect headers via a relative include
-path so the firmware and bridge always agree on the wire format. Launch
-files take a `namespace` arg and set `--ros-args -r __ns:=<value>` on the
-node, so rclcpp prefixes every relative topic / service with the same
-namespace the micro-ROS firmware negotiates over FTDI.
+tree (D24). The dialect headers live inside the package at
+[`bridge/rosbot_mavlink_bridge/mavlink_dialect/`](./bridge/rosbot_mavlink_bridge/mavlink_dialect/)
+— this is the **canonical** mavgen output location, not a mirror. The
+firmware build reads from the same directory via its include path
+(`-I bridge/rosbot_mavlink_bridge/mavlink_dialect/rosbot` in
+`platformio.ini`), so there is no duplication. Keeping the headers
+inside the package makes the bridge self-contained for bloom releases
+to rosdistro (the source tarball archives only the package subtree).
+Launch files take a `namespace` arg and set `--ros-args -r __ns:=<value>`
+on the node, so rclcpp prefixes every relative topic / service with the
+same namespace the micro-ROS firmware negotiates over FTDI.
 
 ---
 

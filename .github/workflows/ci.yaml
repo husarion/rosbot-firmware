@@ -77,4 +77,4 @@ jobs:
           PYTHONHASHSEED=0 mavgen.py --lang=C --wire-protocol=2.0 \
             --output="$tmp/generated" lib/mavlink/dialect/rosbot.xml
           diff -ruN -I 'MAVLINK_BUILD_DATE' \
-            lib/mavlink/dialect/generated "$tmp/generated"
+            bridge/rosbot_mavlink_bridge/mavlink_dialect "$tmp/generated"

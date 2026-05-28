@@ -16,15 +16,15 @@ find_package(sensor_msgs REQUIRED)
 find_package(std_msgs REQUIRED)
 find_package(std_srvs REQUIRED)
 
-# Path to the firmware's generated MAVLink dialect. Single source of truth
-# (D4) — the firmware and the bridge consume the same checked-in headers.
+# Headers live inside the package so bloom-release tarballs are
+# self-contained (bloom archives only the package subtree).
 set(MAVLINK_DIALECT_DIR
-    "${CMAKE_CURRENT_SOURCE_DIR}/../../lib/mavlink/dialect/generated/rosbot")
+    "${CMAKE_CURRENT_SOURCE_DIR}/mavlink_dialect/rosbot")
 if(NOT EXISTS "${MAVLINK_DIALECT_DIR}/mavlink.h")
   message(FATAL_ERROR
     "MAVLink dialect headers not found at ${MAVLINK_DIALECT_DIR}. "
-    "Run `just mavgen` (or the equivalent mavgen.py command in "
-    "lib/mavlink/dialect/README.md) to regenerate them.")
+    "Run `just mavgen` from the firmware repo root to regenerate them "
+    "(see lib/mavlink/dialect/README.md).")
 endif()
 
 add_library(${PROJECT_NAME} SHARED
