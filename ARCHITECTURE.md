@@ -439,6 +439,16 @@ help:
 micro_ros_arduino, STM32FreeRTOS, Adafruit BNO055, VL53L0X. Then four
 concrete envs select variant + debug/release:
 
+`board = rosbot_stm32f407` is a repo-local definition in `boards/`
+(STM32F407ZGT6, generic `variant_generic.h` exposing all GPIO). It is the
+honestly-named successor to the misleading `rosbot_xl_digital_board` — both
+resolve to the identical generic F407ZG build (`ARDUINO_GENERIC_F407ZGTX`),
+shared by **both** variants. The Husarion `framework-arduinoststm32` fork is
+still required: it bumps the serial RX/TX buffers (64→512) and splits the
+Ethernet pin map into `PinMap_Ethernet_MII/RMII` so RMII mode only claims its
+9 pins (upstream's single `PinMap_Ethernet[]` would grab MII-only GPIO used
+elsewhere on rosbot_xl).
+
 - `[env:rosbot]` — debug, `-D ROSBOT`, `-D ENABLE_HWSERIAL1`,
   `-D ENABLE_HWSERIAL3`, `build_src_filter = +<rosbot/*> -<rosbot_xl/*>`.
 - `[env:rosbot_release]` — same + `[release_flags]` (`-O2 -D RELEASE`,
