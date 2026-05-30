@@ -39,10 +39,16 @@ intervals after its own first HEARTBEAT, then latches
   the same WARN.
 
 Regex and STATUSTEXT plumbing are both correct:
-`bridge/rosbot_mavlink_bridge/src/bridge_node.cpp:300-320` decodes
-STATUSTEXT and `std::regex_search`es the text; firmware
-`src/rosbot_xl/ros_mavlink.cpp:71` emits exactly `rosbot_xl <FW> mavlink`
-which matches `rosbot_xl .* mavlink`.
+`bridge/rosbot_mavlink_bridge/src/bridge_node.cpp:209` handles
+`MAVLINK_MSG_ID_STATUSTEXT` and `:298` runs `std::regex_search` against
+its text; firmware `src/rosbot_xl/mavlink_entities.cpp:67` emits exactly
+`rosbot_xl <FW> mavlink` which matches `rosbot_xl .* mavlink`.
+
+Verified on the current `jazzy` HEAD: the latch logic in
+`lib/mavlink/mavlink_node.cpp` (case `WAITING` at :96, `emitBootBannerIfDue`
+at :143-157, `case DISCONNECTED` reset at :119-122) is unchanged from
+the v2.0.0-jazzy firmware that's currently vendored into `rosbot_utils/`
+and flashed by `rosbot.flash`.
 
 **Recommended fix (~3 lines, protocol-correct).** Reset the latch on
 the WAITING → CONNECTED transition in `mavlink_node.cpp`, not only on
