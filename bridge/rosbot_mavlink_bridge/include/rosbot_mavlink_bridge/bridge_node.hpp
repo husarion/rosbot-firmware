@@ -89,17 +89,16 @@ class BridgeNode : public rclcpp::Node {
   std::atomic<bool> time_synced_{false};
   double timesync_alpha_ = 0.05;
 
-  // Both a recent HEARTBEAT and the boot banner are required before the
-  // bridge publishes telemetry; banner_grace_seconds_ relaxes the banner
-  // requirement when the firmware booted before the bridge started.
+  // A recent HEARTBEAT is the sole gate for publishing telemetry. The boot
+  // banner is informational — banner_seen_ only latches the one-shot
+  // "banner matched" log; the firmware variant is already verified by
+  // pre_communication before this node starts.
   std::atomic<bool> peer_alive_{false};
   std::atomic<bool> banner_seen_{false};
   std::atomic<std::int64_t> last_peer_heartbeat_ns_{0};
   std::chrono::milliseconds peer_timeout_{3000};
   std::regex banner_regex_;
   std::string banner_regex_str_;
-  int banner_grace_seconds_ = 0;
-  std::int64_t first_peer_heartbeat_ns_ = 0;
 
   // Only one in-flight COMMAND_LONG/ROSBOT_MCU_ID exchange is supported;
   // concurrent service calls queue on the rclcpp executor.

@@ -102,7 +102,7 @@ Companion documents:
 | D16 | rosbot serial transport | **Reuse DMA TX + yielding-poll RX** pattern from `lib/ros/ros/transport/serial_transport.cpp`, strip XRCE framing, add MAVLink parser. |
 | D17 | rosbot_xl UDP transport | **Mavros default ports**: MCU listens on **14555**, sends to **14550**. LwIP raw API pattern reused. |
 | D18 | CI matrix | **Build all 8 envs** on every push. Pre-commit job remains as is. |
-| D19 | Mismatch detection | Firmware emits **one-shot `STATUSTEXT`** on boot: `"rosbot[_xl] <FW_VERSION> mavlink"`. Bridge requires this banner before declaring CONNECTED. |
+| D19 | Mismatch detection | Firmware emits a `STATUSTEXT` boot banner `"rosbot[_xl] <FW_VERSION> mavlink"`. Bridge logs it once for confirmation but does **not** gate on it — the variant is already verified by `pre_communication` (FW:/BACKEND: handshake) before the bridge starts. CONNECTED is gated on the MCU HEARTBEAT. |
 | D20 | Deprecation timeline | **Decided in Phase 4** after parity validation. Spec stays silent until then. |
 | D21 | Telemetry rates | **Identical** to micro-ROS build (200 Hz joint state, 100 Hz IMU, 10 Hz ranges, 1 Hz battery, 20 Hz buttons). No `REQUEST_DATA_STREAM` mechanism. |
 
@@ -326,8 +326,8 @@ the same offset. The MCU does not need to know wall-clock time.
   string also goes to FTDI when `g_comm_mgr.hasDebugSerial()` (D14).
 
 Bridge: forwards `STATUSTEXT` to ROS 2 `/rosout` via standard logger calls. The
-boot banner is parsed by the bridge to confirm firmware type before transitioning
-to CONNECTED.
+boot banner is parsed by the bridge as an informational confirmation of firmware
+type; it does not gate the CONNECTED transition (the MCU HEARTBEAT does).
 
 ---
 
@@ -808,8 +808,10 @@ the consumer side.
    from a launch file in `bridge/rosbot_mavlink_bridge/launch/`.
 2. Parse the incoming MAVLink stream; for each message in §4 publish on the
    corresponding ROS 2 topic with the QoS in §10.1.
-3. Wait for the boot `STATUSTEXT` banner (§6.3) before considering the link up.
-   Until then, do not publish stale data and log a warning every 5 s.
+3. Consider the link up on the first MCU HEARTBEAT (matching sysid); do not
+   publish telemetry before it. The boot banner (§6.3) is logged once if seen
+   but is not required — the firmware variant is verified earlier by
+   `pre_communication`.
 4. TIMESYNC: respond to MCU-initiated TIMESYNC requests with `tc1` set to the
    bridge's wall clock. Maintain a filtered MCU-boot-to-wall-clock offset (EWMA,
    α = 0.05 default, configurable). Stamp all published ROS messages with

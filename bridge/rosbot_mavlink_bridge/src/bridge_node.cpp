@@ -40,14 +40,13 @@ BridgeNode::BridgeNode(const rclcpp::NodeOptions& node_options,
   publish_link_state_ =
       this->declare_parameter<bool>("publish_link_state", false);
   timesync_alpha_ = this->declare_parameter<double>("timesync_alpha", 0.05);
+  // Informational only: the firmware variant is already verified by
+  // pre_communication (FW: + BACKEND: handshake) on the same link before
+  // this node starts. A matching banner is logged once if it arrives, but
+  // its absence never blocks telemetry — see onHeartbeat/onStatustext.
   banner_regex_str_ = this->declare_parameter<std::string>(
       "expected_banner_regex", "rosbot(?:_xl)? .* mavlink");
   banner_regex_ = std::regex(banner_regex_str_);
-  // Grace window for a bridge that started after the firmware finished
-  // emitting its 10-shot banner; promote on HEARTBEAT alone after this
-  // many seconds. 0 = strictly require the banner.
-  banner_grace_seconds_ =
-      this->declare_parameter<int>("banner_grace_seconds", 8);
 
   if (!transport_->open()) {
     RCLCPP_FATAL(this->get_logger(),
@@ -55,7 +54,7 @@ BridgeNode::BridgeNode(const rclcpp::NodeOptions& node_options,
     throw std::runtime_error("transport open failed");
   }
   RCLCPP_INFO(this->get_logger(),
-              "MAVLink transport open. Waiting for HEARTBEAT + boot banner.");
+              "MAVLink transport open. Waiting for MCU HEARTBEAT.");
 
   // Topics + QoS mirror the micro-ROS API contract.
   battery_pub_ = this->create_publisher<sensor_msgs::msg::BatteryState>(
@@ -150,33 +149,6 @@ void BridgeNode::heartbeatTimer() {
                 "MCU HEARTBEAT timeout (%ld ms) — declaring DISCONNECTED.",
                 peer_timeout_.count());
   }
-
-  if (!banner_seen_.load() && peer_alive_.load() && banner_grace_seconds_ > 0) {
-    if (first_peer_heartbeat_ns_ == 0) {
-      first_peer_heartbeat_ns_ = last_peer_heartbeat_ns_.load();
-    }
-    const auto grace_ns =
-        std::chrono::nanoseconds(std::chrono::seconds(banner_grace_seconds_))
-            .count();
-    if ((now_ns - first_peer_heartbeat_ns_) > grace_ns) {
-      banner_seen_.store(true);
-      RCLCPP_WARN(this->get_logger(),
-                  "No boot banner seen within %ds of first HEARTBEAT — "
-                  "promoting anyway (firmware likely booted before bridge).",
-                  banner_grace_seconds_);
-    }
-  }
-
-  if (!banner_seen_.load()) {
-    static auto last_log = std::chrono::steady_clock::now();
-    auto now = std::chrono::steady_clock::now();
-    if (now - last_log > std::chrono::seconds(5)) {
-      RCLCPP_WARN(this->get_logger(),
-                  "Still waiting for firmware boot banner matching '%s'.",
-                  banner_regex_str_.c_str());
-      last_log = now;
-    }
-  }
 }
 
 void BridgeNode::rxLoop() {
@@ -239,7 +211,8 @@ void BridgeNode::onHeartbeat(const mavlink_message_t& msg) {
   if (msg.sysid != mcu_sysid_) return;
   last_peer_heartbeat_ns_.store(nowUnixNs());
   if (!peer_alive_.exchange(true)) {
-    RCLCPP_INFO(this->get_logger(), "Saw MCU HEARTBEAT (sysid=%u compid=%u).",
+    RCLCPP_INFO(this->get_logger(),
+                "MCU HEARTBEAT (sysid=%u compid=%u) — bridge CONNECTED.",
                 msg.sysid, msg.compid);
   }
 }
@@ -297,13 +270,13 @@ void BridgeNode::onStatustext(const mavlink_message_t& msg) {
   if (!banner_seen_.load() &&
       std::regex_search(text, text + std::strlen(text), banner_regex_)) {
     banner_seen_.store(true);
-    RCLCPP_INFO(this->get_logger(),
-                "Boot banner matched ('%s') — bridge CONNECTED.", text);
+    RCLCPP_INFO(this->get_logger(), "Firmware boot banner matched ('%s').",
+                text);
   }
 }
 
 void BridgeNode::onBatteryStatus(const mavlink_message_t& msg) {
-  if (!peer_alive_.load() || !banner_seen_.load()) return;
+  if (!peer_alive_.load()) return;
 
   mavlink_battery_status_t bs;
   mavlink_msg_battery_status_decode(&msg, &bs);
@@ -344,7 +317,7 @@ void BridgeNode::onBatteryStatus(const mavlink_message_t& msg) {
 }
 
 void BridgeNode::onRosbotImu(const mavlink_message_t& msg) {
-  if (!peer_alive_.load() || !banner_seen_.load()) return;
+  if (!peer_alive_.load()) return;
 
   mavlink_rosbot_imu_t i;
   mavlink_msg_rosbot_imu_decode(&msg, &i);
@@ -373,7 +346,7 @@ void BridgeNode::onRosbotImu(const mavlink_message_t& msg) {
 }
 
 void BridgeNode::onRosbotJointState(const mavlink_message_t& msg) {
-  if (!peer_alive_.load() || !banner_seen_.load()) return;
+  if (!peer_alive_.load()) return;
 
   mavlink_rosbot_joint_state_t js;
   mavlink_msg_rosbot_joint_state_decode(&msg, &js);
@@ -389,7 +362,7 @@ void BridgeNode::onRosbotJointState(const mavlink_message_t& msg) {
 }
 
 void BridgeNode::onRosbotButtons(const mavlink_message_t& msg) {
-  if (!peer_alive_.load() || !banner_seen_.load()) return;
+  if (!peer_alive_.load()) return;
 
   mavlink_rosbot_buttons_t b;
   mavlink_msg_rosbot_buttons_decode(&msg, &b);
@@ -400,7 +373,7 @@ void BridgeNode::onRosbotButtons(const mavlink_message_t& msg) {
 
 void BridgeNode::onDistanceSensor(const mavlink_message_t& msg) {
   if (!enable_ranges_ || !range_pub_) return;
-  if (!peer_alive_.load() || !banner_seen_.load()) return;
+  if (!peer_alive_.load()) return;
 
   mavlink_distance_sensor_t d;
   mavlink_msg_distance_sensor_decode(&msg, &d);
