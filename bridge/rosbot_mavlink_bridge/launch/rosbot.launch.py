@@ -19,6 +19,7 @@ from launch import LaunchDescription
 from launch.actions import DeclareLaunchArgument
 from launch.substitutions import LaunchConfiguration
 from launch_ros.actions import Node
+from launch_ros.parameter_descriptions import ParameterValue
 
 
 def generate_launch_description():
@@ -27,12 +28,23 @@ def generate_launch_description():
     ns = LaunchConfiguration("namespace")
     return LaunchDescription([
         DeclareLaunchArgument("namespace", default_value=""),
+        DeclareLaunchArgument("serial_port", default_value="/dev/ttySERIAL"),
+        DeclareLaunchArgument("serial_baudrate", default_value="921600"),
         Node(
             # Note: no `name=` override — bridge_node sets it to "rosbot_mcu"
             # to match the micro-ROS firmware (§10.1).
             package="rosbot_mavlink_bridge",
             executable="bridge_node",
-            parameters=[cfg, {"ros_namespace": ns}],
+            # serial_port/serial_baudrate override cfg so the platform-specific
+            # port forwarded by mavlink.launch.py (e.g. /dev/ttyAMA0 on RPi)
+            # reaches the node — cfg carries only a fallback default.
+            parameters=[cfg, {
+                "ros_namespace": ns,
+                "serial_port": LaunchConfiguration("serial_port"),
+                "serial_baudrate": ParameterValue(
+                    LaunchConfiguration("serial_baudrate"), value_type=int
+                ),
+            }],
             output="screen",
             emulate_tty=True,
         ),

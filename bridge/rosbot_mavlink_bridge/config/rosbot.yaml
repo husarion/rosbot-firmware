@@ -2,7 +2,7 @@
 /**:
   ros__parameters:
     transport: serial
-    serial_port: /dev/ttyS4        # adjust to your SBC's SBC<->MCU UART
+    serial_port: /dev/ttySERIAL    # fallback; launch overrides per platform
     serial_baudrate: 921600
     ros_namespace: ''               # match the namespace negotiated over FTDI
     enable_ranges: true
