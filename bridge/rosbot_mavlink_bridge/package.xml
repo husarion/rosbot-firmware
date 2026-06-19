@@ -2,7 +2,7 @@
 <?xml-model href="http://download.ros.org/schema/package_format3.xsd" schematypens="http://www.w3.org/2001/XMLSchema"?>
 <package format="3">
   <name>rosbot_mavlink_bridge</name>
-  <version>2.0.1</version>
+  <version>2.0.2</version>
   <description>
     Bridge node that translates the firmware's MAVLink wire protocol into the
     same ROS 2 API the micro-ROS agent currently exposes, so downstream
