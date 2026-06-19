@@ -94,6 +94,9 @@ inline constexpr HardwareEncoderConfig enc_rr_config = {
 
 // ───────── IMU ─────────
 inline constexpr uint8_t IMU_POWER_ON = PG4;
+// BNO055 COM3 (address select) is an MCU GPIO here with no pull resistor;
+// drive HIGH → 0x29. rosbot_xl hard-wires this line to 3V3 instead.
+inline constexpr uint8_t IMU_ADDR_SEL = PC8;
 inline constexpr uint8_t IMU_I2C_SDA = PC9;
 inline constexpr uint8_t IMU_I2C_SCL = PA8;
 

@@ -103,6 +103,11 @@ void boardPheripheralsInit() {
   pinMode(GRN_LED2, OUTPUT);
   digitalWrite(RED_LED, HIGH);
 
+  // Select BNO055 I2C address 0x29 before powering the sensor: COM3 must
+  // have a defined level at boot and the line has no pull resistor.
+  pinMode(IMU_ADDR_SEL, OUTPUT);
+  digitalWrite(IMU_ADDR_SEL, HIGH);
+
   // Enable power for IMU sensor
   pinMode(IMU_POWER_ON, OUTPUT);
   digitalWrite(IMU_POWER_ON, HIGH);
@@ -139,7 +144,9 @@ void setup() {
   persistent_config::save(now);
 
   battery_adc.init();
-  imu_bno055.init();
+  if (!imu_bno055.init() && g_comm_mgr.hasDebugSerial()) {
+    g_comm_mgr.debugSerial()->printf("IMU init failed: BNO055 not found\r\n");
+  }
   g_indicator.init();
   for (auto* m : {&motor_fl, &motor_fr, &motor_rl, &motor_rr}) {
     m->setSupplyVoltageProvider(supplyVoltage);
