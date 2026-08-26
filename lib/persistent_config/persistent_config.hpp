@@ -18,12 +18,17 @@
 #include <cstdint>
 
 #include "comm_backend.hpp"
+#include "imu_interface.hpp"
 
 // Persisted in STM32F407 flash sector 11 (0x080E0000, 128 KB). The linker
 // does not reserve the sector — keep total .text under sector 10.
-// load() returns defaults (MAVLINK, empty namespace) on a fresh or
-// corrupt sector. save() is a no-op when the cached value matches, so
-// wear scales with config changes, not boots.
+// load() returns defaults (MAVLINK, empty namespace, no IMU calibration)
+// on a fresh or corrupt sector. save() is a no-op when the cached value
+// matches, so wear scales with config changes, not boots.
+//
+// Comm backend/namespace and BNO055 calibration offsets share one record
+// in the same sector — a save() always writes the full Config, so callers
+// must round-trip fields they don't intend to change (load() first).
 namespace persistent_config {
 
 inline constexpr size_t kNamespaceMaxLen = 32;
@@ -31,6 +36,8 @@ inline constexpr size_t kNamespaceMaxLen = 32;
 struct Config {
   CommBackend backend;
   char ns[kNamespaceMaxLen];
+  bool has_imu_calibration = false;
+  ImuCalibrationOffsets imu_calibration{};
 };
 
 Config load();

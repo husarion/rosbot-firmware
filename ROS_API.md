@@ -41,6 +41,7 @@ for which process advertises the API in each case.
 
 [std_srvs/Trigger]: https://docs.ros.org/en/jazzy/p/std_srvs/srv/Trigger.html
 
-| SERVICE       | DESCRIPTION                             |
-| ------------- | --------------------------------------- |
-| **`_mcu_id`** | Get MCU ID. <br /> _[std_srvs/Trigger]_ |
+| SERVICE                       | DESCRIPTION                                                                                                                                                                    |
+| ------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| **`_mcu_id`**                  | Get MCU ID. <br /> _[std_srvs/Trigger]_                                                                                                                                        |
+| **`_imu_calibration_status`**  | BNO055 on-chip calibration quality (`sys`/`gyro`/`accel`/`mag`, 0-3 each) as a JSON string in the response `message`; `success` mirrors full calibration. <br /> _[std_srvs/Trigger]_. **micro-ROS only** — no MAVLink equivalent yet, unlike the rest of this contract. Read-only: persisting a calibration happens at boot (hold the push button(s)), not through this service — see the "IMU calibration" pattern in [ARCHITECTURE.md](ARCHITECTURE.md). |

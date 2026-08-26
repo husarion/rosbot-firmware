@@ -108,8 +108,22 @@ bool ImuBno055::init() {
 
   bno_.setAxisRemap(cfg_.axis_config);
   bno_.setAxisSign(cfg_.axis_sign);
-  bno_.setExtCrystalUse(true);
+  bno_.setExtCrystalUse(false);
 
+  return true;
+}
+
+// Deliberately NOT part of init(): linking our DMA handle to s_hi2c and
+// lowering the I2C event/error IRQ priority breaks Wire's own blocking
+// transactions (HAL_I2C_Master_Receive_IT, used by Adafruit_BNO055's
+// non-DMA calls — getCalibration/getSensorOffsets/setSensorOffsets).
+// HW-verified: raw I2C reads succeed before this call, fail with a
+// generic HAL error immediately after. Call this once, right before
+// vTaskStartScheduler() — after boot-time IMU calibration (which needs
+// those blocking calls) is done, and before update() is ever invoked
+// from a task (its `s_done_sem == nullptr` guard makes calling update()
+// before this a silent no-op, not a crash).
+bool ImuBno055::enableDmaReads() {
   s_hi2c = cfg_.bus->getHandle();
   const DmaRxMap* map = findRxMap(s_hi2c->Instance);
   if (map == nullptr) {
@@ -210,4 +224,62 @@ void ImuBno055::update() {
   data_.orientation[1] = qy;
   data_.orientation[2] = qz;
   data_.orientation[3] = qw;
+}
+
+ImuCalibrationStatus ImuBno055::getCalibrationStatus() {
+  ImuCalibrationStatus status{};
+  bno_.getCalibration(&status.system, &status.gyro, &status.accel, &status.mag);
+  return status;
+}
+
+bool ImuBno055::captureCalibrationOffsets(ImuCalibrationOffsets& out) {
+  adafruit_bno055_offsets_t offsets{};
+  if (!bno_.getSensorOffsets(offsets)) {
+    return false;
+  }
+  out.accel[0] = offsets.accel_offset_x;
+  out.accel[1] = offsets.accel_offset_y;
+  out.accel[2] = offsets.accel_offset_z;
+  out.mag[0] = offsets.mag_offset_x;
+  out.mag[1] = offsets.mag_offset_y;
+  out.mag[2] = offsets.mag_offset_z;
+  out.gyro[0] = offsets.gyro_offset_x;
+  out.gyro[1] = offsets.gyro_offset_y;
+  out.gyro[2] = offsets.gyro_offset_z;
+  out.accel_radius = offsets.accel_radius;
+  out.mag_radius = offsets.mag_radius;
+  return true;
+}
+
+void ImuBno055::applyCalibrationOffsets(const ImuCalibrationOffsets& offsets) {
+  adafruit_bno055_offsets_t bno_offsets{};
+  bno_offsets.accel_offset_x = offsets.accel[0];
+  bno_offsets.accel_offset_y = offsets.accel[1];
+  bno_offsets.accel_offset_z = offsets.accel[2];
+  bno_offsets.mag_offset_x = offsets.mag[0];
+  bno_offsets.mag_offset_y = offsets.mag[1];
+  bno_offsets.mag_offset_z = offsets.mag[2];
+  bno_offsets.gyro_offset_x = offsets.gyro[0];
+  bno_offsets.gyro_offset_y = offsets.gyro[1];
+  bno_offsets.gyro_offset_z = offsets.gyro[2];
+  bno_offsets.accel_radius = offsets.accel_radius;
+  bno_offsets.mag_radius = offsets.mag_radius;
+  bno_.setSensorOffsets(bno_offsets);
+}
+
+bool ImuBno055::probeCalibStatRaw(uint8_t& raw_byte, uint8_t& wire_error) {
+  constexpr uint8_t kCalibStatReg = 0x35;
+  raw_byte = 0;
+  cfg_.bus->beginTransmission(cfg_.i2c_addr);
+  cfg_.bus->write(kCalibStatReg);
+  wire_error = cfg_.bus->endTransmission(false);  // repeated start, no stop
+  if (wire_error != 0) return false;
+
+  if (cfg_.bus->requestFrom(static_cast<uint8_t>(cfg_.i2c_addr),
+                            static_cast<uint8_t>(1)) != 1) {
+    wire_error = 0xFF;  // not a real Wire code — flags the requestFrom miss
+    return false;
+  }
+  raw_byte = cfg_.bus->read();
+  return true;
 }

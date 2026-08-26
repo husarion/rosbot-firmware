@@ -18,11 +18,13 @@
 
 #include "battery_adc.hpp"
 #include "battery_interface.hpp"
+#include "boot_option.hpp"
 #include "comm_backend.hpp"
 #include "communication_manager.hpp"
 #include "config.hpp"
 #include "hardware_encoder.hpp"
 #include "imu_bno055.hpp"
+#include "imu_calibration_boot.hpp"
 #include "led_indicator.hpp"
 #include "mavlink_node.hpp"
 #include "motor_array.hpp"
@@ -69,25 +71,28 @@ static constexpr uint8_t RANGE_COUNT =
 // ───────── Extern variables ─────────
 BatteryInterface* g_battery = &battery_adc;
 ImuInterface* g_imu = &imu_bno055;
+ImuBno055* g_imu_bno055 = &imu_bno055;
 LedIndicator g_indicator(led_status_config);
 MotorArray g_motors(motors, MOTOR_COUNT, driver_groups, DRIVER_GROUP_COUNT);
 RangeArray g_ranges(range_sensors, RANGE_COUNT);
 
-bool useAlt() {
-  return digitalRead(PUSH_BUTTON1) == LOW || digitalRead(PUSH_BUTTON2) == LOW;
-}
+// Resolved once by resolveBootAction() at the very start of setup(),
+// before anything else reads PUSH_BUTTON1/2 — see boot_option.hpp.
+// kChangeTransport and kCalibrateImu are mutually exclusive by
+// construction (one gesture, classified by hold duration), so no extra
+// coordination is needed here.
+static bool s_transport_diagnostic_requested = false;
 
-void confirmAlt() {
-  digitalWrite(GRN_LED, HIGH);
-  digitalWrite(GRN_LED2, HIGH);
-}
+bool useAlt() { return s_transport_diagnostic_requested; }
 
 CommunicationManagerConfig communication_config = {
     .primary_type = TransportType::kSerial,
     .primary_serial = SBC_SERIAL_CONFIG,
     .diagnostic_serial = DIAGNOSTIC_SERIAL_CONFIG,
     .useDiagnosticCondition = useAlt,
-    .onDiagnosticSelected = confirmAlt};
+    // BootOption already confirmed the choice on the green LED(s) before
+    // selectTransport() runs — no separate signal needed here.
+    .onDiagnosticSelected = nullptr};
 CommunicationManager g_comm_mgr(communication_config);
 
 static float supplyVoltage() { return g_battery->getData().voltage; }
@@ -128,6 +133,22 @@ static persistent_config::Config s_persistent;
 void setup() {
   boardPheripheralsInit();
 
+  // Resolve the boot gesture before anything else touches the buttons —
+  // see boot_option.hpp. rosbot has two interchangeable buttons; either
+  // one qualifies.
+  const uint8_t boot_buttons[] = {PUSH_BUTTON1, PUSH_BUTTON2};
+  const BootOptionConfig boot_option_config = {
+      .buttons = boot_buttons,
+      .button_count = 2,
+      .green_led = GRN_LED,
+      .green_led2 = GRN_LED2,
+  };
+  const BootAction boot_action = resolveBootAction(boot_option_config);
+  s_transport_diagnostic_requested =
+      boot_action == BootAction::kChangeTransport;
+  const bool imu_calibration_requested =
+      boot_action == BootAction::kCalibrateImu;
+
   s_persistent = persistent_config::load();
   g_comm_mgr.setBackendDefault(s_persistent.backend);
   g_comm_mgr.setNamespaceDefault(s_persistent.ns);
@@ -141,12 +162,28 @@ void setup() {
   std::strncpy(now.ns, g_comm_mgr.getNamespace(),
                persistent_config::kNamespaceMaxLen);
   now.ns[persistent_config::kNamespaceMaxLen - 1] = '\0';
-  persistent_config::save(now);
+  now.has_imu_calibration = s_persistent.has_imu_calibration;
+  now.imu_calibration = s_persistent.imu_calibration;
 
   battery_adc.init();
-  if (!imu_bno055.init() && g_comm_mgr.hasDebugSerial()) {
+  const bool imu_ready = imu_bno055.init();
+  if (!imu_ready && g_comm_mgr.hasDebugSerial()) {
     g_comm_mgr.debugSerial()->printf("IMU init failed: BNO055 not found\r\n");
+  } else {
+    if (now.has_imu_calibration) {
+      imu_bno055.applyCalibrationOffsets(now.imu_calibration);
+    }
+    if (imu_calibration_requested) {
+      ImuCalibrationOffsets captured{};
+      if (imu_calibration_boot::run(imu_bno055, RED_LED, GRN_LED, GRN_LED2,
+                                    captured, g_comm_mgr.debugSerial())) {
+        now.has_imu_calibration = true;
+        now.imu_calibration = captured;
+      }
+    }
   }
+  persistent_config::save(now);
+
   g_indicator.init();
   for (auto* m : {&motor_fl, &motor_fr, &motor_rl, &motor_rr}) {
     m->setSupplyVoltageProvider(supplyVoltage);
@@ -165,6 +202,12 @@ void setup() {
     g_ros_node.serialTransportInit(*transport);
     g_ros_node.setDiagnosticSerial(g_comm_mgr.debugSerial());
     g_link = &g_ros_node;
+  }
+
+  // Must run after any boot-time IMU calibration and before the
+  // scheduler starts — see enableDmaReads()'s doc comment.
+  if (imu_ready) {
+    imu_bno055.enableDmaReads();
   }
 
   // RTOS

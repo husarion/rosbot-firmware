@@ -25,6 +25,7 @@
 #include <std_srvs/srv/trigger.h>
 
 #include "config.hpp"
+#include "imu_bno055.hpp"
 #include "led_strip.hpp"
 #include "motor_array.hpp"
 #include "ros/clients/trigger_client.hpp"
@@ -211,6 +212,33 @@ void mcuIdCallback(const void* req, void* res) {
   response->message.size = strlen(out_buffer);
 }
 
+// IMU calibration status — read-only, driven by getCalibration() (BNO055
+// on-chip fusion self-check), never touches flash. Persisting a completed
+// calibration happens at boot (hold PUSH_BUTTON1), not over ROS — see
+// runImuCalibrationWindow() in main.cpp for why: writing to
+// persistent_config's flash sector is only safe before the scheduler
+// starts.
+rcl_service_t imu_calibration_status_service;
+std_srvs__srv__Trigger_Request imu_calibration_status_req;
+std_srvs__srv__Trigger_Response imu_calibration_status_res;
+
+void imuCalibrationStatusCallback(const void*, void* res) {
+  const ImuCalibrationStatus status = g_imu_bno055->getCalibrationStatus();
+
+  static char out_buffer[112];
+  snprintf(out_buffer, sizeof(out_buffer),
+           "{\"sys\":%u,\"gyro\":%u,\"accel\":%u,\"mag\":%u,"
+           "\"fully_calibrated\":%s}",
+           status.system, status.gyro, status.accel, status.mag,
+           status.fullyCalibrated() ? "true" : "false");
+
+  std_srvs__srv__Trigger_Response* response =
+      (std_srvs__srv__Trigger_Response*)res;
+  response->success = status.fullyCalibrated();
+  response->message.data = out_buffer;
+  response->message.size = strlen(out_buffer);
+}
+
 static std::vector<ServiceEntry> services = {
     {
         .srv = {},
@@ -219,6 +247,14 @@ static std::vector<ServiceEntry> services = {
         .type_support = ROSIDL_GET_SRV_TYPE_SUPPORT(std_srvs, srv, Trigger),
         .service_name = "_mcu_id",
         .callback = mcuIdCallback,
+    },
+    {
+        .srv = {},
+        .request = &imu_calibration_status_req,
+        .response = &imu_calibration_status_res,
+        .type_support = ROSIDL_GET_SRV_TYPE_SUPPORT(std_srvs, srv, Trigger),
+        .service_name = "_imu_calibration_status",
+        .callback = imuCalibrationStatusCallback,
     },
 };
 

@@ -29,8 +29,10 @@ constexpr uint32_t kMagic = 0x52424F54;  // 'RBOT'
 struct Record {
   uint32_t magic;
   uint8_t backend;
-  uint8_t pad[3];
+  uint8_t has_imu_calibration;
+  uint8_t pad[2];
   char ns[persistent_config::kNamespaceMaxLen];
+  ImuCalibrationOffsets imu_calibration;
   uint32_t crc;
 };
 static_assert(sizeof(Record) % 4 == 0,
@@ -65,6 +67,8 @@ Config load() {
       out.backend = static_cast<CommBackend>(stored->backend);
       std::memcpy(out.ns, stored->ns, kNamespaceMaxLen);
       out.ns[kNamespaceMaxLen - 1] = '\0';
+      out.has_imu_calibration = stored->has_imu_calibration != 0;
+      out.imu_calibration = stored->imu_calibration;
       s_cached = out;
       s_loaded = true;
       return out;
@@ -84,15 +88,20 @@ void save(const Config& cfg) {
   configASSERT(xTaskGetSchedulerState() != taskSCHEDULER_RUNNING);
 
   if (s_loaded && cfg.backend == s_cached.backend &&
-      std::memcmp(cfg.ns, s_cached.ns, kNamespaceMaxLen) == 0) {
+      std::memcmp(cfg.ns, s_cached.ns, kNamespaceMaxLen) == 0 &&
+      cfg.has_imu_calibration == s_cached.has_imu_calibration &&
+      std::memcmp(&cfg.imu_calibration, &s_cached.imu_calibration,
+                  sizeof(ImuCalibrationOffsets)) == 0) {
     return;
   }
 
   Record record{};
   record.magic = kMagic;
   record.backend = static_cast<uint8_t>(cfg.backend);
+  record.has_imu_calibration = cfg.has_imu_calibration ? 1 : 0;
   std::memcpy(record.ns, cfg.ns, kNamespaceMaxLen);
   record.ns[kNamespaceMaxLen - 1] = '\0';
+  record.imu_calibration = cfg.imu_calibration;
   record.crc =
       crc32(reinterpret_cast<const uint8_t*>(&record), offsetof(Record, crc));
 
