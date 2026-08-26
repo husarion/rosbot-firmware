@@ -38,6 +38,25 @@ struct Record {
 static_assert(sizeof(Record) % 4 == 0,
               "Record must be word-aligned for HAL_FLASH_Program");
 
+// On-flash layout before IMU calibration was added — `magic` is
+// unchanged, so a pre-upgrade record still passes that check, but its
+// `crc` sat where `imu_calibration` now lives; without this fallback an
+// already-deployed unit's saved backend/namespace would silently reset
+// to defaults on first boot of this firmware, since the new Record's CRC
+// reads erased flash (0xFF) as the "stored" checksum and (astronomically
+// reliably) fails to match. Never written by this firmware — read-only,
+// migration path in load() only.
+struct LegacyRecord {
+  uint32_t magic;
+  uint8_t backend;
+  uint8_t pad[3];
+  char ns[persistent_config::kNamespaceMaxLen];
+  uint32_t crc;
+};
+static_assert(sizeof(LegacyRecord) == 44,
+              "legacy on-flash layout must not change — it's a migration "
+              "target, not live storage");
+
 uint32_t crc32(const uint8_t* data, size_t len) {
   uint32_t crc = 0xFFFFFFFF;
   for (size_t i = 0; i < len; ++i) {
@@ -69,6 +88,23 @@ Config load() {
       out.ns[kNamespaceMaxLen - 1] = '\0';
       out.has_imu_calibration = stored->has_imu_calibration != 0;
       out.imu_calibration = stored->imu_calibration;
+      s_cached = out;
+      s_loaded = true;
+      return out;
+    }
+
+    // Not a valid current-format record. Same magic (unchanged across
+    // the format change) can also mean a pre-upgrade unit — check that
+    // before falling back to full defaults, so an already-deployed
+    // robot's backend/namespace survives this firmware update instead
+    // of silently resetting.
+    const auto* legacy = reinterpret_cast<const LegacyRecord*>(kStorageAddr);
+    const uint32_t legacy_expected = crc32(
+        reinterpret_cast<const uint8_t*>(legacy), offsetof(LegacyRecord, crc));
+    if (legacy_expected == legacy->crc) {
+      out.backend = static_cast<CommBackend>(legacy->backend);
+      std::memcpy(out.ns, legacy->ns, kNamespaceMaxLen);
+      out.ns[kNamespaceMaxLen - 1] = '\0';
       s_cached = out;
       s_loaded = true;
       return out;

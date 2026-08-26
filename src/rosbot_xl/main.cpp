@@ -70,7 +70,6 @@ PowerBoard power_board(power_board_config);
 // ─────────Extern variables─────────
 BatteryInterface* g_battery = &power_board;
 ImuInterface* g_imu = &imu_bno055;
-ImuBno055* g_imu_bno055 = &imu_bno055;
 LedIndicator g_indicator(led_status_config);
 LedStrip g_led_strip;
 MotorArray g_motors(motors, MOTOR_COUNT, driver_groups, DRIVER_GROUP_COUNT);
@@ -188,7 +187,10 @@ void setup() {
   g_comm_mgr.setNamespaceDefault(s_persistent.ns);
 
   g_comm_mgr.init();
-  const SerialConfig* transport = g_comm_mgr.selectTransport();
+  // useAlt() already returns a fixed value decided by resolveBootAction()
+  // above — no need for selectTransport()'s own ~1.5 s polling window on
+  // top of it. timeout_ms=1 still lets its single check fire.
+  const SerialConfig* transport = g_comm_mgr.selectTransport(1);
   g_comm_mgr.configureNamespace();
 
   persistent_config::Config now{};

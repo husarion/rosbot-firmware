@@ -75,7 +75,3 @@ class ImuBno055 : public ImuInterface {
   ImuBno055Config cfg_;
   Adafruit_BNO055 bno_;
 };
-
-// Set by main.cpp alongside g_imu — typed so ros.cpp can reach the
-// BNO055-specific calibration API that ImuInterface doesn't expose.
-extern ImuBno055* g_imu_bno055;

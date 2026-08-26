@@ -71,7 +71,6 @@ static constexpr uint8_t RANGE_COUNT =
 // ───────── Extern variables ─────────
 BatteryInterface* g_battery = &battery_adc;
 ImuInterface* g_imu = &imu_bno055;
-ImuBno055* g_imu_bno055 = &imu_bno055;
 LedIndicator g_indicator(led_status_config);
 MotorArray g_motors(motors, MOTOR_COUNT, driver_groups, DRIVER_GROUP_COUNT);
 RangeArray g_ranges(range_sensors, RANGE_COUNT);
@@ -154,7 +153,10 @@ void setup() {
   g_comm_mgr.setNamespaceDefault(s_persistent.ns);
 
   g_comm_mgr.init();
-  const SerialConfig* transport = g_comm_mgr.selectTransport();
+  // useAlt() already returns a fixed value decided by resolveBootAction()
+  // above — no need for selectTransport()'s own ~1.5 s polling window on
+  // top of it. timeout_ms=1 still lets its single check fire.
+  const SerialConfig* transport = g_comm_mgr.selectTransport(1);
   g_comm_mgr.configureNamespace();
 
   persistent_config::Config now{};
@@ -167,9 +169,7 @@ void setup() {
 
   battery_adc.init();
   const bool imu_ready = imu_bno055.init();
-  if (!imu_ready && g_comm_mgr.hasDebugSerial()) {
-    g_comm_mgr.debugSerial()->printf("IMU init failed: BNO055 not found\r\n");
-  } else {
+  if (imu_ready) {
     if (now.has_imu_calibration) {
       imu_bno055.applyCalibrationOffsets(now.imu_calibration);
     }
@@ -181,6 +181,8 @@ void setup() {
         now.imu_calibration = captured;
       }
     }
+  } else if (g_comm_mgr.hasDebugSerial()) {
+    g_comm_mgr.debugSerial()->printf("IMU init failed: BNO055 not found\r\n");
   }
   persistent_config::save(now);
 

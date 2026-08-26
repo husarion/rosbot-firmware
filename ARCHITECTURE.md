@@ -259,9 +259,13 @@ isn't supported — the two are separate actions on the same gesture axis,
 not combinable. Wanting both means two boots (either order): both settle
 into the same persisted `Config`, so nothing is lost between them.
 
-`_imu_calibration_status` (a `std_srvs/Trigger`, micro-ROS only — see
-ROS_API.md) is read-only live diagnostics (`getCalibration()` doesn't
-touch flash); it cannot trigger a save, by design, for the reason above.
+There's deliberately no ROS/MAVLink service exposing calibration status
+live — `getCalibrationStatus()` only works via blocking Wire calls before
+`enableDmaReads()` (see the gotcha below), and no link exists yet at that
+point in boot anyway (ROS/MAVLink both come up well after this window,
+and after `enableDmaReads()`). A runtime service calling it would just
+fail. Progress is observable only via the diagnostic-serial logs and LEDs
+during the boot-time window itself — see `imu_calibration_boot::run()`.
 
 Step 2's blocking calls (`getCalibrationStatus()`,
 `captureCalibrationOffsets()`) only work because `main.cpp` calls
@@ -698,12 +702,6 @@ advertises the standard parameter services and `/rosout` publisher (the
 rcl-based micro-ROS firmware does not). These are additive and do not
 affect downstream consumers. Topic type hashes are `RIHS01_*` (valid) on
 the bridge vs `INVALID` on micro-ROS — also additive.
-
-Known gap: `_imu_calibration_status` (see ROS_API.md) exists only on the
-micro-ROS path. It's read-only diagnostics, not required for calibration
-itself to work (that's the boot-time button flow, backend-agnostic) — a
-MAVLink equivalent would need a new custom dialect message, not just a
-new command handler like `_mcu_id`'s, so it was left out of this change.
 
 ### Sizes (single-binary release)
 

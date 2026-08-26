@@ -108,6 +108,17 @@ bool ImuBno055::init() {
 
   bno_.setAxisRemap(cfg_.axis_config);
   bno_.setAxisSign(cfg_.axis_sign);
+
+  // false: neither board revision populates the XIN32/XOUT32 32kHz
+  // crystal footprint (datasheet §5.5, pins 26/27) — asking for it would
+  // still work (the chip self-checks the crystal signal on switch and
+  // falls back to its ~±3% internal oscillator if none is found, per
+  // §5.5.1/5.5.2), but costs ~600ms extra per §5.5.1 for a fallback that
+  // was always going to happen anyway. This was `true` originally and
+  // was NOT the cause of the calibration-freeze bug investigated
+  // alongside this change (see ARCHITECTURE.md "IMU calibration" — that
+  // was the I2C/DMA IRQ-priority conflict, unrelated to the clock
+  // source); it's just correct now that we know there's no crystal.
   bno_.setExtCrystalUse(false);
 
   return true;

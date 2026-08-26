@@ -26,7 +26,7 @@
 enum class BootAction {
   kNone,             // no button held at boot — normal start
   kChangeTransport,  // quick tap-and-release — select the diagnostic serial
-  kCalibrateImu,     // held for kConfig.calibration_hold_ms — enter the IMU
+  kCalibrateImu,     // held for cfg.calibration_hold_ms — enter the IMU
                      // calibration window (see imu_calibration_boot::run())
 };
 

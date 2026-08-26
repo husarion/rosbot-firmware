@@ -29,6 +29,12 @@
 // Comm backend/namespace and BNO055 calibration offsets share one record
 // in the same sector — a save() always writes the full Config, so callers
 // must round-trip fields they don't intend to change (load() first).
+//
+// load() also recognizes the pre-IMU-calibration on-flash layout (see
+// LegacyRecord in the .cpp) and migrates backend/namespace from it —
+// an already-deployed unit's saved config isn't lost on this firmware's
+// first boot. has_imu_calibration is always false from that path, which
+// is correct: those units never had one.
 namespace persistent_config {
 
 inline constexpr size_t kNamespaceMaxLen = 32;
