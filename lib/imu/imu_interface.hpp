@@ -22,6 +22,30 @@ struct ImuData {
   float orientation[4];       // quaternion x, y, z, w
 };
 
+// BNO055 on-chip calibration state, 0-3 per subsystem (3 = fully
+// calibrated). Vendor-neutral so persistent_config doesn't need to depend
+// on the Adafruit_BNO055 header.
+struct ImuCalibrationStatus {
+  uint8_t system;
+  uint8_t gyro;
+  uint8_t accel;
+  uint8_t mag;
+
+  bool fullyCalibrated() const {
+    return system == 3 && gyro == 3 && accel == 3 && mag == 3;
+  }
+};
+
+// Mirrors adafruit_bno055_offsets_t (22 bytes, NUM_BNO055_OFFSET_REGISTERS)
+// field-for-field so the conversion in ImuBno055 is a straight copy.
+struct ImuCalibrationOffsets {
+  int16_t accel[3];
+  int16_t mag[3];
+  int16_t gyro[3];
+  int16_t accel_radius;
+  int16_t mag_radius;
+};
+
 class ImuInterface {
  public:
   virtual ~ImuInterface() = default;

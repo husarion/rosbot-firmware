@@ -78,14 +78,16 @@ Layers, bottom-up:
 | dir | role |
 |---|---|
 | `battery/` | `BatteryInterface` + `BatteryAdc` (rosbot battery via ADC) |
-| `comm_manager/` | `CommunicationManager` — chooses primary vs diagnostic transport at boot based on push button |
+| `boot_option/` | `resolveBootAction()` — classifies the power-on button gesture (tap vs 3 s hold) into "change transport" / "calibrate IMU" / nothing, owns the confirmation LEDs — see "IMU calibration" under "Patterns" |
+| `comm_manager/` | `CommunicationManager` — chooses primary vs diagnostic transport at boot, driven by `boot_option`'s decision |
 | `eeprom/` | I2C EEPROM driver + `BoardRevision` (revision string read on rosbot_xl) |
 | `encoder/` | `EncoderInterface` + `HardwareEncoder` (STM32 timer in encoder mode, x4) |
 | `fan/` | Fan + NTC thermistor (rosbot_xl only) |
-| `imu/` | `ImuInterface` + `ImuBno055` (BNO055, DMA path — see "Patterns") |
+| `imu/` | `ImuInterface` + `ImuBno055` (BNO055, DMA path — see "Patterns"). Also exposes on-chip calibration status/offsets, persisted via `persistent_config` — see "IMU calibration" under "Patterns" |
 | `indicator/` | Status LED state machine |
 | `led_strip/` | APA102-style LED strip over SPI (rosbot_xl only) |
 | `motor/` | `MotorInterface`, `MotorHiZ`, `MotorArray` (Hi-Z PWM control) |
+| `persistent_config/` | Comm backend/namespace + BNO055 calibration offsets, stored as one record in flash sector 11. `save()` must run before the scheduler starts (sector erase stalls 1-3 s) — see "IMU calibration" |
 | `pid/` | PID controller with feedforward, anti-windup, dead-zone boost |
 | `power_board/` | UART protocol to rosbot_xl power board MCU (battery state) |
 | `range/` | `RangeInterface` + `RangeVl53l0x` + `RangeArray` (rosbot only) |
@@ -188,6 +190,88 @@ correct, position / velocity / effort all carry URDF-consistent sign.
 ---
 
 ## Patterns
+
+### IMU calibration
+
+The BNO055 fuses orientation on-chip (NDOF mode); a factory-fresh chip's
+fusion output can be several degrees off on roll/pitch until its
+accel/gyro/mag calibration registers are populated. There is no external
+storage on either board revision (no I2C EEPROM wired to the IMU bus, no
+VBAT-backed RTC domain), so calibration offsets ride in
+`persistent_config`'s flash-sector-11 record alongside the comm
+backend/namespace.
+
+`persistent_config::save()` asserts the scheduler isn't running — a
+sector erase stalls 1-3 s, which would starve the motor watchdog and
+MAVLink TX DMA if it happened mid-drive. That rules out committing a
+calibration from a live ROS/MAVLink service call. Instead, calibration is
+a **boot-time window**, entirely inside `setup()` before
+`vTaskStartScheduler()`:
+
+1. `setup()` calls `resolveBootAction()` (`lib/boot_option/`) as the very
+   first thing after `boardPheripheralsInit()`, before anything else —
+   including `g_comm_mgr.selectTransport()` — reads the same buttons.
+   `resolveBootAction()` classifies a single press by how long it's held
+   and returns one of three mutually-exclusive actions, so there's no
+   coordination needed between the calibration path and the
+   diagnostic-transport path; they're just two outcomes of the same
+   decision:
+   - no press starts within `press_detect_window_ms` (1.5 s) of entry →
+     `kNone`, normal boot. This window exists because the button is only
+     read here, once, at the top of `setup()` — an operator who presses
+     it a few hundred ms after the reset edge (instead of holding through
+     it) would otherwise be missed entirely.
+   - pressed within that window, then released before the hold threshold
+     (3 s) → `kChangeTransport`. Green LED(s) latch on solid immediately
+     as confirmation.
+   - held past the threshold → `kCalibrateImu`, decided the instant the
+     threshold is crossed (doesn't wait for release). Green LED(s) blink
+     3x to confirm entry, then turn off.
+
+   rosbot passes both push buttons as interchangeable (either one
+   qualifies); rosbot_xl passes only `PUSH_BUTTON1` (`PUSH_BUTTON2` there
+   is wired to MCU `NRST`, not a readable GPIO). Boards with two green
+   LEDs (rosbot) light both together for every confirmation, so the two
+   robots read identically with one LED's worth of vocabulary.
+
+   `kChangeTransport` is wired to `g_comm_mgr`'s `useDiagnosticCondition`
+   callback (now just returns the precomputed bool — no more live GPIO
+   polling from inside that callback, and no `onDiagnosticSelected`
+   callback either, since BootOption already lit the LED).
+2. On `kCalibrateImu`, firmware polls `ImuBno055::getCalibrationStatus()`
+   in a blocking loop (RED_LED blinking, via `imu_calibration_boot::run()`
+   in `lib/imu/imu_calibration_boot.*` — shared by both variants) while
+   the operator moves the robot — gyro settles by sitting still, mag by a
+   figure-8 rotation, accel needs a few stable rests >45° apart, which is
+   awkward on an assembled wheeled robot; a fixture/stand is worth having
+   on a production line rather than relying on freehand tilting.
+3. On `sys/gyro/accel/mag == 3/3/3/3` (or a 120 s timeout), GRN_LED(s) go
+   solid, offsets are captured via `captureCalibrationOffsets()` and
+   folded into the same `persistent_config::Config` that's about to be
+   saved for comm backend/namespace — one erase+program cycle, not two.
+4. Every boot, if a calibration record is present,
+   `ImuBno055::applyCalibrationOffsets()` loads it into the chip right
+   after `init()`, so fusion starts pre-calibrated instead of drifting in
+   from scratch.
+
+Calibrating and switching to the diagnostic transport in the same boot
+isn't supported — the two are separate actions on the same gesture axis,
+not combinable. Wanting both means two boots (either order): both settle
+into the same persisted `Config`, so nothing is lost between them.
+
+There's deliberately no ROS/MAVLink service exposing calibration status
+live — `getCalibrationStatus()` only works via blocking Wire calls before
+`enableDmaReads()` (see the gotcha below), and no link exists yet at that
+point in boot anyway (ROS/MAVLink both come up well after this window,
+and after `enableDmaReads()`). A runtime service calling it would just
+fail. Progress is observable only via the diagnostic-serial logs and LEDs
+during the boot-time window itself — see `imu_calibration_boot::run()`.
+
+Step 2's blocking calls (`getCalibrationStatus()`,
+`captureCalibrationOffsets()`) only work because `main.cpp` calls
+`ImuBno055::init()` without following it with `enableDmaReads()` until
+*after* this whole window — see the "FreeRTOS-safe IRQ priorities"
+gotcha above for why that ordering matters.
 
 ### Hi-Z motor control
 
@@ -308,10 +392,22 @@ convention: lower number = higher priority. Any IRQ that calls
 The framework defaults I2C IRQs to priority 2 (above
 `configMAX_SYSCALL_INTERRUPT_PRIORITY`), which would crash if our
 override of `HAL_I2C_MemRxCpltCallback` ran a `*FromISR` call. The IMU
-DMA path lowers the EV/ER + DMA stream IRQ priority to 5 in init —
-canonical pattern in `lib/imu/imu_bno055.cpp`. Replicate this if you add
-another HAL-callback-driven path on top of a framework-managed
-peripheral.
+DMA path lowers the EV/ER + DMA stream IRQ priority to 5 — canonical
+pattern in `lib/imu/imu_bno055.cpp`. Replicate this if you add another
+HAL-callback-driven path on top of a framework-managed peripheral.
+
+**Gotcha (HW-verified 2026-08-26):** that priority change — and linking
+our DMA handle into `s_hi2c` via `__HAL_LINKDMA` — breaks Wire's own
+blocking transactions (`HAL_I2C_Master_Receive_IT`, what
+`Adafruit_BNO055`'s non-DMA calls use). Confirmed by probing the I2C bus
+directly before/after: reads succeed before, fail with a generic HAL
+error immediately after. Boot-time IMU calibration (see "IMU
+calibration" below) needs those blocking calls, so `ImuBno055::init()`
+only brings the chip up (NDOF mode, axis remap) — the DMA/IRQ setup is a
+separate `enableDmaReads()`, called once right before
+`vTaskStartScheduler()`, after calibration is done. `update()` no-ops
+safely (`s_done_sem == nullptr` guard) until then, and no task calls it
+before the scheduler starts anyway.
 
 ### DMA + FreeRTOS handshake
 

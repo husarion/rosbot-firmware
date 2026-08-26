@@ -17,11 +17,13 @@
 #include <cstring>
 
 #include "battery_interface.hpp"
+#include "boot_option.hpp"
 #include "comm_backend.hpp"
 #include "communication_manager.hpp"
 #include "config.hpp"
 #include "hardware_encoder.hpp"
 #include "imu_bno055.hpp"
+#include "imu_calibration_boot.hpp"
 #include "led_indicator.hpp"
 #include "led_strip.hpp"
 #include "mavlink_node.hpp"
@@ -46,7 +48,7 @@ static HardwareEncoder enc_rr(enc_rr_config);
 FanController g_fan;
 
 // ───────── IMU ─────────
-static ImuBno055 imu_bno055(imu_bno055_config);
+ImuBno055 imu_bno055(imu_bno055_config);
 
 // ───────── LED Strip ─────────
 static SpiTransport s_transport(spi_config);
@@ -72,15 +74,22 @@ LedIndicator g_indicator(led_status_config);
 LedStrip g_led_strip;
 MotorArray g_motors(motors, MOTOR_COUNT, driver_groups, DRIVER_GROUP_COUNT);
 
-bool useAlt() { return digitalRead(PUSH_BUTTON1) == LOW; }
+// Resolved once by resolveBootAction() at the very start of setup(),
+// before anything else reads PUSH_BUTTON1 — see boot_option.hpp.
+// kChangeTransport and kCalibrateImu are mutually exclusive by
+// construction (one gesture, classified by hold duration), so no extra
+// coordination is needed here.
+static bool s_transport_diagnostic_requested = false;
 
-void confirmAlt() { digitalWrite(GRN_LED, HIGH); }
+bool useAlt() { return s_transport_diagnostic_requested; }
 
 CommunicationManagerConfig communication_config = {
     .primary_type = TransportType::kEthernet,
     .diagnostic_serial = DIAGNOSTIC_SERIAL_CONFIG,
     .useDiagnosticCondition = useAlt,
-    .onDiagnosticSelected = confirmAlt};
+    // BootOption already confirmed the choice on the green LED before
+    // selectTransport() runs — no separate signal needed here.
+    .onDiagnosticSelected = nullptr};
 
 CommunicationManager g_comm_mgr(communication_config);
 
@@ -157,12 +166,31 @@ static persistent_config::Config s_persistent;
 void setup() {
   boardPheripheralsInit();
 
+  // Resolve the boot gesture before anything else touches the button —
+  // see boot_option.hpp. rosbot_xl only exposes PUSH_BUTTON1 as a
+  // readable GPIO (PUSH_BUTTON2 is wired to MCU NRST) and has a single
+  // green LED, so green_led2 is left unused (0).
+  const uint8_t boot_buttons[] = {PUSH_BUTTON1};
+  const BootOptionConfig boot_option_config = {
+      .buttons = boot_buttons,
+      .button_count = 1,
+      .green_led = GRN_LED,
+  };
+  const BootAction boot_action = resolveBootAction(boot_option_config);
+  s_transport_diagnostic_requested =
+      boot_action == BootAction::kChangeTransport;
+  const bool imu_calibration_requested =
+      boot_action == BootAction::kCalibrateImu;
+
   s_persistent = persistent_config::load();
   g_comm_mgr.setBackendDefault(s_persistent.backend);
   g_comm_mgr.setNamespaceDefault(s_persistent.ns);
 
   g_comm_mgr.init();
-  const SerialConfig* transport = g_comm_mgr.selectTransport();
+  // useAlt() already returns a fixed value decided by resolveBootAction()
+  // above — no need for selectTransport()'s own ~1.5 s polling window on
+  // top of it. timeout_ms=1 still lets its single check fire.
+  const SerialConfig* transport = g_comm_mgr.selectTransport(1);
   g_comm_mgr.configureNamespace();
 
   persistent_config::Config now{};
@@ -170,7 +198,8 @@ void setup() {
   std::strncpy(now.ns, g_comm_mgr.getNamespace(),
                persistent_config::kNamespaceMaxLen);
   now.ns[persistent_config::kNamespaceMaxLen - 1] = '\0';
-  persistent_config::save(now);
+  now.has_imu_calibration = s_persistent.has_imu_calibration;
+  now.imu_calibration = s_persistent.imu_calibration;
 
   // Revision specific configuration
   board_revision.init();
@@ -182,7 +211,24 @@ void setup() {
   Ethernet.begin(MAC, CLIENT_IP);
   ntc.init();
   g_fan.init(fan_config);
-  imu_bno055.init();
+
+  const bool imu_ready = imu_bno055.init();
+  if (imu_ready) {
+    if (now.has_imu_calibration) {
+      imu_bno055.applyCalibrationOffsets(now.imu_calibration);
+    }
+    if (imu_calibration_requested) {
+      ImuCalibrationOffsets captured{};
+      if (imu_calibration_boot::run(imu_bno055, RED_LED, GRN_LED,
+                                    /*green_led2=*/0, captured,
+                                    g_comm_mgr.debugSerial())) {
+        now.has_imu_calibration = true;
+        now.imu_calibration = captured;
+      }
+    }
+  }
+  persistent_config::save(now);
+
   g_indicator.init();
   g_led_strip.init(strip_config, &s_transport);
   for (auto* m : {&motor_fl, &motor_fr, &motor_rl, &motor_rr}) {
@@ -207,6 +253,12 @@ void setup() {
     }
     g_ros_node.setDiagnosticSerial(g_comm_mgr.debugSerial());
     g_link = &g_ros_node;
+  }
+
+  // Must run after any boot-time IMU calibration and before the
+  // scheduler starts — see enableDmaReads()'s doc comment.
+  if (imu_ready) {
+    imu_bno055.enableDmaReads();
   }
 
   // RTOS

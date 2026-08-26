@@ -41,6 +41,6 @@ for which process advertises the API in each case.
 
 [std_srvs/Trigger]: https://docs.ros.org/en/jazzy/p/std_srvs/srv/Trigger.html
 
-| SERVICE       | DESCRIPTION                             |
-| ------------- | --------------------------------------- |
+| SERVICE       | DESCRIPTION                              |
+| ------------- | ----------------------------------------- |
 | **`_mcu_id`** | Get MCU ID. <br /> _[std_srvs/Trigger]_ |
