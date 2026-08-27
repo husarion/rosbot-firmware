@@ -27,6 +27,93 @@ SRAM.** Static globals in anonymous namespaces with `alignas(4)` work.
 LAN9303 is a 3-port managed L2 switch. The MCU connects to one of its
 ports via RMII; the SBC and an external RJ45 jack hang off the other two.
 
+### LAN9303 — port map, management access, and the VLAN-isolation trade-off
+
+**Port map** (rosbot_xl only — confirmed against the schematic): Port 0 is
+RMII, no magnetics, direct to the MCU (`ETH_TXD0/1`, `ETH_RXD0/1`,
+`ETH_TXEN`, `ETH_CRSDV`) — this is `CLIENT_IP`/192.168.77.3. Port 1 goes
+through magnetics to the SBC. Port 2 goes through separate magnetics to the
+external RJ45 jack on the chassis. Factory default is an unmanaged flat
+bridge across all three — no VLAN, no port isolation.
+
+**Management access exists on this board, unused by the firmware today.**
+Two independent paths reach the switch fabric's CSRs, both confirmed wired
+on the schematic:
+- **MDIO/SMI** — pins 21/20 (`MDIO`/`MDC`) land on nets `ETH_MDIO`/`ETH_MDC`,
+  same prefix as the RMII bus to the MCU, i.e. the same pins
+  `STM32Ethernet`'s `ethernetif.cpp` already uses for ordinary PHY register
+  reads (`PHY_BSR`/`PHY_BCR` via `LAN9303_To_SMI_Address_Conv`). SMI reuses
+  the MDIO/MDC pins with **extended addressing** (PHY address 16–31, vs.
+  plain MIIM 0–15) to reach *all* internal registers, not just the Port 1/2
+  PHYs — see LAN9303/LAN9303i datasheet (Microchip DS00002308A) §10.2. The
+  address-conversion formula, confirmed against `ethernetif.cpp` and
+  hand-verified against the datasheet: for a system-register byte offset
+  `off`, `SMI_PHY_ADDR = 0x10 | ((off >> 6) & 0xF)`,
+  `SMI_REG_ADDR = ((off >> 1) & 0x1F) | word_select` (`word_select` is 0 for
+  the low 16 bits of the 32-bit register, 1 for the high 16 bits — two SMI
+  transactions per 32-bit register).
+- **I2C** — `EE_SDA`/`EE_SCL` (pins 35/36) sit on the MCU's `I2C2`
+  (PF0/PF1) — the **same bus** the BNO055 IMU and the board-revision EEPROM
+  already use (`ARCHITECTURE.md` table above, `BoardRevision` class). An
+  EEPROM lives on that bus (all revisions except the very oldest).
+
+**Register access, two levels of indirection** (datasheet §13.2.4.4-5,
+§13.4.3): `SWITCH_CSR_DATA` (system-register byte offset `0x1AC`) and
+`SWITCH_CSR_CMD` (`0x1B0`, bit 31 `CSR_BUSY`, bit 30 `R_nW`, bits 15:0
+`CSR_ADDR`) are reached directly via the SMI formula above, and are
+themselves used to indirectly read/write the actual Switch Fabric CSRs
+(VLAN table, ingress config, etc. — Table 13-14 in the datasheet), addressed
+by a *second*, independent 16-bit index (e.g. `SWE_VLAN_CMD` = `0x180B`,
+`SWE_GLB_INGRESS_CFG` = `0x1840`, `SWE_PORT_INGRESS_CFG` = `0x1841`): write
+`SWITCH_CSR_DATA`, then `SWITCH_CSR_CMD` with `CSR_BUSY` set and the target
+index, poll until `CSR_BUSY` clears.
+
+**VLAN table** (datasheet §6.4.4, §13.4.3.8-11): 16 slots, each holding a
+VID plus a member/untag bit per port (bits 17/16 = Port 2 member/untag,
+15/14 = Port 1, 13/12 = Port 0). Port-based (untagged) operation forcible
+via the "802.1Q VLAN Disable" bit in `SWE_GLB_INGRESS_CFG`, which makes the
+switch use each port's PVID instead of any 802.1Q tag — relevant since none
+of Port 0/1/2's traffic is ever tagged today.
+
+**What was tried and reverted (2026-08-27, branch
+`feature/lan9303-vlan-isolation`, never merged):** `192.168.77.2` is
+hardcoded identical on every rosbot_xl unit — deliberate, since the MCU
+needs a fixed address for the SBC. Because the factory-default flat bridge
+puts Port 0/1/2 on one broadcast domain, that address (and the MCU's
+`192.168.77.3`) leaks onto Port 2 — confirmed on hardware as a real ARP
+conflict (`NetworkManager`: *"IP address 192.168.77.2 cannot be configured
+because it is already in use... by host ..."*) when a second rosbot_xl
+shares the same external switch. VLAN 1 = {Port 0, Port 1} / VLAN 2 =
+{Port 2} via the mechanism above cleanly stops the leak (verified: the
+conflict is gone, the MAVLink bridge over Port 0↔Port 1 keeps working
+normally since the MCU and SBC stay in the same VLAN) — **but simple
+port-based VLAN can't do this selectively.** Isolating Port 2 from Port 1
+also cuts the SBC off from *all* external connectivity through the RJ45
+jack, not just the `192.168.77.0/24` leak — the SBC's own DHCP-assigned
+address, and the documented "plug a laptop directly into the robot and
+reach it at `192.168.77.2`" workflow (`husarion-os`'s `husarion-eth-mode`,
+which runs `isc-dhcp-server` on that exact assumption), both stop working
+the moment isolation is active, since Port 1 and Port 2 no longer bridge at
+all. Confirmed on hardware (2026-08-27): after flashing, the SBC's wired
+interface never acquires a DHCP lease from the external network again.
+
+**The correct fix, not yet built:** make Port 1 an 802.1Q trunk — tagged
+member of VLAN 1 (for MCU traffic) *and* untagged/native member of VLAN 2
+(for everything else), via the LAN9303's "Hybrid" port mode
+(`BM_EGRSS_PORT_TYPE`, datasheet §13.2.x — not yet looked up in detail).
+That needs a matching change on the SBC side (`husarion-os`): a tagged VLAN
+sub-interface (e.g. `enP8p1s0.1`) carrying `192.168.77.2`, with the plain
+untagged interface going back to ordinary DHCP-only for external
+connectivity. Firmware-only work can't finish this — it's a coordinated
+change across `rosbot-firmware` and `husarion-os`. The reverted branch
+(`feature/lan9303-vlan-isolation`) has a working, hardware-verified
+`lib/lan9303/` driver (SMI/CSR access + VLAN table writes, with a
+verify-before-enforce safety invariant — see the file's own comments) that
+implements the *simple* (non-trunk) isolation; it's a reasonable starting
+point for the register-access plumbing if someone builds the trunk version,
+but its `isolateExternalPort()` call in `main.cpp` should NOT be re-enabled
+as-is given the trade-off above.
+
 ---
 
 ## Variant model — how the dispatcher works
