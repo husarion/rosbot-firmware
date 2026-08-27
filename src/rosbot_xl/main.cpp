@@ -24,6 +24,7 @@
 #include "hardware_encoder.hpp"
 #include "imu_bno055.hpp"
 #include "imu_calibration_boot.hpp"
+#include "lan9303.hpp"
 #include "led_indicator.hpp"
 #include "led_strip.hpp"
 #include "mavlink_node.hpp"
@@ -209,6 +210,21 @@ void setup() {
       (rev == Revision::V1_1) ? rev1_1_fan_config : rev1_2_fan_config;
 
   Ethernet.begin(MAC, CLIENT_IP);
+
+  // Isolate the external RJ45 (LAN9303 Port 2) from the MCU<->SBC link
+  // (Port 0/1) so 192.168.77.0/24 never reaches whatever the external
+  // jack is plugged into — two robots sharing a bench switch otherwise
+  // collide over the SBC's static address. Best-effort: on failure the
+  // switch stays in its default flat-bridge state (today's behavior),
+  // MCU<->SBC connectivity is unaffected either way.
+  const auto lan9303_status = Lan9303::isolateExternalPort();
+  if (lan9303_status != Lan9303::Status::kOk) {
+    g_comm_mgr.debugSerial()->printf(
+        "LAN9303 VLAN isolation failed (status=%d) — external port not "
+        "isolated\r\n",
+        static_cast<int>(lan9303_status));
+  }
+
   ntc.init();
   g_fan.init(fan_config);
 
