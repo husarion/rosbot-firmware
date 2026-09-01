@@ -17,16 +17,18 @@
 #include <cstddef>
 #include <cstdint>
 
-namespace rosbot_mavlink_bridge {
+namespace rosbot_mavlink_bridge
+{
 
 class Transport {
- public:
+public:
   virtual ~Transport() = default;
   virtual bool open() = 0;
   virtual void close() = 0;
-  virtual std::size_t write(const std::uint8_t* buf, std::size_t len) = 0;
-  virtual std::size_t read(std::uint8_t* buf, std::size_t len,
-                           int timeout_ms) = 0;
+  virtual std::size_t write(const std::uint8_t * buf, std::size_t len) = 0;
+  virtual std::size_t read(
+    std::uint8_t * buf, std::size_t len,
+    int timeout_ms) = 0;
 };
 
 }  // namespace rosbot_mavlink_bridge

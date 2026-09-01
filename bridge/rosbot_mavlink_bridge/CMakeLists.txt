@@ -60,6 +60,13 @@ install(DIRECTORY launch config DESTINATION share/${PROJECT_NAME})
 
 if(BUILD_TESTING)
   find_package(ament_lint_auto REQUIRED)
+  # mavgen output is vendored, not hand-authored — same rationale as the
+  # SYSTEM include above. Uncrustify chokes on its MAVPACKED macros
+  # entirely (do_source_file: Unmatched BRACE_OPEN), and cpplint/copyright
+  # flag file after file for a style they never opted into.
+  file(GLOB_RECURSE _mavlink_dialect_files
+    "${CMAKE_CURRENT_SOURCE_DIR}/mavlink_dialect/*")
+  set(AMENT_LINT_AUTO_FILE_EXCLUDE ${_mavlink_dialect_files})
   ament_lint_auto_find_test_dependencies()
 endif()
 

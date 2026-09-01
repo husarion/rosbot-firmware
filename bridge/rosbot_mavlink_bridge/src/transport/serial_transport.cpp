@@ -22,10 +22,13 @@
 #include <cerrno>
 #include <cstring>
 
-namespace rosbot_mavlink_bridge {
+namespace rosbot_mavlink_bridge
+{
 
-namespace {
-speed_t mapBaud(int baud) {
+namespace
+{
+speed_t mapBaud(int baud)
+{
   switch (baud) {
     case 9600:
       return B9600;
@@ -49,11 +52,12 @@ speed_t mapBaud(int baud) {
 }
 }  // namespace
 
-bool SerialTransport::open() {
-  if (fd_.load() >= 0) return true;
+bool SerialTransport::open()
+{
+  if (fd_.load() >= 0) {return true;}
 
   int fd = ::open(cfg_.port.c_str(), O_RDWR | O_NOCTTY | O_NONBLOCK);
-  if (fd < 0) return false;
+  if (fd < 0) {return false;}
 
   termios tty{};
   if (::tcgetattr(fd, &tty) != 0) {
@@ -86,22 +90,26 @@ bool SerialTransport::open() {
   return true;
 }
 
-void SerialTransport::close() {
+void SerialTransport::close()
+{
   int fd = fd_.exchange(-1);
-  if (fd >= 0) ::close(fd);
+  if (fd >= 0) {::close(fd);}
 }
 
-std::size_t SerialTransport::write(const std::uint8_t* buf, std::size_t len) {
+std::size_t SerialTransport::write(const std::uint8_t * buf, std::size_t len)
+{
   int fd = fd_.load();
-  if (fd < 0) return 0;
+  if (fd < 0) {return 0;}
   ssize_t n = ::write(fd, buf, len);
   return (n > 0) ? static_cast<std::size_t>(n) : 0;
 }
 
-std::size_t SerialTransport::read(std::uint8_t* buf, std::size_t len,
-                                  int timeout_ms) {
+std::size_t SerialTransport::read(
+  std::uint8_t * buf, std::size_t len,
+  int timeout_ms)
+{
   int fd = fd_.load();
-  if (fd < 0) return 0;
+  if (fd < 0) {return 0;}
 
   fd_set rfds;
   FD_ZERO(&rfds);
@@ -110,8 +118,8 @@ std::size_t SerialTransport::read(std::uint8_t* buf, std::size_t len,
   tv.tv_sec = timeout_ms / 1000;
   tv.tv_usec = (timeout_ms % 1000) * 1000;
   int sel =
-      ::select(fd + 1, &rfds, nullptr, nullptr, timeout_ms < 0 ? nullptr : &tv);
-  if (sel <= 0) return 0;
+    ::select(fd + 1, &rfds, nullptr, nullptr, timeout_ms < 0 ? nullptr : &tv);
+  if (sel <= 0) {return 0;}
 
   ssize_t n = ::read(fd, buf, len);
   return (n > 0) ? static_cast<std::size_t>(n) : 0;

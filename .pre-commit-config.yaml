@@ -21,11 +21,18 @@ repos:
   # -------------------------
   # C / C++ formatting
   # -------------------------
+  # rosbot_mavlink_bridge is an ament_cmake package: ament_lint_auto wires
+  # ament_uncrustify into its `colcon test`, and that style (brace-on-own-
+  # line, unindented access specifiers, `Type & name`) diverges from
+  # Google/clang-format. Formatting it here with clang-format would pass
+  # pre-commit and then fail CI, so it's excluded and reformatted by its
+  # own ament_uncrustify hook below instead.
   - repo: https://github.com/pre-commit/mirrors-clang-format
     rev: v21.1.8
     hooks:
       - id: clang-format
         files: \.(c|cpp|cc|cxx|h|hpp)$
+        exclude: ^bridge/rosbot_mavlink_bridge/
         args: [--style=Google]
 
   # -------------------------
@@ -80,3 +87,35 @@ repos:
         entry: bash -c 'source /opt/ros/jazzy/setup.bash && ament_copyright "$@"' --
         language: system
         exclude: ^.*\.md$
+
+  # -------------------------
+  # rosbot_mavlink_bridge — same linters ament_lint_auto runs in CI
+  # (colcon test), scoped to the package so they match what CI checks.
+  # mavlink_dialect/ is vendored mavgen output and stays excluded here
+  # too (matches CMakeLists.txt's AMENT_LINT_AUTO_FILE_EXCLUDE).
+  # -------------------------
+  - repo: local
+    hooks:
+      - id: ament_uncrustify
+        name: ament_uncrustify (rosbot_mavlink_bridge)
+        description: Reformat bridge C++ sources to the ROS 2 ament style.
+        stages: [pre-commit]
+        entry: bash -c 'source /opt/ros/jazzy/setup.bash && ament_uncrustify --reformat "$@"' --
+        language: system
+        files: ^bridge/rosbot_mavlink_bridge/.*\.(c|cpp|cc|cxx|h|hpp)$
+        exclude: ^bridge/rosbot_mavlink_bridge/mavlink_dialect/
+      - id: ament_cpplint
+        name: ament_cpplint (rosbot_mavlink_bridge)
+        description: Check bridge C++ sources against the ROS 2 style guide.
+        stages: [pre-commit]
+        entry: bash -c 'source /opt/ros/jazzy/setup.bash && ament_cpplint "$@"' --
+        language: system
+        files: ^bridge/rosbot_mavlink_bridge/.*\.(c|cpp|cc|cxx|h|hpp)$
+        exclude: ^bridge/rosbot_mavlink_bridge/mavlink_dialect/
+      - id: ament_flake8
+        name: ament_flake8 (rosbot_mavlink_bridge)
+        description: Check bridge Python (launch files) against ament style.
+        stages: [pre-commit]
+        entry: bash -c 'source /opt/ros/jazzy/setup.bash && ament_flake8 "$@"' --
+        language: system
+        files: ^bridge/rosbot_mavlink_bridge/.*\.py$

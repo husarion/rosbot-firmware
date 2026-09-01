@@ -23,13 +23,15 @@
 #include <cerrno>
 #include <cstring>
 
-namespace rosbot_mavlink_bridge {
+namespace rosbot_mavlink_bridge
+{
 
-bool UdpTransport::open() {
-  if (fd_.load() >= 0) return true;
+bool UdpTransport::open()
+{
+  if (fd_.load() >= 0) {return true;}
 
   int fd = ::socket(AF_INET, SOCK_DGRAM, 0);
-  if (fd < 0) return false;
+  if (fd < 0) {return false;}
 
   // Skip TIME_WAIT so bridge restarts are immediate.
   int reuse = 1;
@@ -39,7 +41,7 @@ bool UdpTransport::open() {
   local.sin_family = AF_INET;
   local.sin_addr.s_addr = htonl(INADDR_ANY);
   local.sin_port = htons(cfg_.local_port);
-  if (::bind(fd, reinterpret_cast<sockaddr*>(&local), sizeof(local)) < 0) {
+  if (::bind(fd, reinterpret_cast<sockaddr *>(&local), sizeof(local)) < 0) {
     ::close(fd);
     return false;
   }
@@ -56,24 +58,28 @@ bool UdpTransport::open() {
   return true;
 }
 
-void UdpTransport::close() {
+void UdpTransport::close()
+{
   int fd = fd_.exchange(-1);
-  if (fd >= 0) ::close(fd);
+  if (fd >= 0) {::close(fd);}
 }
 
-std::size_t UdpTransport::write(const std::uint8_t* buf, std::size_t len) {
+std::size_t UdpTransport::write(const std::uint8_t * buf, std::size_t len)
+{
   int fd = fd_.load();
-  if (fd < 0) return 0;
+  if (fd < 0) {return 0;}
   ssize_t n =
-      ::sendto(fd, buf, len, 0, reinterpret_cast<const sockaddr*>(&peer_addr_),
+    ::sendto(fd, buf, len, 0, reinterpret_cast<const sockaddr *>(&peer_addr_),
                sizeof(peer_addr_));
   return (n > 0) ? static_cast<std::size_t>(n) : 0;
 }
 
-std::size_t UdpTransport::read(std::uint8_t* buf, std::size_t len,
-                               int timeout_ms) {
+std::size_t UdpTransport::read(
+  std::uint8_t * buf, std::size_t len,
+  int timeout_ms)
+{
   int fd = fd_.load();
-  if (fd < 0) return 0;
+  if (fd < 0) {return 0;}
 
   fd_set rfds;
   FD_ZERO(&rfds);
@@ -82,8 +88,8 @@ std::size_t UdpTransport::read(std::uint8_t* buf, std::size_t len,
   tv.tv_sec = timeout_ms / 1000;
   tv.tv_usec = (timeout_ms % 1000) * 1000;
   int sel =
-      ::select(fd + 1, &rfds, nullptr, nullptr, timeout_ms < 0 ? nullptr : &tv);
-  if (sel <= 0) return 0;
+    ::select(fd + 1, &rfds, nullptr, nullptr, timeout_ms < 0 ? nullptr : &tv);
+  if (sel <= 0) {return 0;}
 
   ssize_t n = ::recv(fd, buf, len, 0);
   return (n > 0) ? static_cast<std::size_t>(n) : 0;

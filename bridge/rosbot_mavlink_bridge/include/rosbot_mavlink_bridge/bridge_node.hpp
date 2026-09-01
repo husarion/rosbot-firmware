@@ -23,7 +23,7 @@
 #include <string>
 #include <thread>
 
-#include "mavlink.h"
+#include "mavlink.h"  // NOLINT(build/include_subdir) -- mavgen's flat vendored layout
 #include "rclcpp/rclcpp.hpp"
 #include "rosbot_mavlink_bridge/transport/transport_interface.hpp"
 #include "sensor_msgs/msg/battery_state.hpp"
@@ -35,42 +35,44 @@
 #include "std_msgs/msg/u_int8.hpp"
 #include "std_srvs/srv/trigger.hpp"
 
-namespace rosbot_mavlink_bridge {
+namespace rosbot_mavlink_bridge
+{
 
 class BridgeNode : public rclcpp::Node {
- public:
-  BridgeNode(const rclcpp::NodeOptions& node_options,
-             std::unique_ptr<Transport> transport);
+public:
+  BridgeNode(
+    const rclcpp::NodeOptions & node_options,
+    std::unique_ptr<Transport> transport);
   ~BridgeNode() override;
 
- private:
+private:
   void rxLoop();
   void heartbeatTimer();
-  void onMavlinkMessage(const mavlink_message_t& msg);
+  void onMavlinkMessage(const mavlink_message_t & msg);
 
-  void sendMavlink(mavlink_message_t& msg);
+  void sendMavlink(mavlink_message_t & msg);
   rclcpp::Time mcuTimeToRos(std::uint64_t time_boot_us) const;
   std::int64_t nowUnixNs() const;
 
   // MAVLink → ROS handlers
-  void onHeartbeat(const mavlink_message_t& msg);
-  void onTimesync(const mavlink_message_t& msg);
-  void onStatustext(const mavlink_message_t& msg);
-  void onBatteryStatus(const mavlink_message_t& msg);
-  void onRosbotImu(const mavlink_message_t& msg);
-  void onRosbotJointState(const mavlink_message_t& msg);
-  void onRosbotButtons(const mavlink_message_t& msg);
-  void onDistanceSensor(const mavlink_message_t& msg);
-  void onRosbotMcuId(const mavlink_message_t& msg);
-  void onCommandAck(const mavlink_message_t& msg);
+  void onHeartbeat(const mavlink_message_t & msg);
+  void onTimesync(const mavlink_message_t & msg);
+  void onStatustext(const mavlink_message_t & msg);
+  void onBatteryStatus(const mavlink_message_t & msg);
+  void onRosbotImu(const mavlink_message_t & msg);
+  void onRosbotJointState(const mavlink_message_t & msg);
+  void onRosbotButtons(const mavlink_message_t & msg);
+  void onDistanceSensor(const mavlink_message_t & msg);
+  void onRosbotMcuId(const mavlink_message_t & msg);
+  void onCommandAck(const mavlink_message_t & msg);
 
   // ROS → MAVLink callbacks
   void wheelCmdCb(const std_msgs::msg::Float32MultiArray::SharedPtr msg);
   void ledsCb(const std_msgs::msg::UInt8::SharedPtr msg);
   void ledStripCb(const sensor_msgs::msg::Image::SharedPtr msg);
   void mcuIdServiceCb(
-      const std::shared_ptr<std_srvs::srv::Trigger::Request> req,
-      std::shared_ptr<std_srvs::srv::Trigger::Response> res);
+    const std::shared_ptr<std_srvs::srv::Trigger::Request> req,
+    std::shared_ptr<std_srvs::srv::Trigger::Response> res);
 
   std::unique_ptr<Transport> transport_;
   std::thread rx_thread_;
@@ -115,7 +117,7 @@ class BridgeNode : public rclcpp::Node {
   rclcpp::Publisher<std_msgs::msg::UInt8>::SharedPtr buttons_pub_;
   rclcpp::Publisher<sensor_msgs::msg::Range>::SharedPtr range_pub_;
   rclcpp::Subscription<std_msgs::msg::Float32MultiArray>::SharedPtr
-      wheel_cmd_sub_;
+    wheel_cmd_sub_;
   rclcpp::Subscription<std_msgs::msg::UInt8>::SharedPtr leds_sub_;
   rclcpp::Subscription<sensor_msgs::msg::Image>::SharedPtr led_strip_sub_;
   rclcpp::Service<std_srvs::srv::Trigger>::SharedPtr mcu_id_service_;
@@ -129,9 +131,9 @@ class BridgeNode : public rclcpp::Node {
 
   // Wheel order FL/FR/RL/RR matches the dialect; range id → frame_id map.
   std::array<std::string, 4> joint_names_{"fl_wheel_joint", "fr_wheel_joint",
-                                          "rl_wheel_joint", "rr_wheel_joint"};
+    "rl_wheel_joint", "rr_wheel_joint"};
   std::array<std::string, 4> range_frames_{"fl_range", "fr_range", "rl_range",
-                                           "rr_range"};
+    "rr_range"};
 };
 
 }  // namespace rosbot_mavlink_bridge

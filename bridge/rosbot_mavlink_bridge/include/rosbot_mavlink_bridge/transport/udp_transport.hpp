@@ -21,25 +21,28 @@
 
 #include "rosbot_mavlink_bridge/transport/transport_interface.hpp"
 
-namespace rosbot_mavlink_bridge {
+namespace rosbot_mavlink_bridge
+{
 
-struct UdpConfig {
+struct UdpConfig
+{
   std::string peer_ip;
   std::uint16_t peer_port = 14555;
   std::uint16_t local_port = 14550;
 };
 
 class UdpTransport : public Transport {
- public:
-  explicit UdpTransport(const UdpConfig& cfg) : cfg_(cfg) {}
-  ~UdpTransport() override { UdpTransport::close(); }
+public:
+  explicit UdpTransport(const UdpConfig & cfg)
+  : cfg_(cfg) {}
+  ~UdpTransport() override {UdpTransport::close();}
 
   bool open() override;
   void close() override;
-  std::size_t write(const std::uint8_t* buf, std::size_t len) override;
-  std::size_t read(std::uint8_t* buf, std::size_t len, int timeout_ms) override;
+  std::size_t write(const std::uint8_t * buf, std::size_t len) override;
+  std::size_t read(std::uint8_t * buf, std::size_t len, int timeout_ms) override;
 
- private:
+private:
   UdpConfig cfg_;
   std::atomic<int> fd_{-1};
   sockaddr_in peer_addr_{};

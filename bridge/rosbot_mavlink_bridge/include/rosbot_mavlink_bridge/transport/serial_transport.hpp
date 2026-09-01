@@ -19,24 +19,27 @@
 
 #include "rosbot_mavlink_bridge/transport/transport_interface.hpp"
 
-namespace rosbot_mavlink_bridge {
+namespace rosbot_mavlink_bridge
+{
 
-struct SerialConfig {
+struct SerialConfig
+{
   std::string port = "/dev/ttyUSB0";
   int baudrate = 921600;
 };
 
 class SerialTransport : public Transport {
- public:
-  explicit SerialTransport(const SerialConfig& cfg) : cfg_(cfg) {}
-  ~SerialTransport() override { SerialTransport::close(); }
+public:
+  explicit SerialTransport(const SerialConfig & cfg)
+  : cfg_(cfg) {}
+  ~SerialTransport() override {SerialTransport::close();}
 
   bool open() override;
   void close() override;
-  std::size_t write(const std::uint8_t* buf, std::size_t len) override;
-  std::size_t read(std::uint8_t* buf, std::size_t len, int timeout_ms) override;
+  std::size_t write(const std::uint8_t * buf, std::size_t len) override;
+  std::size_t read(std::uint8_t * buf, std::size_t len, int timeout_ms) override;
 
- private:
+private:
   SerialConfig cfg_;
   std::atomic<int> fd_{-1};
 };

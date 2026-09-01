@@ -23,29 +23,29 @@ from launch_ros.parameter_descriptions import ParameterValue
 
 
 def generate_launch_description():
-    pkg = get_package_share_directory("rosbot_mavlink_bridge")
-    cfg = os.path.join(pkg, "config", "rosbot.yaml")
-    ns = LaunchConfiguration("namespace")
+    pkg = get_package_share_directory('rosbot_mavlink_bridge')
+    cfg = os.path.join(pkg, 'config', 'rosbot.yaml')
+    ns = LaunchConfiguration('namespace')
     return LaunchDescription([
-        DeclareLaunchArgument("namespace", default_value=""),
-        DeclareLaunchArgument("serial_port", default_value="/dev/ttySERIAL"),
-        DeclareLaunchArgument("serial_baudrate", default_value="921600"),
+        DeclareLaunchArgument('namespace', default_value=''),
+        DeclareLaunchArgument('serial_port', default_value='/dev/ttySERIAL'),
+        DeclareLaunchArgument('serial_baudrate', default_value='921600'),
         Node(
-            # Note: no `name=` override — bridge_node sets it to "rosbot_mcu"
+            # Note: no `name=` override — bridge_node sets it to 'rosbot_mcu'
             # to match the micro-ROS firmware (§10.1).
-            package="rosbot_mavlink_bridge",
-            executable="bridge_node",
+            package='rosbot_mavlink_bridge',
+            executable='bridge_node',
             # serial_port/serial_baudrate override cfg so the platform-specific
             # port forwarded by mavlink.launch.py (e.g. /dev/ttyAMA0 on RPi)
             # reaches the node — cfg carries only a fallback default.
             parameters=[cfg, {
-                "ros_namespace": ns,
-                "serial_port": LaunchConfiguration("serial_port"),
-                "serial_baudrate": ParameterValue(
-                    LaunchConfiguration("serial_baudrate"), value_type=int
+                'ros_namespace': ns,
+                'serial_port': LaunchConfiguration('serial_port'),
+                'serial_baudrate': ParameterValue(
+                    LaunchConfiguration('serial_baudrate'), value_type=int
                 ),
             }],
-            output="screen",
+            output='screen',
             emulate_tty=True,
         ),
     ])

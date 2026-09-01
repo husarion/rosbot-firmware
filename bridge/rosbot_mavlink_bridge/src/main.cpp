@@ -20,24 +20,25 @@
 #include "rosbot_mavlink_bridge/transport/serial_transport.hpp"
 #include "rosbot_mavlink_bridge/transport/udp_transport.hpp"
 
-int main(int argc, char** argv) {
+int main(int argc, char ** argv)
+{
   rclcpp::init(argc, argv);
 
   // Transport params come off a temporary node so they can be applied
   // before BridgeNode's constructor opens the transport.
   auto bootstrap = std::make_shared<rclcpp::Node>("rosbot_mavlink_bridge_boot");
   const std::string transport =
-      bootstrap->declare_parameter<std::string>("transport", "udp");
+    bootstrap->declare_parameter<std::string>("transport", "udp");
   const std::string peer_ip =
-      bootstrap->declare_parameter<std::string>("peer_ip", "192.168.77.3");
+    bootstrap->declare_parameter<std::string>("peer_ip", "192.168.77.3");
   const int peer_port = bootstrap->declare_parameter<int>("peer_port", 14555);
   const int local_port = bootstrap->declare_parameter<int>("local_port", 14550);
   const std::string serial_port =
-      bootstrap->declare_parameter<std::string>("serial_port", "/dev/ttyUSB0");
+    bootstrap->declare_parameter<std::string>("serial_port", "/dev/ttyUSB0");
   const int serial_baudrate =
-      bootstrap->declare_parameter<int>("serial_baudrate", 921600);
+    bootstrap->declare_parameter<int>("serial_baudrate", 921600);
   const std::string ros_namespace =
-      bootstrap->declare_parameter<std::string>("ros_namespace", "");
+    bootstrap->declare_parameter<std::string>("ros_namespace", "");
 
   rclcpp::NodeOptions opts;
   std::vector<std::string> args = {"--ros-args"};
@@ -50,9 +51,9 @@ int main(int argc, char** argv) {
   std::unique_ptr<rosbot_mavlink_bridge::Transport> tp;
   if (transport == "udp") {
     rosbot_mavlink_bridge::UdpConfig cfg{
-        peer_ip,
-        static_cast<std::uint16_t>(peer_port),
-        static_cast<std::uint16_t>(local_port),
+      peer_ip,
+      static_cast<std::uint16_t>(peer_port),
+      static_cast<std::uint16_t>(local_port),
     };
     tp = std::make_unique<rosbot_mavlink_bridge::UdpTransport>(cfg);
   } else if (transport == "serial") {
@@ -68,7 +69,7 @@ int main(int argc, char** argv) {
 
   bootstrap.reset();
   auto node =
-      std::make_shared<rosbot_mavlink_bridge::BridgeNode>(opts, std::move(tp));
+    std::make_shared<rosbot_mavlink_bridge::BridgeNode>(opts, std::move(tp));
   rclcpp::spin(node);
   rclcpp::shutdown();
   return 0;
