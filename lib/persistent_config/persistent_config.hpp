@@ -20,8 +20,15 @@
 #include "comm_backend.hpp"
 #include "imu_interface.hpp"
 
-// Persisted in STM32F407 flash sector 11 (0x080E0000, 128 KB). The linker
-// does not reserve the sector — keep total .text under sector 10.
+// Persisted in STM32F407 flash sector 11 (0x080E0000, 128 KB). This isn't a
+// carved-out MEMORY region in the linker script — it's enforced by capping
+// `upload.maximum_size` at 917504 (0xE0000, the sector 10 boundary) in
+// boards/rosbot_stm32f407.json, which shrinks the `FLASH` region the
+// STM32duino core's own linker script generates from that value. A build
+// that grows .text/.data past sector 10 fails at link time ("region FLASH
+// overflowed"), so a reflash can never silently spill into and corrupt this
+// sector — verified by temporarily setting maximum_size low enough to
+// trigger the overflow.
 // load() returns defaults (MAVLINK, empty namespace, no IMU calibration)
 // on a fresh or corrupt sector. save() is a no-op when the cached value
 // matches, so wear scales with config changes, not boots.

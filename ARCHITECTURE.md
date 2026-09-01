@@ -286,7 +286,11 @@ accel/gyro/mag calibration registers are populated. There is no external
 storage on either board revision (no I2C EEPROM wired to the IMU bus, no
 VBAT-backed RTC domain), so calibration offsets ride in
 `persistent_config`'s flash-sector-11 record alongside the comm
-backend/namespace.
+backend/namespace. `boards/rosbot_stm32f407.json`'s `upload.maximum_size`
+(917504 = the sector 10 boundary, not the chip's full 1 MB) makes the
+STM32duino core's linker script size the `FLASH` region to match, so a
+build that grows past sector 10 fails at link time instead of silently
+letting a reflash overwrite this record — see `persistent_config.hpp`.
 
 `persistent_config::save()` asserts the scheduler isn't running — a
 sector erase stalls 1-3 s, which would starve the motor watchdog and
