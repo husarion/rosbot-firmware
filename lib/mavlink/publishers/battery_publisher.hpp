@@ -36,10 +36,10 @@ class MavlinkBatteryPublisher : public MavlinkPublisherInterface {
   void publish(MavlinkNode& node) override {
     const uint32_t now = millis();
     if ((now - last_pub_ms_) < cfg_.period_ms && last_pub_ms_ != 0) return;
-    last_pub_ms_ = now;
 
     BatteryStamped data;
     if (xQueueReceive(cfg_.queue, &data, 0) != pdPASS) return;
+    last_pub_ms_ = now;
 
     uint16_t voltages[10];
     for (uint8_t i = 0; i < 10; ++i) voltages[i] = UINT16_MAX;

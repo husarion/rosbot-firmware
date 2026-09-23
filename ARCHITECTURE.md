@@ -576,14 +576,54 @@ library that does its own `Wire.begin()` (e.g. Adafruit_BNO055 inside
 its `begin(mode)`) silently drops your previously-configured 400 kHz
 back to 100 kHz.
 
-`ImuBno055::init()` re-applies `setClock(400000)` after `bno_.begin()`.
+`ImuBno055::init()` re-applies the fast-mode clock after `bno_.begin()`.
 This was documented here long before the code did it, and it mattered:
 at 100 kHz the DMA read took 5-9 ms against a 4 ms timeout, nearly every
 read timed out, and `imuTask` kept republishing the last good sample —
 orientation frozen while the robot was turned by hand (ROSbot 3, 2026-09).
 At 400 kHz: 1.6-6.9 ms, 0 timeouts in 2181 reads. The spread is the
 BNO055's clock stretching plus task wake-up jitter, hence
-`kReadTimeoutMs = 8` (under the 10 ms task period).
+`kReadTimeoutMs = 8` (under the 10 ms task period). `update()` now reports
+whether it read a fresh sample, and `imuTask` publishes only those.
+
+`setClock(400000)` itself is not 400 kHz either: stm32duino always picks
+the 16/9 duty cycle for fast mode, and with PCLK1 = 42 MHz CCR rounds up
+to 5, i.e. 336 kHz (read back from `I2C->CCR`). Use `setI2cFastMode()`
+(`lib/i2c_fast_mode/`) for every bus: it switches to the 2:1 duty cycle,
+which divides evenly (CCR 35 = exactly 400 kHz) and stays inside the
+fast-mode tLOW/tHIGH minimums.
+
+### Timing measured on HW (2026-09)
+
+Every task was instrumented (DWT cycle counter, wake-to-wake period and
+execution time, per-task CPU from the FreeRTOS run-time stats) on
+`rosbot_release` / `rosbot_xl_release`. All tasks hit their configured
+rate; idle is ~92% on ROSbot 3 and ~89% on ROSbot XL. Things that did not
+look right, and what changed:
+
+- **Queue-fed MAVLink publishers dropped samples.** `publish()` moved
+  `last_pub_ms_` before it knew the queue held anything, so a call that
+  came a moment early closed the gate for a whole period and the next
+  sample was overwritten in its depth-1 queue. With the 5 ms link loop of
+  ROSbot 3, `_imu/data` arrived at 82 Hz instead of 100 (XL's 1 ms loop hid
+  it). The gate now moves only on a real publish, and IMU / joint state /
+  ranges use `period_ms = 0`: the producing task already sets the rate.
+- **`PowerBoard::update()` spun for 100 ms.** It called `readBytes()`,
+  which busy-waits for the stream timeout after the last byte, so
+  `hwMonitorTask` ran 119 ms once a second. It now drains what the UART
+  holds and keeps a partial frame; the reply is picked up on a later
+  10 Hz tick. The board-info request goes half a second after the battery
+  one, because both replies together (102 B) overflow the 64 B RX buffer.
+- `rangeTask` and `ledStripTask` used `vTaskDelay`, so their period grew by
+  the execution time (range: 101 ms instead of 100).
+- The run-time stats timer ticks at 50 kHz, not 100 kHz: TIM5 is on APB1
+  (84 MHz timer clock).
+
+Checked and fine: motor PWM 20 kHz on all four timers, XL fan PWM 25 kHz,
+encoder timers in encoder mode, USART1 923 kbaud for a 921.6 kbaud link
+(+0.16%). The rear-panel USART3 on ROSbot 3 runs +1.27% fast — the best
+BRR gets at 42 MHz, still inside UART tolerance. The XL LED-strip SPI
+asks for 4 MHz and gets 2.625 MHz (the next power-of-two divider).
 
 ### USART → DMA mapping (and IRQ-handler symbol collisions)
 

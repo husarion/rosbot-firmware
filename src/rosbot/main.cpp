@@ -23,6 +23,7 @@
 #include "communication_manager.hpp"
 #include "config.hpp"
 #include "hardware_encoder.hpp"
+#include "i2c_fast_mode.hpp"
 #include "imu_bno055.hpp"
 #include "imu_calibration_boot.hpp"
 #include "led_indicator.hpp"
@@ -118,9 +119,9 @@ void boardPheripheralsInit() {
 
   // Initialize I2C
   imu_i2c.begin();
-  imu_i2c.setClock(400000);
+  setI2cFastMode(imu_i2c);
   range_i2c.begin();
-  range_i2c.setClock(400000);
+  setI2cFastMode(range_i2c);
 
   delay(20);
 }
@@ -240,8 +241,8 @@ void loop() {}
 HardwareTimer RunTimeStatsTimer(TIM5);
 
 void vConfigureTimerForRunTimeStats(void) {
-  RunTimeStatsTimer.setPrescaleFactor(
-      1680);  // every 10 µs (168MHz / 1680 = 100kHz)
+  // TIM5 sits on APB1: 84 MHz timer clock / 1680 = 50 kHz (20 us per count).
+  RunTimeStatsTimer.setPrescaleFactor(1680);
   RunTimeStatsTimer.setOverflow(0xFFFFFFFF);
   RunTimeStatsTimer.refresh();
   RunTimeStatsTimer.resume();

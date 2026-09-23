@@ -55,7 +55,9 @@ class ImuInterface {
   virtual ~ImuInterface() = default;
 
   virtual bool init() = 0;
-  virtual void update() = 0;
+  // False when no fresh sample was read; getData() then still holds the
+  // previous one, which must not be published as new.
+  virtual bool update() = 0;
   virtual const ImuData getData() const { return data_; }
   virtual const char* name() const = 0;
 

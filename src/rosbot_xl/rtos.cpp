@@ -80,6 +80,7 @@ void hwMonitorTask(void* p) {
   TickType_t wake_time = xTaskGetTickCount();
   BatteryStamped data = {};
   TickType_t last_battery_update = 0;
+  bool board_info_pending = false;
 
   while (true) {
     // LED Indicator
@@ -93,27 +94,31 @@ void hwMonitorTask(void* p) {
       g_indicator.update(battery_low, !g_link->isConnected(), error_state);
     }
 
-    if (xTaskGetTickCount() - last_battery_update > pdMS_TO_TICKS(1000)) {
+    // Replies are picked up on later ticks; update() no longer waits for them.
+    power_board.update();
+    if (power_board.hasBatteryUpdate()) {
+      bool connected = rtos_get_timestamp_ns(data.timestamp_ns);
+      data.data = power_board.getData();
+      if (connected) {
+        xQueueOverwrite(battery_queue, &data);
+      }
+    }
+
+    const TickType_t now = xTaskGetTickCount();
+    if (now - last_battery_update > pdMS_TO_TICKS(1000)) {
       // Fan
       float temp = ntc.readCelsius();
       g_fan.update(temp);
 
-      // Battery
-      if (!power_board.boardInfo().isValid()) {
-        power_board.requestBoardInfo();
-      }
-
       power_board.requestBatteryState();
-      power_board.update();
-
-      if (power_board.hasBatteryUpdate()) {
-        bool connected = rtos_get_timestamp_ns(data.timestamp_ns);
-        data.data = power_board.getData();
-        if (connected) {
-          xQueueOverwrite(battery_queue, &data);
-        }
-      }
-      last_battery_update = xTaskGetTickCount();
+      last_battery_update = now;
+      board_info_pending = !power_board.boardInfo().isValid();
+    } else if (board_info_pending &&
+               now - last_battery_update > pdMS_TO_TICKS(500)) {
+      // Half a second apart: both replies together (102 B) overflow the
+      // 64 B UART RX buffer between two 100 ms drains.
+      power_board.requestBoardInfo();
+      board_info_pending = false;
     }
 
     vTaskDelayUntil(&wake_time, period);
@@ -131,10 +136,8 @@ void imuTask(void* p) {
     if (imu_calibration::g_control.save_requested.exchange(false)) {
       imu_calibration::serviceSave(*g_imu);
     }
-    if (rtos_get_timestamp_ns(data.timestamp_ns)) {
-      g_imu->update();
+    if (rtos_get_timestamp_ns(data.timestamp_ns) && g_imu->update()) {
       data.data = g_imu->getData();
-
       xQueueOverwrite(imu_queue, &data);
     }
     vTaskDelayUntil(&wake_time, period);
@@ -177,7 +180,7 @@ void ledStripTask(void* p) {
 
       last_idle_change = now;
     }
-    vTaskDelay(period);
+    vTaskDelayUntil(&wake_time, period);
   }
 }
 

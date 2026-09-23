@@ -379,7 +379,6 @@ inline constexpr uint8_t buttons_pins[] = {PUSH_BUTTON1};
 inline constexpr PowerBoardConfig power_board_config = {
     .serial = pb_serial,
     .baudrate = 38400,
-    .timeout_ms = 100,
     .v_min = 9.6f,
     .v_max = 12.6f,
 };
