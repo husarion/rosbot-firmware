@@ -33,10 +33,10 @@ class MavlinkImuPublisher : public MavlinkPublisherInterface {
   void publish(MavlinkNode& node) override {
     const uint32_t now = millis();
     if ((now - last_pub_ms_) < cfg_.period_ms && last_pub_ms_ != 0) return;
-    last_pub_ms_ = now;
 
     ImuStamped data;
     if (xQueueReceive(cfg_.queue, &data, 0) != pdPASS) return;
+    last_pub_ms_ = now;
 
     const uint64_t t_us = static_cast<uint64_t>(data.timestamp_ns / 1000);
     float quaternion[4] = {data.data.orientation[0], data.data.orientation[1],

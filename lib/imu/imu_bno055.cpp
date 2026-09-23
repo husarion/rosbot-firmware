@@ -19,6 +19,8 @@
 
 #include <atomic>
 
+#include "i2c_fast_mode.hpp"
+
 namespace {
 
 // BNO055 has acceleration, magnetometer, gyroscope, euler and quaternion
@@ -39,7 +41,6 @@ constexpr uint8_t kModeNdof = 0x0C;
 constexpr uint8_t kOffsetsReg = 0x55;  // ACC_OFFSET_X_LSB .. MAG_RADIUS_MSB
 constexpr uint16_t kOffsetsLen = 22;
 constexpr uint32_t kPollTimeoutMs = 10;
-constexpr uint32_t kBusHz = 400000;  // BNO055 datasheet max I2C clock
 // Datasheet Table 3-6: any mode -> CONFIG takes 19 ms, CONFIG -> any 7 ms.
 constexpr uint32_t kToConfigMs = 25;
 constexpr uint32_t kFromConfigMs = 20;
@@ -139,9 +140,9 @@ bool ImuBno055::init() {
   }
   // Adafruit's begin() calls Wire.begin(), which re-inits the bus at
   // 100 kHz and drops the 400 kHz boardPheripheralsInit() set. At 100 kHz
-  // the DMA block took 5-9 ms and nearly every read hit the 4 ms timeout,
-  // so update() kept republishing its last sample (HW 2026-09-23, ROSbot 3).
-  cfg_.bus->setClock(kBusHz);
+  // the DMA block took 5-9 ms and nearly every read hit the 4 ms timeout
+  // (HW 2026-09-23, ROSbot 3).
+  setI2cFastMode(*cfg_.bus);
 
   bno_.setAxisRemap(cfg_.axis_config);
   bno_.setAxisSign(cfg_.axis_sign);
@@ -232,8 +233,8 @@ bool ImuBno055::enableDmaReads() {
   return s_done_sem != nullptr;
 }
 
-void ImuBno055::update() {
-  if (s_done_sem == nullptr) return;
+bool ImuBno055::update() {
+  if (s_done_sem == nullptr) return false;
 
   s_xfer_ok = false;
   // Drain any stale completion left over from a previous timeout.
@@ -241,14 +242,14 @@ void ImuBno055::update() {
 
   if (HAL_I2C_Mem_Read_DMA(s_hi2c, cfg_.i2c_addr << 1, kStartReg,
                            I2C_MEMADD_SIZE_8BIT, s_buf, kBlockLen) != HAL_OK) {
-    return;
+    return false;
   }
 
   if (xSemaphoreTake(s_done_sem, pdMS_TO_TICKS(kReadTimeoutMs)) != pdTRUE) {
     HAL_I2C_Master_Abort_IT(s_hi2c, cfg_.i2c_addr << 1);
-    return;
+    return false;
   }
-  if (!s_xfer_ok) return;
+  if (!s_xfer_ok) return false;
 
   // Acceleration: 1 LSB = 0.01 m/s²  (offsets 0..5)
   data_.acceleration[0] = le16(&s_buf[0]) / 100.0f;
@@ -274,6 +275,7 @@ void ImuBno055::update() {
   data_.orientation[3] = qw;
 
   s_calib_stat.store(s_buf[kCalibStatReg - kStartReg]);
+  return true;
 }
 
 bool ImuBno055::calibrationStatus(ImuCalibrationStatus& out) const {

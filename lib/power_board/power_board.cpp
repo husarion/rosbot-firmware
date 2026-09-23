@@ -24,24 +24,34 @@ PowerBoard::PowerBoard(const PowerBoardConfig& config) : cfg_(config) {}
 //  init() — configures UART, call after HAL/clock init
 // ═══════════════════════════════════════════════════════════════════
 
-void PowerBoard::init() {
-  cfg_.serial.begin(cfg_.baudrate);
-  cfg_.serial.setTimeout(cfg_.timeout_ms);
-}
+void PowerBoard::init() { cfg_.serial.begin(cfg_.baudrate); }
 
 // ═══════════════════════════════════════════════════════════════════
 //  update() — read incoming data and parse frames
 // ═══════════════════════════════════════════════════════════════════
 
+// Non-blocking: takes whatever the UART already holds and keeps a partial
+// frame for the next call. readBytes() used to spin here for the whole 100 ms
+// stream timeout after every reply (HW-measured: hwMonitorTask ran 119 ms
+// once a second on ROSbot XL).
 void PowerBoard::update() {
-  const size_t len = cfg_.serial.readBytes(rx_buf_, RX_BUF_SIZE);
-  if (len == 0) return;
+  while (rx_len_ < RX_BUF_SIZE && cfg_.serial.available() > 0) {
+    rx_buf_[rx_len_++] = static_cast<uint8_t>(cfg_.serial.read());
+  }
+  if (rx_len_ == 0) return;
 
   Frame frame;
   size_t pos = 0;
-
-  while (parseNextFrame(rx_buf_, len, pos, frame)) {
+  while (parseNextFrame(rx_buf_, rx_len_, pos, frame)) {
     dispatch(frame);
+  }
+
+  // parseNextFrame() stops at the start of an incomplete frame or at the end.
+  if (pos >= rx_len_ || (pos == 0 && rx_len_ == RX_BUF_SIZE)) {
+    rx_len_ = 0;
+  } else if (pos > 0) {
+    memmove(rx_buf_, rx_buf_ + pos, rx_len_ - pos);
+    rx_len_ -= pos;
   }
 }
 

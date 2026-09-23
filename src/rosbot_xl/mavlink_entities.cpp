@@ -38,11 +38,15 @@ static MavlinkUdpTransport udp_transport(udp_cfg);
 static MavlinkBatteryPublisher battery_pub({.queue = battery_queue,
                                             .num_cells = BATTERY_NUM_CELLS,
                                             .period_ms = 1000});
-static MavlinkImuPublisher imu_pub({.queue = imu_queue, .period_ms = 10});
+// IMU and joint state: period_ms = 0, the producing task sets the
+// rate. A gate equal to the task period dropped samples: with a 5 ms link
+// loop, ~18% of IMU samples were overwritten in their depth-1 queue before
+// the gate reopened (HW-measured 82 Hz on ROSbot 3).
+static MavlinkImuPublisher imu_pub({.queue = imu_queue, .period_ms = 0});
 // 5 Hz: enough for a progress bar, cheap on the link.
 static MavlinkImuCalibrationPublisher imu_calibration_pub({.period_ms = 200});
 static MavlinkJointStatePublisher joint_state_pub({.queue = joint_state_queue,
-                                                   .period_ms = 5});
+                                                   .period_ms = 0});
 static MavlinkButtonsPublisher buttons_pub({.pins = buttons_pins,
                                             .num_buttons = sizeof(buttons_pins),
                                             .period_ms = 50});

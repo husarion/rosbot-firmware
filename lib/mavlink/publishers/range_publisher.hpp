@@ -37,10 +37,10 @@ class MavlinkRangePublisher : public MavlinkPublisherInterface {
   void publish(MavlinkNode& node) override {
     const uint32_t now = millis();
     if ((now - last_pub_ms_) < cfg_.period_ms && last_pub_ms_ != 0) return;
-    last_pub_ms_ = now;
 
     RangesStamped data;
     if (xQueueReceive(cfg_.queue, &data, 0) != pdPASS) return;
+    last_pub_ms_ = now;
 
     // time_boot_ms truncates to uint32_t — monotonic over any 49-day window.
     const uint32_t t_ms = static_cast<uint32_t>(data.timestamp_ns / 1000000);

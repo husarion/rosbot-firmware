@@ -26,7 +26,6 @@
 struct PowerBoardConfig {
   HardwareSerial& serial;
   uint32_t baudrate = 115200;
-  uint32_t timeout_ms = 100;
   float v_min = 27.0f;  // minimum battery voltage [V]
   float v_max = 42.0f;  // maximum battery voltage [V]
 };
@@ -121,6 +120,7 @@ class PowerBoard : public BatteryInterface {
 
   PowerBoardConfig cfg_;
   uint8_t rx_buf_[RX_BUF_SIZE] = {};
+  size_t rx_len_ = 0;
 
   BoardInfo board_info_;
 

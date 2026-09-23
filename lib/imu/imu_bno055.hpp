@@ -47,7 +47,7 @@ class ImuBno055 : public ImuInterface {
   // called, update() is a safe no-op (see its s_done_sem guard).
   bool enableDmaReads();
 
-  void update() override;
+  bool update() override;
   const char* name() const override { return "BNO055"; }
 
   // Live CALIB_STAT from the DMA block — no extra bus traffic.

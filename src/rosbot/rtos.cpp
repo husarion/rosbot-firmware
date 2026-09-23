@@ -94,10 +94,10 @@ void imuTask(void* p) {
       imu_calibration::serviceSave(*g_imu);
     }
     bool connected = rtos_get_timestamp_ns(data.timestamp_ns);
-    g_imu->update();
+    const bool fresh = g_imu->update();
     data.data = g_imu->getData();
 
-    if (connected) {
+    if (connected && fresh) {
       xQueueOverwrite(imu_queue, &data);
     }
     vTaskDelayUntil(&wake_time, period);
@@ -179,7 +179,7 @@ void rangeTask(void* p) {
     if (connected) {
       xQueueOverwrite(ranges_queue, &data);
     }
-    vTaskDelay(period);
+    vTaskDelayUntil(&wake_time, period);
   }
 }
 
