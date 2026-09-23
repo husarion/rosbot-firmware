@@ -167,6 +167,13 @@ void setup() {
   now.has_imu_calibration = s_persistent.has_imu_calibration;
   now.imu_calibration = s_persistent.imu_calibration;
 
+  // The debug UART is a rear-panel header with no SBC wiring, so calibration
+  // progress is mirrored onto the SBC link as well — see
+  // imu_calibration_boot.hpp. Skipped when the FTDI itself is the link.
+  HardwareSerial* link_serial =
+      (transport != nullptr && g_comm_mgr.hasDebugSerial()) ? transport->serial
+                                                            : nullptr;
+
   battery_adc.init();
   const bool imu_ready = imu_bno055.init();
   if (imu_ready) {
@@ -176,13 +183,21 @@ void setup() {
     if (imu_calibration_requested) {
       ImuCalibrationOffsets captured{};
       if (imu_calibration_boot::run(imu_bno055, RED_LED, GRN_LED, GRN_LED2,
-                                    captured, g_comm_mgr.debugSerial())) {
+                                    captured, g_comm_mgr.debugSerial(),
+                                    link_serial)) {
         now.has_imu_calibration = true;
         now.imu_calibration = captured;
       }
     }
-  } else if (g_comm_mgr.hasDebugSerial()) {
-    g_comm_mgr.debugSerial()->printf("IMU init failed: BNO055 not found\r\n");
+  } else {
+    if (g_comm_mgr.hasDebugSerial()) {
+      g_comm_mgr.debugSerial()->printf("IMU init failed: BNO055 not found\r\n");
+    }
+    // Only on a calibration boot: that is when someone on the SBC is reading
+    // the link for text. On a normal boot the host expects MAVLink here.
+    if (imu_calibration_requested && link_serial != nullptr) {
+      link_serial->printf("IMU init failed: BNO055 not found\r\n");
+    }
   }
   persistent_config::save(now);
 

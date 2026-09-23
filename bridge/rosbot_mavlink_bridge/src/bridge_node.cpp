@@ -174,10 +174,27 @@ void BridgeNode::rxLoop()
     // 50 ms timeout keeps the thread responsive to shutdown while idle.
     const std::size_t n = transport_->read(buf, sizeof(buf), 50);
     for (std::size_t i = 0; i < n; ++i) {
+      // A byte that arrives while the parser is between frames and does not
+      // open one is not MAVLink. On ROSbot 3 that is the firmware's boot-time
+      // calibration log, and this node is the link's only reader — a second
+      // one would get a random share of the bytes — so it relays the text.
+      const bool is_text =
+        mavlink_get_channel_status(kChannel)->parse_state <= MAVLINK_PARSE_STATE_IDLE &&
+        buf[i] != MAVLINK_STX && buf[i] != MAVLINK_STX_MAVLINK1;
       if (mavlink_parse_char(kChannel, buf[i], &msg, &status)) {
         onMavlinkMessage(msg);
+      } else if (is_text) {
+        onBootText(buf[i]);
       }
     }
+  }
+}
+
+void BridgeNode::onBootText(std::uint8_t byte)
+{
+  const auto line = boot_text_.feed(byte);
+  if (line && isRelayedBootLine(*line)) {
+    RCLCPP_INFO(this->get_logger(), "[MCU boot] %s", line->c_str());
   }
 }
 

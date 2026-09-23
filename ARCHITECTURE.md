@@ -355,8 +355,27 @@ live — `getCalibrationStatus()` only works via blocking Wire calls before
 `enableDmaReads()` (see the gotcha below), and no link exists yet at that
 point in boot anyway (ROS/MAVLink both come up well after this window,
 and after `enableDmaReads()`). A runtime service calling it would just
-fail. Progress is observable only via the diagnostic-serial logs and LEDs
-during the boot-time window itself — see `imu_calibration_boot::run()`.
+fail. Progress is observable only via the serial logs and LEDs during the
+boot-time window itself — see `imu_calibration_boot::run()`.
+
+Where those logs go differs per variant, because an SBC can only read what
+is wired to it:
+
+- **ROSbot XL** — the diagnostic serial (FT230X, `/dev/rosbot` on the SBC).
+  The upstream link is Ethernet, so the FTDI is free during the window.
+- **ROSbot 3** — the diagnostic serial *and* the SBC link (Serial1, the Pi's
+  `/dev/ttyAMA0`). The diagnostic UART is a rear-panel header with no SBC
+  wiring, so without the mirror nothing on the robot could see progress.
+  The link is idle then — MAVLink/micro-ROS only start after `run()`
+  returns, the same window the pre-comm `FW:` prompt already uses — but the
+  host driver keeps the port open, and two readers on one tty split the
+  bytes between them rather than both seeing them. So the host side does not
+  open the port a second time: `rosbot_mavlink_bridge` feeds every byte that
+  is not part of a MAVLink frame to a line collector
+  (`bridge/.../boot_text.hpp`) and logs `IMU calibration:` / `IMU init
+  failed` lines as `[MCU boot] ...`. Those lines therefore stay plain ASCII.
+  Not mirrored when the FTDI itself is the link (`kChangeTransport`, a
+  developer setup): there is no free debug line then anyway.
 
 Step 2's blocking calls (`getCalibrationStatus()`,
 `captureCalibrationOffsets()`) only work because `main.cpp` calls
