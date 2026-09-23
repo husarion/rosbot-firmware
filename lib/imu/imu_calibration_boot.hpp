@@ -33,16 +33,21 @@ namespace imu_calibration_boot {
 // `green_led2`, pass 0 if the board doesn't have a second one) go solid
 // on success. Fills `out` and returns true only on success.
 //
-// `debug_serial` (pass nullptr to disable) gets the sys/gyro/accel/mag
-// status printed once a second plus entry/success/timeout lines — this is
-// the only feedback available during this window (no ROS/MAVLink link is
-// up yet, so `_imu_calibration_status` isn't reachable). The caller must
-// pass a line that's actually free — e.g. `CommunicationManager`'s debug
-// serial, valid because this window only ever runs on the transport
-// branch that leaves it unclaimed (see boot_option.hpp: kCalibrateImu and
-// kChangeTransport are mutually exclusive).
+// `debug_serial` and `link_serial` (either may be nullptr) both get the
+// sys/gyro/accel/mag status printed once a second plus entry/success/timeout
+// lines — this is the only feedback available during this window (no
+// ROS/MAVLink link is up yet, so `_imu_calibration_status` isn't reachable).
+// `debug_serial` is `CommunicationManager`'s debug serial, free because this
+// window only ever runs on the transport branch that leaves it unclaimed
+// (see boot_option.hpp: kCalibrateImu and kChangeTransport are mutually
+// exclusive). `link_serial` is the upstream link when that is a UART
+// (ROSbot 3's SBC serial): the only line an SBC can see on a robot whose
+// debug UART isn't wired to it. It is idle here — MAVLink/micro-ROS start
+// after this returns — and the host bridge relays these lines, so they must
+// stay plain ASCII.
 bool run(ImuBno055& imu, uint8_t red_led, uint8_t green_led, uint8_t green_led2,
          ImuCalibrationOffsets& out, HardwareSerial* debug_serial = nullptr,
-         uint32_t timeout_ms = 120000, uint32_t blink_ms = 150);
+         HardwareSerial* link_serial = nullptr, uint32_t timeout_ms = 120000,
+         uint32_t blink_ms = 150);
 
 }  // namespace imu_calibration_boot

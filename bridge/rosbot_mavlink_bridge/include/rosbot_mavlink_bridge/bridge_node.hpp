@@ -25,6 +25,7 @@
 
 #include "mavlink.h"  // NOLINT(build/include_subdir) -- mavgen's flat vendored layout
 #include "rclcpp/rclcpp.hpp"
+#include "rosbot_mavlink_bridge/boot_text.hpp"
 #include "rosbot_mavlink_bridge/transport/transport_interface.hpp"
 #include "sensor_msgs/msg/battery_state.hpp"
 #include "sensor_msgs/msg/image.hpp"
@@ -47,6 +48,7 @@ public:
 
 private:
   void rxLoop();
+  void onBootText(std::uint8_t byte);
   void heartbeatTimer();
   void onMavlinkMessage(const mavlink_message_t & msg);
 
@@ -97,6 +99,7 @@ private:
   // pre_communication before this node starts.
   std::atomic<bool> peer_alive_{false};
   std::atomic<bool> banner_seen_{false};
+  BootTextCollector boot_text_;  // rxLoop thread only
   std::atomic<std::int64_t> last_peer_heartbeat_ns_{0};
   std::chrono::milliseconds peer_timeout_{3000};
   std::regex banner_regex_;

@@ -68,6 +68,10 @@ if(BUILD_TESTING)
     "${CMAKE_CURRENT_SOURCE_DIR}/mavlink_dialect/*")
   set(AMENT_LINT_AUTO_FILE_EXCLUDE ${_mavlink_dialect_files})
   ament_lint_auto_find_test_dependencies()
+
+  find_package(ament_cmake_gtest REQUIRED)
+  ament_add_gtest(test_boot_text test/test_boot_text.cpp)
+  target_include_directories(test_boot_text PRIVATE include)
 endif()
 
 ament_package()
