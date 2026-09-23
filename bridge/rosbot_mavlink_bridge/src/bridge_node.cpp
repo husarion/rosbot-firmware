@@ -96,6 +96,27 @@ BridgeNode::BridgeNode(
     std::shared_ptr<std_srvs::srv::Trigger::Response> res) {
       mcuIdServiceCb(req, res);
       });
+  calib_pub_ = this->create_publisher<std_msgs::msg::UInt8MultiArray>(
+      "_imu/calibration", bestEffortDepth1());
+  save_calib_service_ = this->create_service<std_srvs::srv::Trigger>(
+      "_imu/save_calibration",
+    [this](const std::shared_ptr<std_srvs::srv::Trigger::Request> req,
+    std::shared_ptr<std_srvs::srv::Trigger::Response> res) {
+      saveImuCalibrationCb(req, res);
+      });
+  // Action codes mirror imu_calibration::Action in the firmware.
+  start_calib_service_ = this->create_service<std_srvs::srv::Trigger>(
+      "_imu/start_calibration",
+    [this](const std::shared_ptr<std_srvs::srv::Trigger::Request>,
+    std::shared_ptr<std_srvs::srv::Trigger::Response> res) {
+      calibrationSessionCb(1, res);
+      });
+  stop_calib_service_ = this->create_service<std_srvs::srv::Trigger>(
+      "_imu/stop_calibration",
+    [this](const std::shared_ptr<std_srvs::srv::Trigger::Request>,
+    std::shared_ptr<std_srvs::srv::Trigger::Response> res) {
+      calibrationSessionCb(0, res);
+      });
 
   heartbeat_timer_ = this->create_wall_timer(std::chrono::seconds(1),
       [this]() {heartbeatTimer();});
@@ -227,6 +248,9 @@ void BridgeNode::onMavlinkMessage(const mavlink_message_t & msg)
       break;
     case MAVLINK_MSG_ID_ROSBOT_MCU_ID:
       onRosbotMcuId(msg);
+      break;
+    case MAVLINK_MSG_ID_ROSBOT_IMU_CALIBRATION:
+      onRosbotImuCalibration(msg);
       break;
     case MAVLINK_MSG_ID_COMMAND_ACK:
       onCommandAck(msg);
@@ -456,8 +480,34 @@ void BridgeNode::onRosbotMcuId(const mavlink_message_t & msg)
 
 void BridgeNode::onCommandAck(const mavlink_message_t & msg)
 {
-  // We retry COMMAND_LONG on timeout rather than tracking ACKs.
-  (void)msg;
+  // MCU_ID retries on timeout rather than tracking ACKs; only the
+  // calibration save needs the verdict the ACK carries.
+  mavlink_command_ack_t ack;
+  mavlink_msg_command_ack_decode(&msg, &ack);
+  if (ack.command != MAV_CMD_USER_2) {return;}
+  {
+    std::lock_guard<std::mutex> lk(calib_mutex_);
+    calib_ack_result_ = ack.result;
+  }
+  calib_cv_.notify_all();
+}
+
+void BridgeNode::onRosbotImuCalibration(const mavlink_message_t & msg)
+{
+  mavlink_rosbot_imu_calibration_t m;
+  mavlink_msg_rosbot_imu_calibration_decode(&msg, &m);
+
+  std_msgs::msg::UInt8MultiArray out;
+  out.data = {m.sys, m.gyro, m.accel, m.mag, m.state, m.save_seq, m.has_saved,
+    m.session};
+  calib_pub_->publish(out);
+
+  {
+    std::lock_guard<std::mutex> lk(calib_mutex_);
+    calib_last_ = m;
+    calib_seen_ = true;
+  }
+  calib_cv_.notify_all();
 }
 
 void BridgeNode::wheelCmdCb(
@@ -529,6 +579,91 @@ void BridgeNode::mcuIdServiceCb(
   res->message = "{\"mcu_id\": \"\"}";
   std::lock_guard<std::mutex> lk(mcu_id_mutex_);
   mcu_id_pending_ = false;
+}
+
+void BridgeNode::saveImuCalibrationCb(
+  const std::shared_ptr<std_srvs::srv::Trigger::Request>/*req*/,
+  std::shared_ptr<std_srvs::srv::Trigger::Response> res)
+{
+  auto reply = [&res](bool ok, const std::string & result,
+    const mavlink_rosbot_imu_calibration_t & c) {
+      res->success = ok;
+      res->message = "{\"result\": \"" + result + "\", \"sys\": " +
+        std::to_string(c.sys) + ", \"gyro\": " + std::to_string(c.gyro) +
+        ", \"accel\": " + std::to_string(c.accel) + ", \"mag\": " +
+        std::to_string(c.mag) + "}";
+    };
+
+  std::unique_lock<std::mutex> lk(calib_mutex_);
+  if (!calib_seen_) {
+    reply(false, "no_status", calib_last_);
+    return;
+  }
+  const std::uint8_t seq_before = calib_last_.save_seq;
+
+  const int ack = sendCalibrationCommand(2, lk);
+  if (ack < 0) {
+    reply(false, "no_ack", calib_last_);
+    return;
+  }
+  if (ack != MAV_RESULT_ACCEPTED) {
+    // The MCU refuses up front when the chip isn't fully calibrated — the
+    // common case: the robot hasn't been moved enough yet.
+    reply(false, "not_calibrated", calib_last_);
+    return;
+  }
+
+  // Offsets read (~60 ms) + flash append; 3 s is generous.
+  const bool finished = calib_cv_.wait_for(lk, std::chrono::seconds(3),
+      [this, seq_before] {return calib_last_.save_seq != seq_before;});
+  if (!finished) {
+    reply(false, "timeout", calib_last_);
+    return;
+  }
+  switch (calib_last_.state) {
+    case 2:
+      reply(true, "saved", calib_last_);
+      break;
+    case 3:
+      reply(false, "not_calibrated", calib_last_);
+      break;
+    default:
+      reply(false, "failed", calib_last_);
+      break;
+  }
+}
+
+int BridgeNode::sendCalibrationCommand(
+  std::uint8_t action, std::unique_lock<std::mutex> & lk)
+{
+  calib_ack_result_ = -1;
+  for (int attempt = 0; attempt < 3 && calib_ack_result_ < 0; ++attempt) {
+    lk.unlock();
+    mavlink_message_t cmd;
+    mavlink_msg_command_long_pack(bridge_sysid_, bridge_compid_, &cmd,
+                                  mcu_sysid_, mcu_compid_, MAV_CMD_USER_2,
+                                  /*confirmation=*/attempt,
+                                  static_cast<float>(action), 0, 0, 0, 0, 0,
+                                  0);
+    sendMavlink(cmd);
+    lk.lock();
+    calib_cv_.wait_for(lk, std::chrono::milliseconds(500),
+      [this] {return calib_ack_result_ >= 0;});
+  }
+  const int ack = calib_ack_result_;
+  calib_ack_result_ = -1;
+  return ack;
+}
+
+void BridgeNode::calibrationSessionCb(
+  std::uint8_t action,
+  std::shared_ptr<std_srvs::srv::Trigger::Response> res)
+{
+  std::unique_lock<std::mutex> lk(calib_mutex_);
+  const int ack = sendCalibrationCommand(action, lk);
+  res->success = ack == MAV_RESULT_ACCEPTED;
+  res->message = ack < 0 ? "{\"result\": \"no_ack\"}" :
+    (res->success ? "{\"result\": \"ok\"}" : "{\"result\": \"rejected\"}");
 }
 
 }  // namespace rosbot_mavlink_bridge

@@ -203,10 +203,11 @@ void MavlinkNode::dispatchMessage(const mavlink_message_t& msg) {
       break;
   }
 
+  // Every match, not the first: several commands share COMMAND_LONG and
+  // each filters its own MAV_CMD_* inside onMessage().
   for (size_t i = 0; i < cfg_.sub_count; ++i) {
     if (cfg_.subscribers[i]->msgId() == msg.msgid) {
       cfg_.subscribers[i]->onMessage(msg, *this);
-      return;
     }
   }
 }

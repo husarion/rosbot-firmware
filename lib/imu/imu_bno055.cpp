@@ -17,14 +17,32 @@
 #include <STM32FreeRTOS.h>
 #include <wiring_constants.h>
 
+#include <atomic>
+
 namespace {
 
 // BNO055 has acceleration, magnetometer, gyroscope, euler and quaternion
-// data laid out contiguously starting at register 0x08. We DMA-read the
-// whole 32-byte block in one transaction and ignore mag/euler bytes.
-constexpr uint8_t kStartReg = 0x08;     // ACC_DATA_X_LSB
-constexpr uint16_t kBlockLen = 32;      // 0x08..0x27 inclusive
-constexpr uint16_t kReadTimeoutMs = 4;  // 32 B @ 400 kHz takes ~0.7 ms
+// data laid out contiguously starting at register 0x08, and CALIB_STAT at
+// 0x35 a few registers later. One DMA transaction covers the whole range,
+// so the live calibration level costs 14 extra bytes, not a second read.
+constexpr uint8_t kStartReg = 0x08;                            // ACC_DATA_X_LSB
+constexpr uint8_t kCalibStatReg = 0x35;                        // CALIB_STAT
+constexpr uint16_t kBlockLen = kCalibStatReg - kStartReg + 1;  // 46 bytes
+// 46 B @ 400 kHz is ~1.2 ms on the wire; with the BNO055's clock
+// stretching and the task's own wake-up latency the wait measured 1.6-6.9 ms
+// (2181 reads, HW 2026-09-23). Must stay under the 10 ms task period.
+constexpr uint16_t kReadTimeoutMs = 8;
+
+constexpr uint8_t kOprModeReg = 0x3D;
+constexpr uint8_t kModeConfig = 0x00;
+constexpr uint8_t kModeNdof = 0x0C;
+constexpr uint8_t kOffsetsReg = 0x55;  // ACC_OFFSET_X_LSB .. MAG_RADIUS_MSB
+constexpr uint16_t kOffsetsLen = 22;
+constexpr uint32_t kPollTimeoutMs = 10;
+constexpr uint32_t kBusHz = 400000;  // BNO055 datasheet max I2C clock
+// Datasheet Table 3-6: any mode -> CONFIG takes 19 ms, CONFIG -> any 7 ms.
+constexpr uint32_t kToConfigMs = 25;
+constexpr uint32_t kFromConfigMs = 20;
 
 // FreeRTOS-safe NVIC priority. Must be numerically >=
 // configLIBRARY_MAX_SYSCALL_INTERRUPT_PRIORITY (5) so ISRs can call the
@@ -65,10 +83,24 @@ I2C_HandleTypeDef* s_hi2c = nullptr;
 DMA_HandleTypeDef s_hdma_rx = {};
 SemaphoreHandle_t s_done_sem = nullptr;
 volatile bool s_xfer_ok = false;
+// CALIB_STAT as of the last good DMA read: sys[7:6] gyro[5:4] accel[3:2]
+// mag[1:0]. 0xFF = never read. Written by the IMU task, read by MAVLink.
+std::atomic<uint8_t> s_calib_stat{0xFF};
 
 inline int16_t le16(const uint8_t* p) {
   return static_cast<int16_t>(static_cast<uint16_t>(p[0]) |
                               (static_cast<uint16_t>(p[1]) << 8));
+}
+
+// Register order (0x55..0x6A) matches ImuCalibrationOffsets field-for-field.
+void unpackOffsets(const uint8_t* raw, ImuCalibrationOffsets& out) {
+  int16_t* fields[] = {&out.accel[0],     &out.accel[1],  &out.accel[2],
+                       &out.mag[0],       &out.mag[1],    &out.mag[2],
+                       &out.gyro[0],      &out.gyro[1],   &out.gyro[2],
+                       &out.accel_radius, &out.mag_radius};
+  for (size_t i = 0; i < sizeof(fields) / sizeof(fields[0]); ++i) {
+    *fields[i] = le16(&raw[i * 2]);
+  }
 }
 
 }  // namespace
@@ -105,6 +137,11 @@ bool ImuBno055::init() {
   if (!bno_.begin(OPERATION_MODE_NDOF)) {
     return false;
   }
+  // Adafruit's begin() calls Wire.begin(), which re-inits the bus at
+  // 100 kHz and drops the 400 kHz boardPheripheralsInit() set. At 100 kHz
+  // the DMA block took 5-9 ms and nearly every read hit the 4 ms timeout,
+  // so update() kept republishing its last sample (HW 2026-09-23, ROSbot 3).
+  cfg_.bus->setClock(kBusHz);
 
   bno_.setAxisRemap(cfg_.axis_config);
   bno_.setAxisSign(cfg_.axis_sign);
@@ -235,6 +272,46 @@ void ImuBno055::update() {
   data_.orientation[1] = qy;
   data_.orientation[2] = qz;
   data_.orientation[3] = qw;
+
+  s_calib_stat.store(s_buf[kCalibStatReg - kStartReg]);
+}
+
+bool ImuBno055::calibrationStatus(ImuCalibrationStatus& out) const {
+  const uint8_t raw = s_calib_stat.load();
+  if (raw == 0xFF) return false;
+  out.system = (raw >> 6) & 0x03;
+  out.gyro = (raw >> 4) & 0x03;
+  out.accel = (raw >> 2) & 0x03;
+  out.mag = raw & 0x03;
+  return true;
+}
+
+bool ImuBno055::readCalibrationOffsets(ImuCalibrationOffsets& out) {
+  if (s_hi2c == nullptr) return false;
+  const uint16_t addr = cfg_.i2c_addr << 1;
+  uint8_t mode = kModeConfig;
+  if (HAL_I2C_Mem_Write(s_hi2c, addr, kOprModeReg, I2C_MEMADD_SIZE_8BIT, &mode,
+                        1, kPollTimeoutMs) != HAL_OK) {
+    return false;
+  }
+  vTaskDelay(pdMS_TO_TICKS(kToConfigMs));
+
+  uint8_t raw[kOffsetsLen] = {};
+  const bool read_ok =
+      HAL_I2C_Mem_Read(s_hi2c, addr, kOffsetsReg, I2C_MEMADD_SIZE_8BIT, raw,
+                       kOffsetsLen, kPollTimeoutMs) == HAL_OK;
+
+  // Back to fusion whatever the read did — a chip left in CONFIG mode
+  // outputs no orientation at all.
+  mode = kModeNdof;
+  const bool back_ok =
+      HAL_I2C_Mem_Write(s_hi2c, addr, kOprModeReg, I2C_MEMADD_SIZE_8BIT, &mode,
+                        1, kPollTimeoutMs) == HAL_OK;
+  vTaskDelay(pdMS_TO_TICKS(kFromConfigMs));
+  if (!read_ok || !back_ok) return false;
+
+  unpackOffsets(raw, out);
+  return true;
 }
 
 ImuCalibrationStatus ImuBno055::getCalibrationStatus() {
@@ -244,21 +321,23 @@ ImuCalibrationStatus ImuBno055::getCalibrationStatus() {
 }
 
 bool ImuBno055::captureCalibrationOffsets(ImuCalibrationOffsets& out) {
-  adafruit_bno055_offsets_t offsets{};
-  if (!bno_.getSensorOffsets(offsets)) {
-    return false;
+  if (!getCalibrationStatus().fullyCalibrated()) return false;
+
+  bno_.setMode(OPERATION_MODE_CONFIG);
+  delay(kToConfigMs);
+  uint8_t raw[kOffsetsLen] = {};
+  bool ok = false;
+  cfg_.bus->beginTransmission(cfg_.i2c_addr);
+  cfg_.bus->write(kOffsetsReg);
+  if (cfg_.bus->endTransmission(false) == 0 &&
+      cfg_.bus->requestFrom(static_cast<uint8_t>(cfg_.i2c_addr),
+                            static_cast<uint8_t>(kOffsetsLen)) == kOffsetsLen) {
+    for (auto& byte : raw) byte = cfg_.bus->read();
+    ok = true;
   }
-  out.accel[0] = offsets.accel_offset_x;
-  out.accel[1] = offsets.accel_offset_y;
-  out.accel[2] = offsets.accel_offset_z;
-  out.mag[0] = offsets.mag_offset_x;
-  out.mag[1] = offsets.mag_offset_y;
-  out.mag[2] = offsets.mag_offset_z;
-  out.gyro[0] = offsets.gyro_offset_x;
-  out.gyro[1] = offsets.gyro_offset_y;
-  out.gyro[2] = offsets.gyro_offset_z;
-  out.accel_radius = offsets.accel_radius;
-  out.mag_radius = offsets.mag_radius;
+  bno_.setMode(OPERATION_MODE_NDOF);
+  if (!ok) return false;
+  unpackOffsets(raw, out);
   return true;
 }
 
@@ -279,7 +358,6 @@ void ImuBno055::applyCalibrationOffsets(const ImuCalibrationOffsets& offsets) {
 }
 
 bool ImuBno055::probeCalibStatRaw(uint8_t& raw_byte, uint8_t& wire_error) {
-  constexpr uint8_t kCalibStatReg = 0x35;
   raw_byte = 0;
   cfg_.bus->beginTransmission(cfg_.i2c_addr);
   cfg_.bus->write(kCalibStatReg);

@@ -12,11 +12,13 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+#include "commands/imu_calibration_command.hpp"
 #include "commands/mcu_id_command.hpp"
 #include "config.hpp"
 #include "mavlink_node.hpp"
 #include "publishers/battery_publisher.hpp"
 #include "publishers/buttons_publisher.hpp"
+#include "publishers/imu_calibration_publisher.hpp"
 #include "publishers/imu_publisher.hpp"
 #include "publishers/joint_state_publisher.hpp"
 #include "publishers/range_publisher.hpp"
@@ -32,6 +34,8 @@ static MavlinkBatteryPublisher battery_pub({.queue = battery_queue,
                                             .num_cells = BATTERY_NUM_CELLS,
                                             .period_ms = 1000});
 static MavlinkImuPublisher imu_pub({.queue = imu_queue, .period_ms = 10});
+// 5 Hz: enough for a progress bar, cheap on the link.
+static MavlinkImuCalibrationPublisher imu_calibration_pub({.period_ms = 200});
 static MavlinkJointStatePublisher joint_state_pub({.queue = joint_state_queue,
                                                    .period_ms = 5});
 static MavlinkRangePublisher range_pub({.queue = ranges_queue,
@@ -43,7 +47,8 @@ static MavlinkButtonsPublisher buttons_pub({.pins = buttons_pins,
                                             .period_ms = 50});
 
 static MavlinkPublisherInterface* s_publishers[] = {
-    &battery_pub, &imu_pub, &joint_state_pub, &range_pub, &buttons_pub};
+    &battery_pub,     &imu_pub,   &imu_calibration_pub,
+    &joint_state_pub, &range_pub, &buttons_pub};
 
 // Subscribers (commands: bridge → MCU)
 static const PanelLedConfig s_panel_leds[] = {
@@ -54,9 +59,10 @@ static WheelCmdSubscriber wheel_cmd_sub(g_motors);
 static PanelLedSubscriber leds_sub(s_panel_leds, sizeof(s_panel_leds) /
                                                      sizeof(s_panel_leds[0]));
 static McuIdCommand mcu_id_cmd;
+static ImuCalibrationCommand imu_calibration_cmd;
 
-static MavlinkSubscriberInterface* s_subscribers[] = {&wheel_cmd_sub, &leds_sub,
-                                                      &mcu_id_cmd};
+static MavlinkSubscriberInterface* s_subscribers[] = {
+    &wheel_cmd_sub, &leds_sub, &mcu_id_cmd, &imu_calibration_cmd};
 
 static MavlinkNodeConfig mavlink_cfg = {
     .sysid = 1,

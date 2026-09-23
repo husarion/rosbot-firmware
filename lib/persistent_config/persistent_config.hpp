@@ -31,7 +31,9 @@
 // trigger the overflow.
 // load() returns defaults (MAVLINK, empty namespace, no IMU calibration)
 // on a fresh or corrupt sector. save() is a no-op when the cached value
-// matches, so wear scales with config changes, not boots.
+// matches, so wear scales with config changes, not boots. Records are
+// appended to the sector rather than rewritten (see the .cpp), so the
+// sector is only erased once it is full.
 //
 // Comm backend/namespace and BNO055 calibration offsets share one record
 // in the same sector — a save() always writes the full Config, so callers
@@ -55,9 +57,17 @@ struct Config {
 
 Config load();
 
-// Must run before vTaskStartScheduler(); the 1-3 s sector erase stalls
-// the instruction bus and starves the motor watchdog / MAVLink TX DMA.
-// Asserts if invoked once the scheduler is running.
-void save(const Config& cfg);
+// Safe while the scheduler runs as long as the sector has a free slot:
+// appending a record only programs ~70 bytes. Returns false when it would
+// need the 1-3 s sector erase (full sector, or a legacy record to replace)
+// and the scheduler is running — that stall starves the motor watchdog and
+// MAVLink TX, so it is left to the next boot's save().
+bool save(const Config& cfg);
+
+// Runtime entry for the live calibration save: round-trips the cached
+// backend/namespace and replaces only the IMU offsets.
+bool saveImuCalibration(const ImuCalibrationOffsets& offsets);
+
+bool hasImuCalibration();
 
 }  // namespace persistent_config
