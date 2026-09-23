@@ -346,19 +346,10 @@ inline constexpr PIDConfig pid_config = {
     .max_brake_output = 0.3f,  // allow up to 30% reverse PWM for braking
 };
 
-// ───────── ROS ─────────
-inline constexpr const char* NODE_NAME = "rosbot_mcu";
-inline constexpr uint16_t DOMAIN_ID = 255;  // 255 inherit from Micro ROS Agent
-inline constexpr uint32_t SPIN_TIME_MS = 10;
-inline constexpr uint32_t TIMER_MS = 10;
-inline constexpr uint16_t PING_WATCHDOG_MS = 200;
-inline constexpr uint16_t PING_TIMEOUT_MS = 100;
-inline constexpr uint8_t PING_ATTEMPTS = 1;
-
+// ───────── Ethernet ─────────
 inline byte MAC[6] = {0x02, 0x47, 0x00, 0x00, 0x00, 0x01};
 inline IPAddress CLIENT_IP = {192, 168, 77, 3};
-inline IPAddress AGENT_IP = {192, 168, 77, 2};
-inline uint16_t AGENT_PORT = 8888;
+inline IPAddress SBC_IP = {192, 168, 77, 2};
 
 // ───────── Publishers ─────────
 inline QueueHandle_t battery_queue;
@@ -372,8 +363,7 @@ inline constexpr float BATTERY_DESIGN_CAPACITY =
     BATTERY_NUM_CELLS * BATTERY_CELL_CAPACITY;
 inline constexpr uint8_t buttons_pins[] = {PUSH_BUTTON1};
 
-// Publisher configs live in src/rosbot_xl/ros.cpp — see
-// include/rosbot/config.hpp for the ODR rationale.
+// Publisher configs live in src/rosbot_xl/mavlink_entities.cpp.
 
 // ───────── Power Board - Battery ─────────
 inline constexpr PowerBoardConfig power_board_config = {

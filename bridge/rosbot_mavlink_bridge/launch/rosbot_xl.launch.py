@@ -29,8 +29,8 @@ def generate_launch_description():
         DeclareLaunchArgument('namespace', default_value=''),
         Node(
             # Note: no `name=` override — the bridge_node constructor sets
-            # the node name to 'rosbot_mcu' to preserve API parity with the
-            # micro-ROS firmware (§10.1).
+            # the node name to 'rosbot_mcu' (the MCU node name rosbot_ros
+            # expects).
             package='rosbot_mavlink_bridge',
             executable='bridge_node',
             parameters=[cfg, {'ros_namespace': ns}],

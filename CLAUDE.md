@@ -5,7 +5,7 @@ reference lives in [ARCHITECTURE.md](ARCHITECTURE.md).
 
 ## What this repo is, in one line
 
-STM32F407 firmware (Arduino + STM32FreeRTOS + micro-ROS) supporting two
+STM32F407 firmware (Arduino + STM32FreeRTOS + MAVLink) supporting two
 variants — **rosbot** and **rosbot_xl**. Shared libraries in `lib/`,
 variant-specific entry/RTOS in `src/{rosbot,rosbot_xl}/`, variant-specific
 configuration in `include/{rosbot,rosbot_xl}/`. Working branch: **jazzy**.
@@ -104,9 +104,6 @@ do not change the conceptual shape.
 
 - [ARCHITECTURE.md](ARCHITECTURE.md) — full technical reference.
 - [ROS_API.md](ROS_API.md) — user-facing ROS topic / service contract.
-- [MAVLINK_MIGRATION.md](MAVLINK_MIGRATION.md) — implementation spec for the
-  alternative MAVLink stack that ships alongside the micro-ROS path.
-  Active feature work happens on branch `jazzy-mavlink`.
 - [README.md](README.md) — high-level project intro.
 - [CONTRIBUTING.md](CONTRIBUTING.md) — `just` recipes, VS Code tasks, dev mode.
 - [justfile](justfile) — `just --list` for the canonical build / flash recipes

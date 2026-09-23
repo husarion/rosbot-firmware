@@ -31,13 +31,9 @@
 #include "motor_array.hpp"
 #include "ntc.hpp"
 #include "power_board.hpp"
-#include "robotics_link.hpp"
-#include "ros/ros_node.hpp"
 
 extern FanController g_fan;
 extern PowerBoard power_board;
-
-RoboticsLink* g_link = nullptr;
 
 void createQueues() {
   battery_queue = xQueueCreate(1, sizeof(BatteryStamped));
@@ -53,7 +49,7 @@ void ledStripTask(void* p);
 void monitorTask(void* p);
 void motorControlTask(void* p);
 void shutdownTask(void* p);
-void uRosTask(void* p);
+void linkTask(void* p);
 
 TaskConfig tasks[] = {
     {"HwMonitor", Priority::OBSERVING, Stack::S, 10, hwMonitorTask},
@@ -64,7 +60,7 @@ TaskConfig tasks[] = {
 #endif
     {"MotorControl", Priority::CONTROL, Stack::XXS, 200, motorControlTask},
     {"Shutdown", Priority::OBSERVING, Stack::M, 3, shutdownTask},
-    {"uRos", Priority::COMMUNICATION, Stack::XXL, 1000, uRosTask},
+    {"Link", Priority::COMMUNICATION, Stack::XXL, 1000, linkTask},
 };
 
 TaskHandleWrapper taskHandles[sizeof(tasks) / sizeof(tasks[0])];
@@ -91,17 +87,16 @@ void hwMonitorTask(void* p) {
       g_indicator.calibrating(g_imu->calibrationStatus(calib) &&
                               calib.fullyCalibrated());
     } else {
-      g_indicator.update(battery_low, !g_link->isConnected(), error_state);
+      g_indicator.update(battery_low, !g_mavlink_node.isConnected(),
+                         error_state);
     }
 
     // Replies are picked up on later ticks; update() no longer waits for them.
     power_board.update();
     if (power_board.hasBatteryUpdate()) {
-      bool connected = rtos_get_timestamp_ns(data.timestamp_ns);
+      data.timestamp_ns = rtos_timestamp_ns();
       data.data = power_board.getData();
-      if (connected) {
-        xQueueOverwrite(battery_queue, &data);
-      }
+      xQueueOverwrite(battery_queue, &data);
     }
 
     const TickType_t now = xTaskGetTickCount();
@@ -136,7 +131,8 @@ void imuTask(void* p) {
     if (imu_calibration::g_control.save_requested.exchange(false)) {
       imu_calibration::serviceSave(*g_imu);
     }
-    if (rtos_get_timestamp_ns(data.timestamp_ns) && g_imu->update()) {
+    data.timestamp_ns = rtos_timestamp_ns();
+    if (g_imu->update()) {
       data.data = g_imu->getData();
       xQueueOverwrite(imu_queue, &data);
     }
@@ -215,13 +211,11 @@ void motorControlTask(void* p) {
   JointStateStamped data = {};
 
   while (true) {
-    bool connected = rtos_get_timestamp_ns(data.timestamp_ns);
+    data.timestamp_ns = rtos_timestamp_ns();
 
     g_motors.update();  // updates all motors, including encoders
     data.data = g_motors.getData();
-    if (connected) {
-      xQueueOverwrite(joint_state_queue, &data);
-    }
+    xQueueOverwrite(joint_state_queue, &data);
 
     vTaskDelayUntil(&wake_time, period);
   }
@@ -234,7 +228,7 @@ void shutdownTask(void* p) {
   EthernetClient eth_client;
   while (true) {
     if (digitalRead(PB_SHD_DETECT) == HIGH) {
-      if (eth_client.connect(AGENT_IP, 3000, 100)) {
+      if (eth_client.connect(SBC_IP, 3000, 100)) {
         eth_client.println("GET /shutdown HTTP/1.1");
         eth_client.stop();
       }
@@ -247,12 +241,12 @@ void shutdownTask(void* p) {
   }
 }
 
-void uRosTask(void* p) {
+void linkTask(void* p) {
   TickType_t period = taskGetPeriod(p);
   TickType_t wake_time = xTaskGetTickCount();
 
   while (true) {
-    g_link->loop();
+    g_mavlink_node.loop();
     vTaskDelayUntil(&wake_time, period);
   }
 }

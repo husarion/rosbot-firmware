@@ -11,7 +11,6 @@
 # Usage: scripts/flash.sh <pio-env>
 #   e.g. scripts/flash.sh rosbot
 #        scripts/flash.sh rosbot_xl_release
-#        scripts/flash.sh rosbot_mavlink                # once Phase 1 lands
 #
 # Environment overrides:
 #   SERIAL_PORT     — skip auto-detection, use this tty
@@ -27,13 +26,9 @@ if [[ -z "$ENV_NAME" ]]; then
     cat >&2 <<USAGE
 Usage: $0 <pio-env>
 
-Valid envs (micro-ROS, exist on jazzy):
+Valid envs:
   rosbot          rosbot_release
   rosbot_xl       rosbot_xl_release
-
-Valid envs (MAVLink, available on branch jazzy-mavlink after Phase 1):
-  rosbot_mavlink           rosbot_mavlink_release
-  rosbot_xl_mavlink        rosbot_xl_mavlink_release
 USAGE
     exit 2
 fi

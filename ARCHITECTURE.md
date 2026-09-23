@@ -153,10 +153,12 @@ Layers, bottom-up:
 3. **STM32FreeRTOS 10.3.3** — single-core preemptive scheduler.
 4. **Vendor / device libraries** — Adafruit_BNO055, Adafruit_BusIO,
    Pololu VL53L0X, etc.
-5. **micro-ROS** — `micro_ros_arduino v2.0.8-jazzy` (rcl, rclc, rmw,
-   xrce-dds-client). Custom transport layer in `lib/ros/ros/transport/`.
-6. **Project libraries** in `lib/`.
-7. **Variant entry** in `src/<variant>/`.
+5. **Project libraries** in `lib/`, including the MAVLink stack
+   (`lib/mavlink/`).
+6. **Variant entry** in `src/<variant>/`.
+
+micro-ROS (`micro_ros_arduino`) used to sit here as a second, boot-selected
+upstream stack; it was removed after v2.1.0-jazzy (see git history).
 
 ---
 
@@ -174,11 +176,10 @@ Layers, bottom-up:
 | `indicator/` | Status LED state machine |
 | `led_strip/` | APA102-style LED strip over SPI (rosbot_xl only) |
 | `motor/` | `MotorInterface`, `MotorHiZ`, `MotorArray` (Hi-Z PWM control) |
-| `persistent_config/` | Comm backend/namespace + BNO055 calibration offsets, stored as one record appended to a log in flash sector 11. Appending is safe at runtime; only the 1-3 s sector erase (sector full) is deferred to a pre-scheduler `save()` — see "IMU calibration" |
+| `persistent_config/` | Namespace + BNO055 calibration offsets, stored as one record appended to a log in flash sector 11. Appending is safe at runtime; only the 1-3 s sector erase (sector full) is deferred to a pre-scheduler `save()` — see "IMU calibration" |
 | `pid/` | PID controller with feedforward, anti-windup, dead-zone boost |
 | `power_board/` | UART protocol to rosbot_xl power board MCU (battery state) |
 | `range/` | `RangeInterface` + `RangeVl53l0x` + `RangeArray` (rosbot only) |
-| `ros/ros/` | micro-ROS node, publishers, subscribers, services, transports |
 | `imu_calibration/` | Runtime calibration: session flag (LED), save request serviced from `imuTask` — see "IMU calibration" |
 | `mavlink/` | MAVLink stack: `MavlinkNode`, publishers/subscribers, transports, `rosbot` dialect (see "MAVLink build") |
 
@@ -229,7 +230,7 @@ CONTROL = 5    (highest)
 | Monitor | BLOCKING | 1 | `vTaskGetRunTimeStats` to debug serial (debug builds only) |
 | MotorControl | CONTROL | 200 | Encoder + PID + PWM + current/back-EMF estimation |
 | Range | SENSORS | 10 | Read 4× VL53L0X |
-| uRos | COMMUNICATION | 200 | `g_ros_node.loop()` — micro-ROS state machine + spin |
+| Link | COMMUNICATION | 200 | `g_mavlink_node.loop()` — MAVLink RX/TX, heartbeat, publishers |
 
 ### rosbot_xl tasks
 
@@ -241,11 +242,10 @@ CONTROL = 5    (highest)
 | Monitor | BLOCKING | 1 | Runtime stats (debug builds) |
 | MotorControl | CONTROL | 200 | same as rosbot |
 | Shutdown | OBSERVING | 3 | Detect graceful shutdown signal from power board, stop scheduler |
-| uRos | COMMUNICATION | 1000 | same as rosbot |
+| Link | COMMUNICATION | 1000 | same as rosbot |
 
-`uRos` runs at 1000 Hz on rosbot_xl, 200 Hz on rosbot. The freq is the
-upper bound on `vTaskDelayUntil` — the actual rate is throttled by the
-transport's blocking `read()` (see "Patterns: micro-ROS transport").
+`Link` runs at 1000 Hz on rosbot_xl, 200 Hz on rosbot (the serial
+transport is event-driven — see "Patterns: serial transport").
 
 Queue depths are 1 (`xQueueOverwrite`) for telemetry — newest sample
 wins, no buffering. Watchdog on `MotorArray` stops motors after 500 ms
@@ -257,14 +257,10 @@ without `setVelocities()` (in `feedWatchdog()`).
 
 User-facing contract is in [ROS_API.md](ROS_API.md). Implementation map:
 
-- Publishers in `lib/ros/ros/publishers/` — one per topic.
-- Subscribers in `lib/ros/ros/subscribers/` (or in
-  `src/<variant>/ros.cpp` when variant-specific, e.g. `led_strip` only on
-  rosbot_xl).
-- Services in `src/<variant>/ros.cpp` (currently only `_mcu_id`).
-- Topic and node configuration via `RosNodeConfig` filled in
-  `src/<variant>/ros.cpp`. Node name and namespace come from
-  `CommunicationManager` based on which transport was chosen.
+- The ROS side lives on the SBC, in `bridge/rosbot_mavlink_bridge`.
+- MCU-side publishers / subscribers / commands in `lib/mavlink/`, wired per
+  variant in `src/<variant>/mavlink_entities.cpp`. The namespace comes from
+  the `NS:` handshake line (`CommunicationManager`).
 
 Effort field on `_motors/feedback` is in **Nm** when the motor has a
 configured current source (sensor or back-EMF model — see "Patterns:
@@ -286,8 +282,7 @@ fusion output can be several degrees off on roll/pitch until its
 accel/gyro/mag calibration registers are populated. There is no external
 storage on either board revision (no I2C EEPROM wired to the IMU bus, no
 VBAT-backed RTC domain), so calibration offsets ride in
-`persistent_config`'s flash-sector-11 record alongside the comm
-backend/namespace. `boards/rosbot_stm32f407.json`'s `upload.maximum_size`
+`persistent_config`'s flash-sector-11 record alongside the namespace. `boards/rosbot_stm32f407.json`'s `upload.maximum_size`
 (917504 = the sector 10 boundary, not the chip's full 1 MB) makes the
 STM32duino core's linker script size the `FLASH` region to match, so a
 build that grows past sector 10 fails at link time instead of silently
@@ -303,7 +298,7 @@ returns false instead.
 
 There are two ways to calibrate. Both end in the same record.
 
-**Runtime (MAVLink firmware, the normal path).** The BNO055 calibrates
+**Runtime (the normal path).** The BNO055 calibrates
 continuously in NDOF, so nothing needs a reboot: the host only watches and
 saves. `ROSBOT_IMU_CALIBRATION` (5 Hz) carries CALIB_STAT plus the save
 state; `COMMAND_LONG` `MAV_CMD_USER_2` with `param1` = 1 start / 0 stop /
@@ -325,7 +320,7 @@ state; `COMMAND_LONG` `MAV_CMD_USER_2` with `param1` = 1 start / 0 stop /
   just rewrites the restored offsets — harmless, but a host that
   auto-saves should wait for the operator's movement, not the first 3/3/3.
 
-**Boot-time window (both firmwares).** Entirely inside `setup()` before
+**Boot-time window.** Entirely inside `setup()` before
 `vTaskStartScheduler()`:
 
 1. `setup()` calls `resolveBootAction()` (`lib/boot_option/`) as the very
@@ -368,7 +363,7 @@ state; `COMMAND_LONG` `MAV_CMD_USER_2` with `param1` = 1 start / 0 stop /
 3. On `gyro/accel/mag == 3/3/3` (or a 120 s timeout), GRN_LED(s) go
    solid, offsets are captured via `captureCalibrationOffsets()` and
    folded into the same `persistent_config::Config` that's about to be
-   saved for comm backend/namespace — one erase+program cycle, not two.
+   saved for the namespace — one erase+program cycle, not two.
 4. Every boot, if a calibration record is present,
    `ImuBno055::applyCalibrationOffsets()` loads it into the chip right
    after `init()`, so fusion starts pre-calibrated instead of drifting in
@@ -392,7 +387,7 @@ is wired to it:
 - **ROSbot 3** — the diagnostic serial *and* the SBC link (Serial1, the Pi's
   `/dev/ttyAMA0`). The diagnostic UART is a rear-panel header with no SBC
   wiring, so without the mirror nothing on the robot could see progress.
-  The link is idle then — MAVLink/micro-ROS only start after `run()`
+  The link is idle then — MAVLink only starts after `run()`
   returns, the same window the pre-comm `FW:` prompt already uses — but the
   host driver keeps the port open, and two readers on one tty split the
   bytes between them rather than both seeing them. So the host side does not
@@ -476,48 +471,31 @@ Closed form, given assumed η ≈ 0.75:
 the motor pointer holds the encoder pointer; their lifetimes are
 co-managed.
 
-### micro-ROS transport (event-driven)
+### Serial / UDP transport (event-driven)
 
-The default Arduino transports (`arduino_native_ethernet_udp_transport_*`,
-`Stream::readBytes`) busy-poll, keeping the uRos task in the Running
-state and burning CPU. The transports in `lib/ros/ros/transport/` replace
-both with blocking primitives:
+The default Arduino paths (`EthernetUDP`, `Stream::readBytes`) busy-poll,
+keeping the link task in the Running state and burning CPU. The transports
+in `lib/mavlink/transport/` replace both with blocking primitives:
 
-- **`lwip_udp_transport`** (rosbot_xl) — bypasses Arduino `EthernetUDP`,
-  uses LwIP raw API directly. `udp_recv()` callback (in LwIP scheduler
-  thread) pushes incoming UDP payload to a FreeRTOS stream buffer.
-  `read()` blocks on `xStreamBufferReceive(timeout)`. `write()` calls
-  `udp_sendto()` (LwIP TX is already DMA-driven). Local bind port =
-  agent port (matches the prior Arduino convention so the agent setup
-  stays the same).
-- **`serial_transport`** (rosbot) —
-  - **RX**: replaces `Stream::readBytes`'s busy-poll with an
-    `available()`-based loop that calls `vTaskDelay(1)` when the ring
-    buffer is empty. Uses `vTaskSetTimeOutState` /
+- **`mavlink_udp_transport`** (rosbot_xl) — bypasses Arduino `EthernetUDP`,
+  uses the LwIP raw API directly. The `udp_recv()` callback (LwIP thread)
+  pushes the payload into a FreeRTOS stream buffer; `read()` blocks on
+  `xStreamBufferReceive(timeout)`; `write()` calls `udp_sendto()` (LwIP TX
+  is already DMA-driven).
+- **`mavlink_serial_transport`** (rosbot) —
+  - **RX**: an `available()`-based loop that calls `vTaskDelay(1)` when the
+    ring buffer is empty, with `vTaskSetTimeOutState` /
     `xTaskCheckForTimeOut` for tick-wraparound-safe timing. **Not fully
-    event-driven** — `HardwareSerial::_serial` is private in the
-    framework and `HAL_UART_RxCpltCallback` is a strong symbol, so we
-    cannot register a per-byte semaphore signal without patching the
-    framework. The yielding poll buys most of the win at zero invasion.
-  - **TX**: DMA-driven. `write()` pushes bytes into a 2 KB
-    `xStreamBuffer`; the DMA TC IRQ chains the next 256 B chunk
-    autonomously and only marks idle when the buffer drains. Replaces
-    the per-byte TX IRQ that previously dominated uRos CPU. Backpressure:
-    `xStreamBufferSend` blocks the caller for up to 5 ms when the buffer
-    is full, then returns the partial count (silent drops would corrupt
-    xrce-dds framing). DMA stream + channel resolved at runtime from the
-    Serial pointer — see "USART → DMA mapping" below.
-
-Measured impact: rosbot_xl `uRos` 69 % → 8 %. rosbot `uRos` 32 % → 7 %.
-
-`SPIN_TIME_MS` in `RosNodeConfig` is the timeout passed to
-`rclc_executor_spin_some`. With event-driven transports, this is "max
-time the task will be blocked waiting for data" — 50 ms on rosbot_xl,
-10 ms on rosbot are reasonable defaults. The 10 ms `TIMER_MS` ensures
-`rcl_wait` returns at least every 10 ms regardless to fire publishers.
-
-`RosNode::ethernetTransportInit` / `serialTransportInit` register the
-transport's four callbacks via `rmw_uros_set_custom_transport`.
+    event-driven** — `HardwareSerial::_serial` is private in the framework
+    and `HAL_UART_RxCpltCallback` is a strong symbol, so a per-byte
+    semaphore would need a framework patch. The yielding poll buys most of
+    the win at zero invasion.
+  - **TX**: DMA-driven. `write()` pushes bytes into a 2 KB `xStreamBuffer`;
+    the DMA TC IRQ chains the next chunk and only marks idle when the buffer
+    drains. `xStreamBufferSend` blocks the caller for a few ms when the
+    buffer is full, then returns the partial count. DMA stream + channel are
+    resolved at runtime from the Serial pointer — see "USART → DMA mapping"
+    below.
 
 ### FreeRTOS-safe IRQ priorities
 
@@ -627,7 +605,7 @@ asks for 4 MHz and gets 2.625 MHz (the next power-of-two divider).
 
 ### USART → DMA mapping (and IRQ-handler symbol collisions)
 
-`serial_transport` resolves the DMA stream / channel for each Serial at
+`mavlink_serial_transport` resolves the DMA stream / channel for each Serial at
 runtime via `findTxMap(HardwareSerial*)`. Currently mapped: `&Serial1`
 (USART1) and `&Serial3` (USART3). To extend to another Serial, add an
 entry in the function plus an IRQ handler symbol — but check the table
@@ -654,15 +632,15 @@ Already-defined `DMAx_StreamY_IRQHandler` symbols in `lib/`:
 | `DMA1_Stream0_IRQHandler` | `imu_bno055.cpp` | I2C1_RX (placeholder, not used today) |
 | `DMA1_Stream2_IRQHandler` | `imu_bno055.cpp` | I2C3_RX — rosbot IMU |
 | `DMA1_Stream3_IRQHandler` | `imu_bno055.cpp` | I2C2_RX — rosbot_xl IMU |
-| `DMA1_Stream4_IRQHandler` | `serial_transport.cpp` | USART3_TX (alt mapping) |
-| `DMA2_Stream7_IRQHandler` | `serial_transport.cpp` | USART1_TX |
+| `DMA1_Stream4_IRQHandler` | `mavlink_serial_transport.cpp` | USART3_TX (alt mapping) |
+| `DMA2_Stream7_IRQHandler` | `mavlink_serial_transport.cpp` | USART1_TX |
 
 Picking the alt mapping for USART3_TX (Stream 4 Ch7 instead of the
 primary Stream 3 Ch4) was deliberate: the primary collides with
 `imu_bno055.cpp`'s `DMA1_Stream3_IRQHandler` symbol, which is in the
 link on both variants even though only rosbot_xl uses it.
 
-Recipe for adding a new Serial to `serial_transport`:
+Recipe for adding a new Serial to `mavlink_serial_transport`:
 
 1. Pick a stream (primary or alt) that does not collide with any symbol
    in the table above.
@@ -712,7 +690,7 @@ help:
 
 `platformio.ini` defines a base `[env]` with shared
 `framework-arduinoststm32` (Husarion fork), STM32Ethernet, LwIP,
-micro_ros_arduino, STM32FreeRTOS, Adafruit BNO055, VL53L0X. Then four
+STM32FreeRTOS, Adafruit BNO055, VL53L0X. Then four
 concrete envs select variant + debug/release:
 
 `board = rosbot_stm32f407` is a repo-local definition in `boards/`
@@ -734,25 +712,15 @@ elsewhere on rosbot_xl).
   `build_src_filter = -<rosbot/*> +<rosbot_xl/*>`.
 - `[env:rosbot_xl_release]` — release variant of the above.
 
-There are no separate `_mavlink` envs anymore. Both upstream-link
-backends (micro-ROS and MAVLink) live in the same binary; the choice
-happens at boot via the BACKEND: handshake line — see the MAVLink build
-section below for the runtime-switch mechanism.
-
 `-D FW_VERSION=\"vX.Y.Z-jazzy\"` carries the firmware version. The release
 workflow (`.github/workflows/release.yaml`) bumps it before tagging.
 
-Build output sizes (release, both backends linked):
-- rosbot ~200 KB Flash (19 %), ~54 KB RAM (41 %)
-- rosbot_xl ~238 KB Flash (23 %), ~96 KB RAM (74 %)
+Build output sizes (release, after micro-ROS was removed):
+- rosbot ~88 KB Flash (10 %), ~11 KB static RAM (8 %)
+- rosbot_xl ~125 KB Flash (14 %), ~54 KB static RAM (41 %)
 
-The single-binary variants weigh ~12 KB more than the previous
-micro-ROS-only release builds — the MAVLink stack adds publishers,
-subscribers, the dialect-encoder fast paths and the `MavlinkNode`
-itself on top of what the micro-ROS path already linked. With both
-stacks in one image RAM grew ~2 KB (the second link's globals;
-neither stack's queues are doubled because the producer tasks feed
-both via the same `lib/mavlink/mavlink_types.hpp` queue wrappers).
+With micro-ROS still linked (v2.1.0-jazzy) the same builds were 207 KB /
+53 KB and 244 KB / 95 KB.
 
 CCM RAM usage is implicit (compiler may place stack/BSS there). DMA
 buffers are explicitly declared with `alignas(4)` at file scope to land
@@ -760,88 +728,49 @@ in regular SRAM.
 
 ---
 
-## MAVLink build
+## MAVLink link
 
-The MAVLink stack lives in the same binary as the micro-ROS stack; the
-firmware picks between them at boot. The wire protocol on the MCU↔SBC
-link is **MAVLink v2** with a custom `rosbot` dialect when MAVLink is
-selected; an in-tree ROS 2 bridge (`bridge/rosbot_mavlink_bridge/`)
-re-exposes the same node name, topic names, types and QoS that the
-existing micro-ROS firmware advertises today. From a downstream consumer
-(`rosbot_ros`) point of view the wire protocol switch is invisible.
+The MCU↔SBC link is **MAVLink v2** with a custom `rosbot` dialect; the
+in-tree ROS 2 bridge (`bridge/rosbot_mavlink_bridge/`) exposes the
+`rosbot_mcu` node, topics, types and QoS that `rosbot_ros` consumes.
 
-Full design and rollout plan: [MAVLINK_MIGRATION.md](./MAVLINK_MIGRATION.md).
+### Boot handshake
 
-### Runtime backend dispatch
-
-`CommunicationManager::waitForHostConfig` accepts three line types in
-any order during the boot-time handshake window (~2.5 s after MCU
-reset): `BACKEND:microros|mavlink`, `NS:<namespace>`, and `END`. `END`
-(or the timeout) closes the handshake; the others are independently
-optional. The chosen backend drives the upstream-link selection in
-`setup()`:
-
-```cpp
-if (g_comm_mgr.getSelectedBackend() == CommBackend::MAVLINK) {
-  g_mavlink_node.setNamespace(...); g_mavlink_node.begin();
-  g_link = &g_mavlink_node;
-} else {
-  g_ros_node.setNamespace(...); g_ros_node.serialTransportInit(...);
-  g_link = &g_ros_node;
-}
-```
-
-Both `g_ros_node` and `g_mavlink_node` are constructed as globals
-(their constructors only store config — no HW touched), so they
-coexist in `.bss` without contention. Only the chosen one's `init()`/
-`begin()` is called, so only one drives peripherals. `g_link` is a
-pointer assigned in `setup()` before `vTaskStartScheduler()`, so any
-task body sees a non-null pointer when it first dereferences.
-
-Default backend on handshake timeout is `MICRO_ROS` — that preserves
-the legacy behaviour for older host drivers that don't emit the
-`BACKEND:` line. The `rosbot_ros/configure_robot` script in the
-matching `feat/runtime-comm-impl` branch passes `--backend
-microros|mavlink` based on which launch file (microros.launch.py /
-mavlink.launch.py) ran.
+`CommunicationManager::waitForHostConfig` accepts three line types in any
+order during the boot-time handshake window (~2.5 s after MCU reset):
+`BACKEND:mavlink`, `NS:<namespace>` and `END`. `END` (or the timeout)
+closes the handshake; the others are independently optional. `BACKEND:`
+is a leftover of the micro-ROS era, still sent by `configure_robot`: the
+firmware ACKs `mavlink` and NAKs anything else, so a host asking for
+`microros` fails its handshake instead of waiting for a link that never
+comes up.
 
 ### Layout
 
 - `lib/mavlink/`
-  - `mavlink_node.{hpp,cpp}` — state machine + HEARTBEAT/TIMESYNC/STATUSTEXT.
-    Equivalent of `RosNode` for the MAVLink path; inherits `RoboticsLink`
-    so the `uRos` task can drive either build via the same `g_link`
-    reference.
+  - `mavlink_node.{hpp,cpp}` — state machine + HEARTBEAT/TIMESYNC/STATUSTEXT,
+    driven by the `Link` task through `g_mavlink_node`.
   - `publishers/{battery,imu,joint_state,buttons,range}_publisher.hpp` —
     pull from FreeRTOS queues, pack the corresponding `mavlink_message_t`,
     forward via `MavlinkNode::sendMessage()`.
   - `subscribers/{wheel_cmd,led,led_strip}_subscriber.hpp` and
     `commands/mcu_id_command.hpp` — dispatched by msgid from the rx loop.
-  - `transport/mavlink_{serial,udp}_transport.{hpp,cpp}` — same DMA-TX +
-    yielding-poll RX (serial) / LwIP raw API (UDP) patterns as
-    `lib/ros/ros/transport/`, just stripped of XRCE framing.
+  - `transport/mavlink_{serial,udp}_transport.{hpp,cpp}` — DMA-TX +
+    yielding-poll RX (serial) / LwIP raw API (UDP), see "Patterns".
   - `dialect/rosbot.xml` — dialect source of truth. The mavgen C output
     lives inside the bridge package at
     `bridge/rosbot_mavlink_bridge/mavlink_dialect/` (single canonical
     location); the firmware reaches it via the include path in
     `platformio.ini`.
-- `include/robotics_link.hpp` — abstract base both `RosNode` and
-  `MavlinkNode` inherit; `src/<variant>/rtos.cpp` calls `g_link->loop()` /
-  `g_link->isConnected()` uniformly. `g_link` is `RoboticsLink*` now —
-  `main.cpp` assigns it to whichever singleton the boot handshake picked.
-- `src/<variant>/main.cpp` — variant entry point. Both backends linked.
+- `src/<variant>/main.cpp` — variant entry point.
 - `src/<variant>/mavlink_entities.cpp` — MAVLink publisher/subscriber
-  registration + the `g_mavlink_node` definition. Always compiled; its
-  `begin()` only runs when the backend dispatch picks MAVLink. (Renamed
-  from `ros_mavlink.cpp` so the filename matches its role — the file no
-  longer contains a separate `main_*`.)
+  registration + the `g_mavlink_node` definition.
 
 ### Topology
 
-- **rosbot**: SBC ↔ MCU over Serial1 @ 921600. Mirrors the micro-ROS
-  serial transport file-for-file, sans XRCE.
+- **rosbot**: SBC ↔ MCU over Serial1 @ 921600.
 - **rosbot_xl**: SBC ↔ MCU over UDP. MCU binds **14555**, sends to peer
-  at **14550** (mavros default port layout, D17). Bridge does the
+  at **14550** (mavros default port layout). Bridge does the
   opposite — binds 14550, sends to 14555 on the MCU IP.
 
 ### State machine
@@ -853,10 +782,10 @@ DISCONNECTED:
 WAITING        send HEARTBEAT 1 Hz, retry boot STATUSTEXT every 1 s for
                 up to 10 s; on first peer HEARTBEAT → AWAIT_TIMESYNC
 AWAIT_TIMESYNC send TIMESYNC every 200 ms; on first reply → CONNECTED
-CONNECTED      send HEARTBEAT 1 Hz, TIMESYNC 0.5 Hz, telemetry per §4
-                rates; if no peer HEARTBEAT for 3 s → DISCONNECTED
+CONNECTED      send HEARTBEAT 1 Hz, TIMESYNC 0.5 Hz, telemetry at the
+                rates below; if no peer HEARTBEAT for 3 s → DISCONNECTED
 DISCONNECTED   reset → WAITING (motor watchdog already stopped wheels
-                500 ms after the last command per D12)
+                500 ms after the last command)
 ```
 
 ### Telemetry rates and topic mapping
@@ -873,38 +802,11 @@ DISCONNECTED   reset → WAITING (motor watchdog already stopped wheels
 | `led_strip` (rosbot_xl) | `ROSBOT_LED_STRIP` (11012) | on-demand | — |
 | `_mcu_id` (service) | `COMMAND_LONG(MAV_CMD_USER_1)` → `ROSBOT_MCU_ID` (11020) | — | — |
 
-### API parity vs micro-ROS
-
-`ros2 node info /<ns>/rosbot_mcu` and `ros2 topic info -v /<ns>/<topic>`
-against the bridge produce the same topic list, node name, types and QoS
-as `micro_ros_agent` running today. The bridge's rclcpp Node additionally
-advertises the standard parameter services and `/rosout` publisher (the
-rcl-based micro-ROS firmware does not). These are additive and do not
-affect downstream consumers. Topic type hashes are `RIHS01_*` (valid) on
-the bridge vs `INVALID` on micro-ROS — also additive.
-
-### Sizes (single-binary release)
-
-| variant | Flash | RAM | headroom |
-|---|---:|---:|---:|
-| `rosbot_release` | 200 KB / 1024 KB (19 %) | 54 KB / 128 KB (41 %) | ~80 % |
-| `rosbot_xl_release` | 238 KB / 1024 KB (23 %) | 96 KB / 128 KB (74 %) | ~77 % |
-
-For reference, the previous separate builds measured:
-- rosbot (micro-ROS only): 188 KB Flash / 52 KB RAM
-- rosbot_mavlink (MAVLink only): 82 KB Flash / 12 KB RAM
-- rosbot_xl (micro-ROS only): 226 KB Flash / 94 KB RAM
-- rosbot_xl_mavlink (MAVLink only): 119 KB Flash / 55 KB RAM
-
-The single-binary merge cost is ~12 KB Flash + ~2 KB RAM per variant —
-much less than the naive `µROS_only + MAVLink_only` upper bound because
-the Arduino core, FreeRTOS, motor/encoder/IMU stacks are linked once.
-
 ### Bridge package
 
 [`bridge/rosbot_mavlink_bridge`](./bridge/rosbot_mavlink_bridge) — single
 `ament_cmake` package built for both jazzy and humble out of one source
-tree (D24). The dialect headers live inside the package at
+tree. The dialect headers live inside the package at
 [`bridge/rosbot_mavlink_bridge/mavlink_dialect/`](./bridge/rosbot_mavlink_bridge/mavlink_dialect/)
 — this is the **canonical** mavgen output location, not a mirror. The
 firmware build reads from the same directory via its include path
@@ -914,7 +816,7 @@ inside the package makes the bridge self-contained for bloom releases
 to rosdistro (the source tarball archives only the package subtree).
 Launch files take a `namespace` arg and set `--ros-args -r __ns:=<value>`
 on the node, so rclcpp prefixes every relative topic / service with the
-same namespace the micro-ROS firmware negotiates over FTDI.
+namespace the host also sends the MCU in the `NS:` handshake line.
 
 ---
 
@@ -922,20 +824,15 @@ same namespace the micro-ROS firmware negotiates over FTDI.
 
 These are documented to avoid re-discovery:
 
-- **uRos RX path on rosbot is still polling.** TX is now DMA-driven, but
-  RX uses a yielding `vTaskDelay(1)` poll because `HardwareSerial::_serial`
+- **Link RX path on rosbot is still polling.** TX is DMA-driven, but RX
+  uses a yielding `vTaskDelay(1)` poll because `HardwareSerial::_serial`
   is private in the framework and `HAL_UART_RxCpltCallback` is a strong
   symbol — neither lets us register a per-byte semaphore signal without
   patching the stm32duino fork (or replacing `USARTx_IRQHandler`, also a
-  strong symbol). The current poll buys most of the win at zero invasion
-  but leaves uRos with a CPU floor proportional to read activity.
-- **IMU publish rate on rosbot was ~85 Hz** (not the 100 Hz queued by the
-  IMU task) due to uRos timer-callback jitter — when uRos couldn't meet
-  the 10 ms tick, samples in the depth-1 queue got coalesced before
-  publish. Should improve after DMA TX landed; pending fresh measurement.
-- **No agent IP auto-discovery.** `AGENT_IP` is hardcoded in
-  `include/rosbot_xl/config.hpp`. `CLIENT_IP` is auto-derived from it
-  (same /24, last octet = agent + 1). True auto-discovery options were
+  strong symbol). The poll buys most of the win at zero invasion but
+  leaves the link task with a CPU floor proportional to read activity.
+- **No SBC IP auto-discovery.** `SBC_IP` and `CLIENT_IP` are hardcoded in
+  `include/rosbot_xl/config.hpp`. True auto-discovery options were
   considered (DHCP server on MCU, broadcast announcement protocol, mDNS)
   but not implemented yet — see commit / chat history for trade-offs.
 - **Race on shared I2C bus** (rosbot_xl `i2c`): IMU DMA path and Wire

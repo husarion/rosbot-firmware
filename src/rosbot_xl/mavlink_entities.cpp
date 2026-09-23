@@ -28,7 +28,7 @@
 
 // MAVROS-default UDP port layout: MCU bound on 14555, peer on 14550.
 static MavlinkUdpConfig udp_cfg = {
-    .peer_ip = AGENT_IP,
+    .peer_ip = SBC_IP,
     .peer_port = 14550,
     .local_port = 14555,
 };

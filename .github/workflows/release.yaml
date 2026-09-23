@@ -261,9 +261,8 @@ jobs:
 
       - name: Rename binaries
         run: |
-          # Single binary per platform — runtime picks the comm backend
-          # (micro-ROS or MAVLink) from EEPROM. -${TAG_NAME} keeps the
-          # -<distro> suffix since micro_ros_arduino is still jazzy-pinned.
+          # Single binary per platform. -${TAG_NAME} keeps the -<distro>
+          # suffix the downstream bundles and version checks expect.
           mkdir -p release
           cp .pio/build/rosbot_release/firmware.bin    "release/rosbot-${TAG_NAME}.bin"
           cp .pio/build/rosbot_xl_release/firmware.bin "release/rosbot_xl-${TAG_NAME}.bin"
@@ -341,7 +340,7 @@ jobs:
           tar --transform "s,^,rosbot_mavlink_bridge-${VERSION}/," \
               -czf "release/${tarball}" \
               bridge lib/mavlink/dialect/rosbot.xml \
-              MAVLINK_MIGRATION.md LICENSE
+              LICENSE
           ls -la release/
       - name: Attach to release
         uses: softprops/action-gh-release@v3
@@ -596,11 +595,10 @@ jobs:
           ls -la
           cd ../..
 
-          # 3) Bump the bundled-firmware paths in flash_firmware. Post-Task-2
-          #    the firmware is one binary per platform; the bundled_firmware
-          #    dict in rosbot_ros may still carry separate "micro-ros" /
-          #    "mavlink" keys (Task 2 doesn't touch rosbot_ros) but both
-          #    values should point at the same new file.
+          # 3) Bump the bundled-firmware paths in flash_firmware. The
+          #    firmware is one binary per platform; the bundled_firmware
+          #    dict in rosbot_ros may still carry one key per former
+          #    backend, and every value should point at the same new file.
           shopt -s nullglob
           rosbot_bins=( rosbot_utils/firmware/rosbot-v*.bin )
           if [ ${#rosbot_bins[@]} -ge 1 ]; then
@@ -633,10 +631,7 @@ jobs:
           fi
 
           # 4) Bump expected-firmware tag in any rosbot_bringup launch file
-          #    that pins it. Narrow scope: only `mavlink*.launch.py` —
-          #    `microros.launch.py` / `configure_robot` pin the old jazzy
-          #    track explicitly and are out of scope until a human migrates
-          #    them to the unified firmware.
+          #    that pins it. Narrow scope: only `mavlink*.launch.py`.
           shopt -s nullglob
           for f in rosbot_bringup/launch/mavlink_bridge.launch.py \
                    rosbot_bringup/launch/mavlink.launch.py; do

@@ -17,7 +17,6 @@
 #include <cstddef>
 #include <cstdint>
 
-#include "comm_backend.hpp"
 #include "imu_interface.hpp"
 
 // Persisted in STM32F407 flash sector 11 (0x080E0000, 128 KB). This isn't a
@@ -29,18 +28,18 @@
 // overflowed"), so a reflash can never silently spill into and corrupt this
 // sector — verified by temporarily setting maximum_size low enough to
 // trigger the overflow.
-// load() returns defaults (MAVLINK, empty namespace, no IMU calibration)
+// load() returns defaults (empty namespace, no IMU calibration)
 // on a fresh or corrupt sector. save() is a no-op when the cached value
 // matches, so wear scales with config changes, not boots. Records are
 // appended to the sector rather than rewritten (see the .cpp), so the
 // sector is only erased once it is full.
 //
-// Comm backend/namespace and BNO055 calibration offsets share one record
+// Namespace and BNO055 calibration offsets share one record
 // in the same sector — a save() always writes the full Config, so callers
 // must round-trip fields they don't intend to change (load() first).
 //
 // load() also recognizes the pre-IMU-calibration on-flash layout (see
-// LegacyRecord in the .cpp) and migrates backend/namespace from it —
+// LegacyRecord in the .cpp) and migrates the namespace from it —
 // an already-deployed unit's saved config isn't lost on this firmware's
 // first boot. has_imu_calibration is always false from that path, which
 // is correct: those units never had one.
@@ -49,7 +48,6 @@ namespace persistent_config {
 inline constexpr size_t kNamespaceMaxLen = 32;
 
 struct Config {
-  CommBackend backend;
   char ns[kNamespaceMaxLen];
   bool has_imu_calibration = false;
   ImuCalibrationOffsets imu_calibration{};
@@ -65,7 +63,7 @@ Config load();
 bool save(const Config& cfg);
 
 // Runtime entry for the live calibration save: round-trips the cached
-// backend/namespace and replaces only the IMU offsets.
+// namespace and replaces only the IMU offsets.
 bool saveImuCalibration(const ImuCalibrationOffsets& offsets);
 
 bool hasImuCalibration();

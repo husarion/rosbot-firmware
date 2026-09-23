@@ -1,20 +1,18 @@
 # ROS API
 
-This contract is **identical for both firmware flavours** — micro-ROS and
-MAVLink. Downstream nodes (e.g. `rosbot_ros`) consume the same node name,
-topic list, types, namespacing and QoS regardless of which firmware is
-flashed. The bridge (or agent) on the SBC absorbs the wire-protocol
-difference; see [README.md](README.md) and [ARCHITECTURE.md](ARCHITECTURE.md)
-for which process advertises the API in each case.
+The MCU's ROS 2 interface, advertised on the SBC by
+[rosbot_mavlink_bridge], which translates the firmware's MAVLink link.
+Downstream nodes (e.g. `rosbot_ros`) consume this node name, topic list,
+types, namespacing and QoS; see [ARCHITECTURE.md](ARCHITECTURE.md) for the
+wire side.
 
 ## Nodes
 
-[micro_ros_agent/micro_ros_agent]: https://github.com/micro-ROS/micro-ROS-Agent
 [rosbot_mavlink_bridge]: ./bridge/rosbot_mavlink_bridge
 
 | NODE             | DESCRIPTION                                                                                                                                                                                       |
 | ---------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| **`rosbot_mcu`** | Node exposing the ROSbot MCU's topics and services. Advertised by [micro_ros_agent/micro_ros_agent] against the micro-ROS firmware, or by [rosbot_mavlink_bridge] against the MAVLink firmware. |
+| **`rosbot_mcu`** | Node exposing the ROSbot MCU's topics and services. Advertised by [rosbot_mavlink_bridge]. |
 
 ## Topics
 
@@ -35,7 +33,7 @@ for which process advertises the API in each case.
 | ✅  | ✅    | **`leds`**             | Rear panel LEDs command. <br /> _[std_msgs/UInt8]_          |
 | ✅  | ❌    | **`ranges`**           | Range sensor data. <br /> _[sensor_msgs/Range]_             |
 | ✅  | ✅    | **`_imu/data`**        | Raw IMU data. <br /> _[sensor_msgs/Imu]_                    |
-| ✅  | ✅    | **`_imu/calibration`** | BNO055 calibration status, 5 Hz, MAVLink only — see below. <br /> _[std_msgs/UInt8MultiArray]_ |
+| ✅  | ✅    | **`_imu/calibration`** | BNO055 calibration status, 5 Hz — see below. <br /> _[std_msgs/UInt8MultiArray]_ |
 | ✅  | ✅    | **`_motors/cmd`**      | Wheel speed commands. <br /> _[std_msgs/Float32MultiArray]_ |
 | ✅  | ✅    | **`_motors/feedback`** | Wheel feedback. <br /> _[sensor_msgs/JointState]_           |
 
@@ -46,16 +44,15 @@ for which process advertises the API in each case.
 | SERVICE                       | DESCRIPTION                                                                  |
 | ----------------------------- | ---------------------------------------------------------------------------- |
 | **`_mcu_id`**                 | Get MCU ID. <br /> _[std_srvs/Trigger]_                                      |
-| **`_imu/start_calibration`**  | Start a calibration session (red LED fast blink, 180 s). MAVLink only. <br /> _[std_srvs/Trigger]_ |
-| **`_imu/stop_calibration`**   | End the session early. MAVLink only. <br /> _[std_srvs/Trigger]_             |
-| **`_imu/save_calibration`**   | Persist the chip's current offsets to flash. MAVLink only. <br /> _[std_srvs/Trigger]_ |
+| **`_imu/start_calibration`**  | Start a calibration session (red LED fast blink, 180 s). <br /> _[std_srvs/Trigger]_ |
+| **`_imu/stop_calibration`**   | End the session early. <br /> _[std_srvs/Trigger]_             |
+| **`_imu/save_calibration`**   | Persist the chip's current offsets to flash. <br /> _[std_srvs/Trigger]_ |
 
-## IMU calibration (MAVLink firmware only)
+## IMU calibration
 
 The BNO055 calibrates itself continuously; these entry points only show its
 progress and persist the result, so the robot keeps driving throughout and
-no MCU reset is needed. The micro-ROS firmware does not advertise them — it
-keeps the boot-time button gesture only.
+no MCU reset is needed.
 
 `_imu/calibration` data layout:
 `[sys, gyro, accel, mag, save_state, save_seq, has_saved, session]`.

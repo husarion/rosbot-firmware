@@ -9,8 +9,7 @@
 #   just                          # list recipes
 #   just build rosbot             # build one env
 #   just flash rosbot_xl          # build + flash one env
-#   just build-microros           # build all 4 micro-ROS envs
-#   just build-mavlink            # build all 4 MAVLink envs (jazzy-mavlink branch)
+#   just build-all                # build all 4 envs (debug + release)
 #   SERIAL_PORT=/dev/ttyUSB1 just flash rosbot_xl   # override port
 
 # Default PlatformIO env if none is passed on the CLI.
@@ -77,16 +76,10 @@ build ENV=default_env:
     #!/bin/bash
     pio run -e {{ENV}}
 
-# Build all four micro-ROS envs (debug + release × rosbot, rosbot_xl).
-build-microros:
+# Build all four envs (debug + release × rosbot, rosbot_xl).
+build-all:
     #!/bin/bash
     pio run -e rosbot -e rosbot_release -e rosbot_xl -e rosbot_xl_release
-
-# Build all four MAVLink envs (only present on jazzy-mavlink, post-Phase 1).
-build-mavlink:
-    #!/bin/bash
-    pio run -e rosbot_mavlink -e rosbot_mavlink_release \
-            -e rosbot_xl_mavlink -e rosbot_xl_mavlink_release
 
 # Wipe PlatformIO build outputs.
 clean:
@@ -98,7 +91,7 @@ flash ENV=default_env:
     #!/bin/bash
     ./scripts/flash.sh {{ENV}}
 
-# Build + flash both variants (micro-ROS). Useful for release smoke-tests.
+# Build + flash both variants. Useful for release smoke-tests.
 flash-all:
     #!/bin/bash
     just flash rosbot
@@ -141,10 +134,10 @@ stage-snap-firmware:
     dest=bridge/rosbot_mavlink_bridge/firmware
     mkdir -p "$dest"
     for variant in rosbot rosbot_xl; do
-      src=".pio/build/${variant}_mavlink_release/firmware.bin"
+      src=".pio/build/${variant}_release/firmware.bin"
       if [[ ! -f "$src" ]]; then
         echo "$src missing — building it now..."
-        pio run -e "${variant}_mavlink_release"
+        pio run -e "${variant}_release"
       fi
       cp -v "$src" "$dest/${variant}_mavlink.bin"
     done
@@ -240,7 +233,7 @@ release BUMP="auto":
                 trap 'rm -f "$prompt" "$out" "$section_file"' EXIT
                 {
                     printf 'You are preparing a release of rosbot-firmware (STM32F4 firmware\n'
-                    printf 'for ROSbot 3 and ROSbot XL, runtime micro-ROS / MAVLink switch).\n\n'
+                    printf 'for ROSbot 3 and ROSbot XL, MAVLink link to the SBC).\n\n'
                     printf 'Current FW_VERSION: %s\n\n' "$current_version"
                     printf 'Commits to describe (newest first), %s:\n\n%s\n\n' "$range_desc" "$commits"
                     printf 'Use the Read tool on CHANGELOG.md to match the existing tone\n'

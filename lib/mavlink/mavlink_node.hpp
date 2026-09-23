@@ -21,7 +21,6 @@
 #include <cstdint>
 
 #include "mavlink.h"
-#include "robotics_link.hpp"
 #include "transport/mavlink_transport_interface.hpp"
 
 class MavlinkPublisherInterface;
@@ -44,7 +43,7 @@ struct MavlinkNodeConfig {
   size_t sub_count = 0;
 };
 
-class MavlinkNode : public RoboticsLink {
+class MavlinkNode {
  public:
   enum State : uint8_t { WAITING, AWAIT_TIMESYNC, CONNECTED, DISCONNECTED };
 
@@ -53,12 +52,10 @@ class MavlinkNode : public RoboticsLink {
 
   bool begin();
 
-  void loop() override;
-  bool isConnected() const override { return state_ == CONNECTED; }
-  void setNamespace(const char* ns) override { ns_ = ns; }
-  void setDiagnosticSerial(HardwareSerial* serial) override {
-    diag_serial_ = serial;
-  }
+  void loop();
+  bool isConnected() const { return state_ == CONNECTED; }
+  void setNamespace(const char* ns) { ns_ = ns; }
+  void setDiagnosticSerial(HardwareSerial* serial) { diag_serial_ = serial; }
 
   bool sendMessage(mavlink_message_t& msg);
   static uint64_t timeBootUs();

@@ -25,6 +25,9 @@ namespace {
 constexpr uint32_t kStorageAddr = 0x080E0000;  // STM32F407ZGT6 sector 11 base
 constexpr uint32_t kStorageSector = FLASH_SECTOR_11;
 constexpr uint32_t kMagic = 0x52424F54;  // 'RBOT'
+// Older firmware reads Record::backend as its upstream-link backend, where
+// 1 is MAVLink. Writing it keeps a downgraded unit on MAVLink.
+constexpr uint8_t kLegacyBackendMavlink = 1;
 
 struct Record {
   uint32_t magic;
@@ -41,7 +44,7 @@ static_assert(sizeof(Record) % 4 == 0,
 // On-flash layout before IMU calibration was added — `magic` is
 // unchanged, so a pre-upgrade record still passes that check, but its
 // `crc` sat where `imu_calibration` now lives; without this fallback an
-// already-deployed unit's saved backend/namespace would silently reset
+// already-deployed unit's saved namespace would silently reset
 // to defaults on first boot of this firmware, since the new Record's CRC
 // reads erased flash (0xFF) as the "stored" checksum and (astronomically
 // reliably) fails to match. Never written by this firmware — read-only,
@@ -144,21 +147,18 @@ Config load() {
   const Scan found = scan();
   if (found.newest >= 0) {
     const Record* stored = slot(found.newest);
-    out.backend = static_cast<CommBackend>(stored->backend);
     std::memcpy(out.ns, stored->ns, kNamespaceMaxLen);
     out.ns[kNamespaceMaxLen - 1] = '\0';
     out.has_imu_calibration = stored->has_imu_calibration != 0;
     out.imu_calibration = stored->imu_calibration;
   } else if (legacyValid()) {
     // Pre-IMU-calibration layout, only ever at offset 0 — an
-    // already-deployed robot's backend/namespace survives this update
+    // already-deployed robot's namespace survives this update
     // instead of silently resetting.
     const auto* legacy = reinterpret_cast<const LegacyRecord*>(kStorageAddr);
-    out.backend = static_cast<CommBackend>(legacy->backend);
     std::memcpy(out.ns, legacy->ns, kNamespaceMaxLen);
     out.ns[kNamespaceMaxLen - 1] = '\0';
   } else {
-    out.backend = CommBackend::MAVLINK;
     out.ns[0] = '\0';
   }
   s_cached = out;
@@ -167,8 +167,7 @@ Config load() {
 }
 
 bool save(const Config& cfg) {
-  if (s_loaded && cfg.backend == s_cached.backend &&
-      std::memcmp(cfg.ns, s_cached.ns, kNamespaceMaxLen) == 0 &&
+  if (s_loaded && std::memcmp(cfg.ns, s_cached.ns, kNamespaceMaxLen) == 0 &&
       cfg.has_imu_calibration == s_cached.has_imu_calibration &&
       std::memcmp(&cfg.imu_calibration, &s_cached.imu_calibration,
                   sizeof(ImuCalibrationOffsets)) == 0) {
@@ -177,7 +176,7 @@ bool save(const Config& cfg) {
 
   Record record{};
   record.magic = kMagic;
-  record.backend = static_cast<uint8_t>(cfg.backend);
+  record.backend = kLegacyBackendMavlink;
   record.has_imu_calibration = cfg.has_imu_calibration ? 1 : 0;
   std::memcpy(record.ns, cfg.ns, kNamespaceMaxLen);
   record.ns[kNamespaceMaxLen - 1] = '\0';

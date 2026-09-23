@@ -16,8 +16,7 @@ firmware does not require running `mavgen` on the build machine.
 ## Files in this directory
 
 - `rosbot.xml` — dialect definition. Includes `common.xml`; custom messages
-  start at ID 11000 (see [MAVLINK_MIGRATION.md](../../../MAVLINK_MIGRATION.md)
-  §7).
+  start at ID 11000 (`ROSBOT_*`).
 - `common.xml`, `standard.xml`, `minimal.xml` — vendored copies from
   `pymavlink` (v2.0). They are the parents `rosbot.xml` pulls in transitively;
   vendoring them removes the `pymavlink` runtime dependency from contributors

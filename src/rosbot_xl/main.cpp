@@ -18,7 +18,6 @@
 
 #include "battery_interface.hpp"
 #include "boot_option.hpp"
-#include "comm_backend.hpp"
 #include "communication_manager.hpp"
 #include "config.hpp"
 #include "hardware_encoder.hpp"
@@ -32,8 +31,6 @@
 #include "motor_hi_z.hpp"
 #include "persistent_config.hpp"
 #include "power_board.hpp"
-#include "robotics_link.hpp"
-#include "ros/ros_node.hpp"
 #include "rtos.hpp"
 
 // ───────── Board Revision ─────────
@@ -184,7 +181,6 @@ void setup() {
       boot_action == BootAction::kCalibrateImu;
 
   s_persistent = persistent_config::load();
-  g_comm_mgr.setBackendDefault(s_persistent.backend);
   g_comm_mgr.setNamespaceDefault(s_persistent.ns);
 
   g_comm_mgr.init();
@@ -195,7 +191,6 @@ void setup() {
   g_comm_mgr.configureNamespace();
 
   persistent_config::Config now{};
-  now.backend = g_comm_mgr.getSelectedBackend();
   std::strncpy(now.ns, g_comm_mgr.getNamespace(),
                persistent_config::kNamespaceMaxLen);
   now.ns[persistent_config::kNamespaceMaxLen - 1] = '\0';
@@ -238,23 +233,9 @@ void setup() {
   g_motors.init();
   power_board.init();
 
-  // MAVLink uses the UDP transport bound in g_mavlink_node's ctor;
-  // micro-ROS chooses serial vs ethernet at runtime.
-  if (g_comm_mgr.getSelectedBackend() == CommBackend::MAVLINK) {
-    g_mavlink_node.setNamespace(g_comm_mgr.getNamespace());
-    g_mavlink_node.setDiagnosticSerial(g_comm_mgr.debugSerial());
-    g_mavlink_node.begin();
-    g_link = &g_mavlink_node;
-  } else {
-    g_ros_node.setNamespace(g_comm_mgr.getNamespace());
-    if (g_comm_mgr.isSerialTransport()) {
-      g_ros_node.serialTransportInit(*transport);
-    } else {
-      g_ros_node.ethernetTransportInit(AGENT_IP, AGENT_PORT);
-    }
-    g_ros_node.setDiagnosticSerial(g_comm_mgr.debugSerial());
-    g_link = &g_ros_node;
-  }
+  g_mavlink_node.setNamespace(g_comm_mgr.getNamespace());
+  g_mavlink_node.setDiagnosticSerial(g_comm_mgr.debugSerial());
+  g_mavlink_node.begin();
 
   // Must run after any boot-time IMU calibration and before the
   // scheduler starts — see enableDmaReads()'s doc comment.

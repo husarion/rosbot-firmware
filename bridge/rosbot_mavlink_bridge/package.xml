@@ -5,10 +5,9 @@
   <version>2.1.0</version>
   <description>
     Bridge node that translates the firmware's MAVLink wire protocol into the
-    same ROS 2 API the micro-ROS agent currently exposes, so downstream
-    consumers (e.g. rosbot_ros) see byte-identical topics/services. Single
-    source tree builds for both jazzy and humble (see MAVLINK_MIGRATION.md
-    D24).
+    ROSbot MCU ROS 2 API (topics/services under rosbot_mcu, see ROS_API.md)
+    that downstream consumers such as rosbot_ros rely on. Single
+    source tree builds for both jazzy and humble.
   </description>
   <maintainer email="support@husarion.com">Husarion</maintainer>
   <license>Apache-2.0</license>
