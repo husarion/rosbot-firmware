@@ -73,11 +73,12 @@ void txCpltCallback(DMA_HandleTypeDef* /*hdma*/) {
 
 }  // namespace
 
-// Strong overrides of lib/ros's weak no-op DMA hooks (shared single binary).
-extern "C" void mavlink_serial_dma2_stream7_isr(void) {
+// The framework's defaults are weak; these must exist or TX DMA never
+// completes and the link goes silent after the first chunk.
+extern "C" void DMA2_Stream7_IRQHandler(void) {
   if (s_hdma_tx.Instance == DMA2_Stream7) HAL_DMA_IRQHandler(&s_hdma_tx);
 }
-extern "C" void mavlink_serial_dma1_stream4_isr(void) {
+extern "C" void DMA1_Stream4_IRQHandler(void) {
   if (s_hdma_tx.Instance == DMA1_Stream4) HAL_DMA_IRQHandler(&s_hdma_tx);
 }
 

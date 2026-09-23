@@ -33,7 +33,7 @@ void LedIndicator::calibrating(bool fully_calibrated) {
   }
 }
 
-void LedIndicator::update(bool battery_low, bool uros_disconnected,
+void LedIndicator::update(bool battery_low, bool link_disconnected,
                           bool error) {
   uint32_t now = millis();
 
@@ -51,7 +51,7 @@ void LedIndicator::update(bool battery_low, bool uros_disconnected,
   }
 
   // Priority 3: µROS disconnected → solid ON
-  if (uros_disconnected) {
+  if (link_disconnected) {
     digitalWrite(cfg_.pin, HIGH);
     return;
   }

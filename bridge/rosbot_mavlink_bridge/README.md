@@ -1,15 +1,9 @@
 # rosbot_mavlink_bridge
 
-ROS 2 bridge that talks MAVLink to the firmware (`rosbot_mavlink` /
-`rosbot_xl_mavlink` PlatformIO envs) and exposes the **same** topics and
-services that the existing micro-ROS firmware advertises today. From a
-downstream consumer's perspective (e.g. the `rosbot_ros` driver inside
-[rosbot-snap](https://github.com/husarion/rosbot-snap)), there is no
-migration: same node name, same namespace, same QoS — only the wire format
-changes.
-
-See [`MAVLINK_MIGRATION.md`](../../MAVLINK_MIGRATION.md) for the full
-implementation spec.
+ROS 2 bridge that talks MAVLink to the ROSbot firmware and exposes the MCU's
+topics and services ([ROS_API.md](../../ROS_API.md)) under the `rosbot_mcu`
+node, which the `rosbot_ros` driver inside
+[rosbot-snap](https://github.com/husarion/rosbot-snap) consumes.
 
 ## Build
 
@@ -27,7 +21,7 @@ colcon build --packages-select rosbot_mavlink_bridge
 ```
 
 The CI matrix builds the same source tree against both `jazzy` and
-`humble` containers (see `.github/workflows/ci.yaml` — D24).
+`humble` containers (see `.github/workflows/ci.yaml`).
 
 ### Apt install (rosdistro)
 
@@ -53,7 +47,8 @@ ros2 launch rosbot_mavlink_bridge rosbot.launch.py namespace:=rosbot \
 
 The bridge waits for the firmware's boot banner
 (`rosbot[_xl] <version> mavlink`) before declaring itself CONNECTED and
-publishing telemetry — that's the D19 mismatch detector.
+publishing telemetry, so a bridge never runs against firmware of another
+version.
 
 ## Topics / services
 
@@ -71,10 +66,6 @@ publishing telemetry — that's the D19 mismatch detector.
 | `_imu/calibration` | `std_msgs/UInt8MultiArray` | best_effort, depth 1 |
 | `_imu/start_calibration`, `_imu/stop_calibration`, `_imu/save_calibration` (services) | `std_srvs/Trigger` | — |
 
-`ros2 node info /<ns>/rosbot_mcu` and `ros2 topic info -v /<ns>/<topic>`
-output is byte-identical between this bridge and the micro-ROS agent — that
-is the Phase-4 acceptance criterion. The `_imu/*calibration*` entries are the
-one exception: MAVLink-only, see [ROS_API.md](../../ROS_API.md).
 
 ## Parameters
 
@@ -88,5 +79,5 @@ parameters:
 - `enable_ranges`, `enable_led_strip` — variant gates
 - `publish_link_state` — if true, advertise an extra `mcu_link_state`
   `std_msgs/UInt8` topic for diagnostics (off by default for API parity)
-- `timesync_alpha` — EWMA factor for the time-offset filter (D15)
+- `timesync_alpha` — EWMA factor for the time-offset filter
 - `expected_banner_regex` — boot-banner gate string

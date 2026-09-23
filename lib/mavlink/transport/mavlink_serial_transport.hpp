@@ -17,8 +17,7 @@
 #include "communication_manager.hpp"
 #include "mavlink_transport_interface.hpp"
 
-// DMA-TX + yielding-poll RX. Same FreeRTOS / DMA pattern as
-// lib/ros/ros/transport/serial_transport.cpp, without xrce framing.
+// DMA-TX + yielding-poll RX — see ARCHITECTURE.md "Serial / UDP transport".
 class MavlinkSerialTransport : public MavlinkTransport {
  public:
   explicit MavlinkSerialTransport(const SerialConfig& cfg) : cfg_(cfg) {}

@@ -1,54 +1,34 @@
 # rosbot-firmware
 
-STM32F4 firmware for ROSbot 3 and ROSbot XL. Ships in **two flavours** —
-classic **micro-ROS** and the newer **MAVLink + bridge** — that expose the
-same ROS 2 API to downstream consumers.
+STM32F4 firmware for ROSbot 3 and ROSbot XL. The MCU talks MAVLink v2
+(`rosbot` dialect) to the SBC, where
+[`rosbot_mavlink_bridge`](./bridge/rosbot_mavlink_bridge) turns it into the
+ROS 2 API described in [ROS_API.md](./ROS_API.md). One `.bin` per robot
+serves every ROS 2 distro the bridge is built for.
 
-## Two firmware flavours
-
-| Aspect | `rosbot[_xl]` (micro-ROS) | `rosbot[_xl]_mavlink` (MAVLink) |
-|---|---|---|
-| Wire protocol | XRCE-DDS | MAVLink v2 (`rosbot` dialect, [spec](./MAVLINK_MIGRATION.md)) |
-| SBC side | `micro_ros_agent` | [`rosbot_mavlink_bridge`](./bridge/rosbot_mavlink_bridge) |
-| SBC distro coupling | jazzy-pinned by `micro_ros_arduino` | distro-agnostic — one `.bin` for every ROS 2 distro the bridge ships for |
-| ROS 2 API | `rosbot_mcu` node, topics in `ROS_API.md` | **identical** node name, topics, QoS — downstream nodes can't tell |
-| Status | shipping (default) | shipping alongside on `jazzy` |
-
-Pick the MAVLink flavour to drop the `micro_ros_agent` dependency on the SBC
-and run the firmware against any ROS 2 distro (jazzy, humble, future). Pick
-the micro-ROS flavour to stay on the known-good path. Switching is just a
-re-flash + restart of the SBC-side process.
+> **micro-ROS support was removed after v2.1.0-jazzy.** Up to that release
+> the firmware could also run a micro-ROS (XRCE-DDS) stack against
+> `micro_ros_agent`, chosen at boot by the `BACKEND:` handshake line. It is
+> still in git history; the firmware now answers `BACKEND:microros` with
+> `NAK`.
 
 ## Build and flash
 
 Day-to-day workflow on the ROSbot SBC uses [`just`](./justfile):
 
 ```bash
-just install-deps           # one-time: pymavlink + platformio in a venv
-just build rosbot_xl        # micro-ROS variant
-just build rosbot_xl_mavlink  # MAVLink variant
-just flash rosbot_xl_mavlink  # builds and flashes via FTDI
-just mavgen                  # regen MAVLink dialect headers
-just --list                  # see every recipe
+just install-deps         # one-time: pymavlink + platformio in a venv
+just build rosbot_xl      # one env; envs: rosbot[_xl], rosbot[_xl]_release
+just build-all            # all four envs
+just flash rosbot_xl      # builds and flashes via rosbot_utils
+just mavgen               # regen MAVLink dialect headers
+just --list               # every recipe
 ```
 
 `just flash` wraps `ros2 run rosbot_utils flash_firmware`; see
-[`CONTRIBUTING.md`](./CONTRIBUTING.md) and [`scripts/flash.sh`](./scripts/flash.sh)
-for the details and PlatformIO env names.
+[`CONTRIBUTING.md`](./CONTRIBUTING.md) and [`scripts/flash.sh`](./scripts/flash.sh).
 
 ## Run the SBC side
-
-**micro-ROS:** start the agent against the firmware's transport.
-
-```bash
-# rosbot_xl (Ethernet)
-ros2 run micro_ros_agent micro_ros_agent udp4 --port 8888
-
-# rosbot (Serial)
-ros2 run micro_ros_agent micro_ros_agent serial --dev <serial_port> --baud 921600
-```
-
-**MAVLink:** launch the bridge from this repo (or the released tarball).
 
 ```bash
 # rosbot_xl (Ethernet, mavros default ports)
@@ -59,14 +39,11 @@ ros2 launch rosbot_mavlink_bridge rosbot.launch.py namespace:=rosbot \
   --ros-args -p serial_port:=/dev/ttyS4
 ```
 
-Either path advertises the same `/<ns>/rosbot_mcu` node with the same topic
-list, types and QoS — `rosbot_ros` (snap) consumes it unchanged.
+The bridge advertises the `/<ns>/rosbot_mcu` node that `rosbot_ros` (snap)
+consumes.
 
 ## Internals
 
 - [ARCHITECTURE.md](./ARCHITECTURE.md) — firmware architecture, RTOS task
-  layout, transport patterns, MAVLink stack overview.
-- [ROS_API.md](./ROS_API.md) — user-facing ROS topic / service contract
-  (true for both flavours).
-- [MAVLINK_MIGRATION.md](./MAVLINK_MIGRATION.md) — implementation spec for
-  the MAVLink stack, dialect IDs, phasing.
+  layout, transport patterns, MAVLink stack.
+- [ROS_API.md](./ROS_API.md) — ROS topic / service contract.

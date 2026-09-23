@@ -25,10 +25,6 @@
 #include "mavlink_node.hpp"
 #include "mavlink_types.hpp"
 #include "motor_array.hpp"
-#include "robotics_link.hpp"
-#include "ros/ros_node.hpp"
-
-RoboticsLink* g_link = nullptr;
 
 void createQueues() {
   battery_queue = xQueueCreate(1, sizeof(BatteryStamped));
@@ -43,7 +39,7 @@ void ledIndicatorTask(void* p);
 void monitorTask(void* p);
 void motorControlTask(void* p);
 void rangeTask(void* p);
-void uRosTask(void* p);
+void linkTask(void* p);
 
 inline TaskConfig tasks[] = {
     {"Battery", Priority::SENSORS, Stack::XS, 10, batteryTask},
@@ -54,7 +50,7 @@ inline TaskConfig tasks[] = {
 #endif
     {"MotorControl", Priority::CONTROL, Stack::M, 200, motorControlTask},
     {"Range", Priority::SENSORS, Stack::M, 10, rangeTask},
-    {"uRos", Priority::COMMUNICATION, Stack::XXL, 200, uRosTask},
+    {"Link", Priority::COMMUNICATION, Stack::XXL, 200, linkTask},
 };
 
 inline TaskHandleWrapper taskHandles[sizeof(tasks) / sizeof(tasks[0])];
@@ -71,13 +67,11 @@ void batteryTask(void* p) {
   BatteryStamped data = {};
 
   while (true) {
-    bool connected = rtos_get_timestamp_ns(data.timestamp_ns);
+    data.timestamp_ns = rtos_timestamp_ns();
     g_battery->update();  // TODO: DMA should be used
     data.data = g_battery->getData();
 
-    if (connected) {
-      xQueueOverwrite(battery_queue, &data);
-    }
+    xQueueOverwrite(battery_queue, &data);
     vTaskDelayUntil(&wake_time, period);
   }
 }
@@ -93,11 +87,11 @@ void imuTask(void* p) {
     if (imu_calibration::g_control.save_requested.exchange(false)) {
       imu_calibration::serviceSave(*g_imu);
     }
-    bool connected = rtos_get_timestamp_ns(data.timestamp_ns);
+    data.timestamp_ns = rtos_timestamp_ns();
     const bool fresh = g_imu->update();
     data.data = g_imu->getData();
 
-    if (connected && fresh) {
+    if (fresh) {
       xQueueOverwrite(imu_queue, &data);
     }
     vTaskDelayUntil(&wake_time, period);
@@ -117,7 +111,8 @@ void ledIndicatorTask(void* p) {
       g_indicator.calibrating(g_imu->calibrationStatus(calib) &&
                               calib.fullyCalibrated());
     } else {
-      g_indicator.update(battery_low, !g_link->isConnected(), error_state);
+      g_indicator.update(battery_low, !g_mavlink_node.isConnected(),
+                         error_state);
     }
     vTaskDelayUntil(&wake_time, period);
   }
@@ -154,13 +149,11 @@ void motorControlTask(void* p) {
   JointStateStamped data = {};
 
   while (true) {
-    bool connected = rtos_get_timestamp_ns(data.timestamp_ns);
+    data.timestamp_ns = rtos_timestamp_ns();
 
     g_motors.update();  // updates all motors, including encoders
     data.data = g_motors.getData();
-    if (connected) {
-      xQueueOverwrite(joint_state_queue, &data);
-    }
+    xQueueOverwrite(joint_state_queue, &data);
 
     vTaskDelayUntil(&wake_time, period);
   }
@@ -172,22 +165,20 @@ void rangeTask(void* p) {
   RangesStamped data = {};
 
   while (true) {
-    bool connected = rtos_get_timestamp_ns(data.timestamp_ns);
+    data.timestamp_ns = rtos_timestamp_ns();
     g_ranges.update();
     data.data = g_ranges.getData();
 
-    if (connected) {
-      xQueueOverwrite(ranges_queue, &data);
-    }
+    xQueueOverwrite(ranges_queue, &data);
     vTaskDelayUntil(&wake_time, period);
   }
 }
 
-void uRosTask(void* p) {
+void linkTask(void* p) {
   TickType_t period = taskGetPeriod(p);
   TickType_t wake_time = xTaskGetTickCount();
   while (true) {
-    g_link->loop();
+    g_mavlink_node.loop();
     vTaskDelayUntil(&wake_time, period);
   }
 }

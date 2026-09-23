@@ -61,7 +61,7 @@ BridgeNode::BridgeNode(
   RCLCPP_INFO(this->get_logger(),
               "MAVLink transport open. Waiting for MCU HEARTBEAT.");
 
-  // Topics + QoS mirror the micro-ROS API contract.
+  // Topics + QoS: see ROS_API.md.
   battery_pub_ = this->create_publisher<sensor_msgs::msg::BatteryState>(
       "battery", bestEffortDepth1());
   imu_pub_ = this->create_publisher<sensor_msgs::msg::Imu>("_imu/data",
@@ -361,7 +361,7 @@ void BridgeNode::onBatteryStatus(const mavlink_message_t & msg)
   out.temperature = std::numeric_limits<float>::quiet_NaN();
   out.charge = std::numeric_limits<float>::quiet_NaN();
   out.capacity = std::numeric_limits<float>::quiet_NaN();
-  out.design_capacity = 7.8f;  // matches micro-ROS BATTERY_DESIGN_CAPACITY
+  out.design_capacity = 7.8f;  // BATTERY_DESIGN_CAPACITY, include/*/config.hpp
   out.power_supply_status =
     sensor_msgs::msg::BatteryState::POWER_SUPPLY_STATUS_UNKNOWN;
   out.power_supply_health =

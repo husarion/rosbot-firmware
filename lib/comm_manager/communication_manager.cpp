@@ -49,7 +49,7 @@ bool consumeAvailable(HardwareSerial& s, char* buf, size_t* idx,
 }  // namespace
 
 CommunicationManager::CommunicationManager(CommunicationManagerConfig cfg)
-    : cfg_(cfg), selected_backend_(cfg.backend_default) {}
+    : cfg_(cfg) {}
 
 void CommunicationManager::init() {
   initSerial(cfg_.diagnostic_serial);
@@ -127,7 +127,7 @@ bool CommunicationManager::waitForHostConfig(HardwareSerial& serial,
   bool received_ns = false;
   while ((millis() - start) < timeout_ms) {
     if (consumeAvailable(serial, buffer.data(), &idx, NS_MAX_LENGTH)) {
-      if (parseAndStoreBackend(serial, buffer.data(), idx)) {
+      if (parseBackend(serial, buffer.data(), idx)) {
         idx = 0;
         buffer.fill('\0');
         continue;
@@ -181,12 +181,14 @@ bool CommunicationManager::parseEnd(HardwareSerial& serial, const char* buf,
   return true;
 }
 
-bool CommunicationManager::parseAndStoreBackend(HardwareSerial& serial,
-                                                const char* buf, size_t len) {
+// Hosts still send BACKEND:, and MAVLink is the only backend left. NAK
+// anything else so a host asking for another backend fails its handshake
+// instead of waiting on a link that never comes up.
+bool CommunicationManager::parseBackend(HardwareSerial& serial, const char* buf,
+                                        size_t len) {
   constexpr const char* kPrefix = "BACKEND:";
   constexpr size_t kPrefixLen = 8;
   constexpr const char* kMavlink = "mavlink";
-  constexpr const char* kMicroRos = "microros";
 
   if (len < kPrefixLen || std::strncmp(buf, kPrefix, kPrefixLen) != 0) {
     return false;
@@ -194,20 +196,10 @@ bool CommunicationManager::parseAndStoreBackend(HardwareSerial& serial,
 
   const char* value = buf + kPrefixLen;
   const size_t value_len = len - kPrefixLen;
+  const bool ok = value_len == std::strlen(kMavlink) &&
+                  std::strncmp(value, kMavlink, value_len) == 0;
 
-  if (value_len == std::strlen(kMavlink) &&
-      std::strncmp(value, kMavlink, value_len) == 0) {
-    selected_backend_ = CommBackend::MAVLINK;
-  } else if (value_len == std::strlen(kMicroRos) &&
-             std::strncmp(value, kMicroRos, value_len) == 0) {
-    selected_backend_ = CommBackend::MICRO_ROS;
-  } else {
-    serial.println("NAK");
-    serial.flush();
-    return true;
-  }
-
-  serial.println("ACK");
+  serial.println(ok ? "ACK" : "NAK");
   serial.flush();
   return true;
 }

@@ -12,10 +12,8 @@ Most-used recipes:
 
 ```bash
 just build rosbot                # Build one PlatformIO env
-just build-microros              # Build all four micro-ROS envs
-just build-mavlink               # Build all four MAVLink envs (jazzy-mavlink branch)
+just build-all                   # Build all four envs
 just flash rosbot_xl             # Build + flash on the connected robot
-just flash rosbot_xl_mavlink     # Same, for the MAVLink build
 just clean                       # Wipe PlatformIO build outputs
 just lint                        # Run pre-commit hooks against the tree
 ```

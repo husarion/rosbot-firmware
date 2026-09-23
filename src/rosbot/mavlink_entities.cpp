@@ -26,7 +26,6 @@
 #include "subscribers/wheel_cmd_subscriber.hpp"
 #include "transport/mavlink_serial_transport.hpp"
 
-// Same SBC serial pinout/baud as the micro-ROS path; only framing differs.
 static MavlinkSerialTransport serial_transport(SBC_SERIAL_CONFIG);
 
 // Publishers (telemetry: MCU → bridge)

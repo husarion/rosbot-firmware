@@ -39,7 +39,7 @@ class LedIndicator {
 
   /// Call in main loop or periodic task.
   /// Priority: error > battery_low > disconnected > OK.
-  void update(bool battery_low, bool uros_disconnected, bool error);
+  void update(bool battery_low, bool link_disconnected, bool error);
 
   /// Overrides update() while a runtime IMU calibration session runs: fast
   /// blink while the chip is still collecting, off once it is fully

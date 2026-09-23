@@ -30,7 +30,7 @@ constexpr size_t kLogBufSize = 64;
 }  // namespace
 
 // Folds the uint32 micros() delta into a uint64 accumulator so the value
-// stays monotonic across the ~71 min wrap. Single-writer (uRos task).
+// stays monotonic across the ~71 min wrap. Single-writer (link task).
 uint64_t MavlinkNode::timeBootUs() {
   static uint32_t s_last_us = 0;
   static uint64_t s_accum_us = 0;

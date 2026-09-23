@@ -27,13 +27,9 @@ if [[ -z "$ENV_NAME" ]]; then
     cat >&2 <<USAGE
 Usage: $0 <pio-env>
 
-Valid envs (micro-ROS, exist on jazzy):
+Valid envs:
   rosbot          rosbot_release
   rosbot_xl       rosbot_xl_release
-
-Valid envs (MAVLink, available on branch jazzy-mavlink after Phase 1):
-  rosbot_mavlink           rosbot_mavlink_release
-  rosbot_xl_mavlink        rosbot_xl_mavlink_release
 USAGE
     exit 2
 fi

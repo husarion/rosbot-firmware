@@ -32,7 +32,7 @@ def generate_launch_description():
         DeclareLaunchArgument('serial_baudrate', default_value='921600'),
         Node(
             # Note: no `name=` override — bridge_node sets it to 'rosbot_mcu'
-            # to match the micro-ROS firmware (§10.1).
+            # (the MCU node name rosbot_ros expects).
             package='rosbot_mavlink_bridge',
             executable='bridge_node',
             # serial_port/serial_baudrate override cfg so the platform-specific

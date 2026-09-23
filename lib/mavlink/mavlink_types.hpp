@@ -23,8 +23,7 @@
 #include "range_array.hpp"
 #endif
 
-// Duplicates lib/ros/ros/publishers/*.hpp shapes so the MAVLink build pulls
-// no sensor_msgs / micro-ROS headers. Layout must stay binary-compatible.
+// Sensor samples handed from the producing tasks to the MAVLink publishers.
 struct BatteryStamped {
   BatteryData data;
   int64_t timestamp_ns;

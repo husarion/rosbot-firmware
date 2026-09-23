@@ -20,8 +20,6 @@
 #include <cstddef>
 #include <cstdint>
 
-#include "comm_backend.hpp"
-
 enum class TransportType { kSerial, kEthernet };
 
 struct SerialConfig {
@@ -48,7 +46,6 @@ struct CommunicationManagerConfig {
   uint16_t check_interval_ms = 50;
   uint16_t resend_ready_interval_ms = 250;
   const char* ns_default = "";
-  CommBackend backend_default = CommBackend::MAVLINK;
 };
 
 class CommunicationManager {
@@ -78,13 +75,8 @@ class CommunicationManager {
   HardwareSerial* debugSerial();
 
   const char* getNamespace() const { return namespace_.data(); }
-  CommBackend getSelectedBackend() const { return selected_backend_; }
 
   // ns_default must point to memory outliving this manager.
-  void setBackendDefault(CommBackend b) {
-    cfg_.backend_default = b;
-    selected_backend_ = b;
-  }
   void setNamespaceDefault(const char* ns) { cfg_.ns_default = ns; }
 
  private:
@@ -92,8 +84,7 @@ class CommunicationManager {
   bool waitForHostConfig(HardwareSerial& serial, uint32_t timeout_ms);
   bool parseAndStoreNamespace(HardwareSerial& serial, const char* buf,
                               size_t len);
-  bool parseAndStoreBackend(HardwareSerial& serial, const char* buf,
-                            size_t len);
+  bool parseBackend(HardwareSerial& serial, const char* buf, size_t len);
   bool parseEnd(HardwareSerial& serial, const char* buf, size_t len);
 
   CommunicationManagerConfig cfg_;
@@ -101,7 +92,6 @@ class CommunicationManager {
   const SerialConfig* selected_serial_ = nullptr;
   bool debug_available_ = false;
   std::array<char, NS_MAX_LENGTH> namespace_{};
-  CommBackend selected_backend_;
 };
 
 extern CommunicationManager g_comm_mgr;

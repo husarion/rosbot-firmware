@@ -42,7 +42,7 @@ namespace imu_calibration_boot {
 // (see boot_option.hpp: kCalibrateImu and kChangeTransport are mutually
 // exclusive). `link_serial` is the upstream link when that is a UART
 // (ROSbot 3's SBC serial): the only line an SBC can see on a robot whose
-// debug UART isn't wired to it. It is idle here — MAVLink/micro-ROS start
+// debug UART isn't wired to it. It is idle here — MAVLink starts
 // after this returns — and the host bridge relays these lines, so they must
 // stay plain ASCII.
 bool run(ImuBno055& imu, uint8_t red_led, uint8_t green_led, uint8_t green_led2,
