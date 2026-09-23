@@ -134,10 +134,10 @@ stage-snap-firmware:
     dest=bridge/rosbot_mavlink_bridge/firmware
     mkdir -p "$dest"
     for variant in rosbot rosbot_xl; do
-      src=".pio/build/${variant}_mavlink_release/firmware.bin"
+      src=".pio/build/${variant}_release/firmware.bin"
       if [[ ! -f "$src" ]]; then
         echo "$src missing — building it now..."
-        pio run -e "${variant}_mavlink_release"
+        pio run -e "${variant}_release"
       fi
       cp -v "$src" "$dest/${variant}_mavlink.bin"
     done

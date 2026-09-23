@@ -11,7 +11,6 @@
 # Usage: scripts/flash.sh <pio-env>
 #   e.g. scripts/flash.sh rosbot
 #        scripts/flash.sh rosbot_xl_release
-#        scripts/flash.sh rosbot_mavlink                # once Phase 1 lands
 #
 # Environment overrides:
 #   SERIAL_PORT     — skip auto-detection, use this tty
