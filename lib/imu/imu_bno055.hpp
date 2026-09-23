@@ -50,11 +50,21 @@ class ImuBno055 : public ImuInterface {
   void update() override;
   const char* name() const override { return "BNO055"; }
 
+  // Live CALIB_STAT from the DMA block — no extra bus traffic.
+  bool calibrationStatus(ImuCalibrationStatus& out) const override;
+
+  // Runtime counterpart of captureCalibrationOffsets(): the offset
+  // registers are only readable in CONFIG mode, so this leaves NDOF for
+  // ~60 ms (no IMU samples, fusion restarts). Uses polling HAL calls, not
+  // Wire, which enableDmaReads() breaks. Requires enableDmaReads().
+  bool readCalibrationOffsets(ImuCalibrationOffsets& out) override;
+
   // Not const: Adafruit_BNO055's I2C accessors aren't const-qualified.
   ImuCalibrationStatus getCalibrationStatus();
 
-  // Reads the chip's current offset registers into `out`. Returns false
-  // (per Adafruit_BNO055) if the chip isn't fully calibrated yet.
+  // Reads the chip's current offset registers into `out` (boot-time, Wire).
+  // Returns false unless ImuCalibrationStatus::fullyCalibrated() — not
+  // Adafruit's own check, which also demands system == 3.
   bool captureCalibrationOffsets(ImuCalibrationOffsets& out);
 
   // Loads previously-captured offsets into the chip so fusion starts

@@ -174,11 +174,12 @@ Layers, bottom-up:
 | `indicator/` | Status LED state machine |
 | `led_strip/` | APA102-style LED strip over SPI (rosbot_xl only) |
 | `motor/` | `MotorInterface`, `MotorHiZ`, `MotorArray` (Hi-Z PWM control) |
-| `persistent_config/` | Comm backend/namespace + BNO055 calibration offsets, stored as one record in flash sector 11. `save()` must run before the scheduler starts (sector erase stalls 1-3 s) — see "IMU calibration" |
+| `persistent_config/` | Comm backend/namespace + BNO055 calibration offsets, stored as one record appended to a log in flash sector 11. Appending is safe at runtime; only the 1-3 s sector erase (sector full) is deferred to a pre-scheduler `save()` — see "IMU calibration" |
 | `pid/` | PID controller with feedforward, anti-windup, dead-zone boost |
 | `power_board/` | UART protocol to rosbot_xl power board MCU (battery state) |
 | `range/` | `RangeInterface` + `RangeVl53l0x` + `RangeArray` (rosbot only) |
 | `ros/ros/` | micro-ROS node, publishers, subscribers, services, transports |
+| `imu_calibration/` | Runtime calibration: session flag (LED), save request serviced from `imuTask` — see "IMU calibration" |
 | `mavlink/` | MAVLink stack: `MavlinkNode`, publishers/subscribers, transports, `rosbot` dialect (see "MAVLink build") |
 
 Each `*Interface` is the abstract base; the implementation file follows
@@ -292,11 +293,39 @@ STM32duino core's linker script size the `FLASH` region to match, so a
 build that grows past sector 10 fails at link time instead of silently
 letting a reflash overwrite this record — see `persistent_config.hpp`.
 
-`persistent_config::save()` asserts the scheduler isn't running — a
-sector erase stalls 1-3 s, which would starve the motor watchdog and
-MAVLink TX DMA if it happened mid-drive. That rules out committing a
-calibration from a live ROS/MAVLink service call. Instead, calibration is
-a **boot-time window**, entirely inside `setup()` before
+A sector erase stalls the CPU for 1-3 s, which would starve the motor
+watchdog and MAVLink TX DMA if it happened mid-drive. So the sector is an
+append-only log of fixed-size records: `load()` takes the newest valid
+one, and `save()` only *programs* the next free slot (~70 bytes, no
+stall). The erase happens only when the sector is full (~1900 records),
+and then only from a `save()` before the scheduler starts — at runtime it
+returns false instead.
+
+There are two ways to calibrate. Both end in the same record.
+
+**Runtime (MAVLink firmware, the normal path).** The BNO055 calibrates
+continuously in NDOF, so nothing needs a reboot: the host only watches and
+saves. `ROSBOT_IMU_CALIBRATION` (5 Hz) carries CALIB_STAT plus the save
+state; `COMMAND_LONG` `MAV_CMD_USER_2` with `param1` = 1 start / 0 stop /
+2 save. The bridge exposes them as `_imu/calibration` and
+`_imu/{start,stop,save}_calibration` — see [ROS_API.md](ROS_API.md).
+
+- Start/stop only drive the LED: the red LED blinks at 100 ms while a
+  session is on (180 s cap) and goes dark once gyro/accel/mag reach 3.
+- Save is refused in the command handler when the chip is not calibrated,
+  otherwise it sets a flag that `imuTask` services before its next
+  `update()`, so the I2C bus has one owner. Reading the offsets needs
+  CONFIG mode (~25 ms in, ~20 ms back to NDOF); measured IMU gap during a
+  save ~60 ms.
+- The criterion is gyro/accel/mag == 3; `sys` is ignored. Per the
+  datasheet those three are the offset status, `sys` is fusion confidence,
+  and on ROSbot 3 it hovered at 0-2 while all three sat at 3.
+- Right after boot, with offsets freshly restored, CALIB_STAT can report
+  mag=3 for a moment before dropping to 0 (seen on ROSbot 3). A save then
+  just rewrites the restored offsets — harmless, but a host that
+  auto-saves should wait for the operator's movement, not the first 3/3/3.
+
+**Boot-time window (both firmwares).** Entirely inside `setup()` before
 `vTaskStartScheduler()`:
 
 1. `setup()` calls `resolveBootAction()` (`lib/boot_option/`) as the very
@@ -336,7 +365,7 @@ a **boot-time window**, entirely inside `setup()` before
    figure-8 rotation, accel needs a few stable rests >45° apart, which is
    awkward on an assembled wheeled robot; a fixture/stand is worth having
    on a production line rather than relying on freehand tilting.
-3. On `sys/gyro/accel/mag == 3/3/3/3` (or a 120 s timeout), GRN_LED(s) go
+3. On `gyro/accel/mag == 3/3/3` (or a 120 s timeout), GRN_LED(s) go
    solid, offsets are captured via `captureCalibrationOffsets()` and
    folded into the same `persistent_config::Config` that's about to be
    saved for comm backend/namespace — one erase+program cycle, not two.
@@ -350,13 +379,10 @@ isn't supported — the two are separate actions on the same gesture axis,
 not combinable. Wanting both means two boots (either order): both settle
 into the same persisted `Config`, so nothing is lost between them.
 
-There's deliberately no ROS/MAVLink service exposing calibration status
-live — `getCalibrationStatus()` only works via blocking Wire calls before
-`enableDmaReads()` (see the gotcha below), and no link exists yet at that
-point in boot anyway (ROS/MAVLink both come up well after this window,
-and after `enableDmaReads()`). A runtime service calling it would just
-fail. Progress is observable only via the serial logs and LEDs during the
-boot-time window itself — see `imu_calibration_boot::run()`.
+During the boot window no link exists yet, so progress is observable only
+via the serial logs and LEDs — see `imu_calibration_boot::run()`. At
+runtime the status comes for free: CALIB_STAT (0x35) ends the same DMA
+block `update()` already reads (0x08..0x35, 46 bytes).
 
 Where those logs go differs per variant, because an SBC can only read what
 is wired to it:
@@ -550,10 +576,14 @@ library that does its own `Wire.begin()` (e.g. Adafruit_BNO055 inside
 its `begin(mode)`) silently drops your previously-configured 400 kHz
 back to 100 kHz.
 
-Workaround: re-apply `bus->setClock(400000)` in your driver's `init()`
-**after** the third-party library finishes setup. Note that this didn't
-turn out to be the dominant cost on this hardware — the BNO055 also has
-its own clock-stretch behavior — but it's a real footgun.
+`ImuBno055::init()` re-applies `setClock(400000)` after `bno_.begin()`.
+This was documented here long before the code did it, and it mattered:
+at 100 kHz the DMA read took 5-9 ms against a 4 ms timeout, nearly every
+read timed out, and `imuTask` kept republishing the last good sample —
+orientation frozen while the robot was turned by hand (ROSbot 3, 2026-09).
+At 400 kHz: 1.6-6.9 ms, 0 timeouts in 2181 reads. The spread is the
+BNO055's clock stretching plus task wake-up jitter, hence
+`kReadTimeoutMs = 8` (under the 10 ms task period).
 
 ### USART → DMA mapping (and IRQ-handler symbol collisions)
 

@@ -19,6 +19,7 @@
 #include "battery_interface.hpp"
 #include "communication_manager.hpp"
 #include "config.hpp"
+#include "imu_calibration_runtime.hpp"
 #include "imu_interface.hpp"
 #include "led_indicator.hpp"
 #include "mavlink_node.hpp"
@@ -87,6 +88,11 @@ void imuTask(void* p) {
   ImuStamped data = {};
 
   while (true) {
+    // Before update(): the save borrows the bus for ~60 ms, and running it
+    // here keeps it from ever overlapping a DMA read.
+    if (imu_calibration::g_control.save_requested.exchange(false)) {
+      imu_calibration::serviceSave(*g_imu);
+    }
     bool connected = rtos_get_timestamp_ns(data.timestamp_ns);
     g_imu->update();
     data.data = g_imu->getData();
@@ -106,7 +112,13 @@ void ledIndicatorTask(void* p) {
     bool battery_low = g_battery->isLow();
     bool error_state = false;
 
-    g_indicator.update(battery_low, !g_link->isConnected(), error_state);
+    if (imu_calibration::sessionActive(millis())) {
+      ImuCalibrationStatus calib{};
+      g_indicator.calibrating(g_imu->calibrationStatus(calib) &&
+                              calib.fullyCalibrated());
+    } else {
+      g_indicator.update(battery_low, !g_link->isConnected(), error_state);
+    }
     vTaskDelayUntil(&wake_time, period);
   }
 }

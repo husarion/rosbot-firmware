@@ -68,10 +68,13 @@ publishing telemetry — that's the D19 mismatch detector.
 | `leds` | `std_msgs/UInt8` | best_effort, depth 1 |
 | `led_strip` (rosbot_xl only) | `sensor_msgs/Image` | best_effort, depth 1 |
 | `_mcu_id` (service) | `std_srvs/Trigger` | — |
+| `_imu/calibration` | `std_msgs/UInt8MultiArray` | best_effort, depth 1 |
+| `_imu/start_calibration`, `_imu/stop_calibration`, `_imu/save_calibration` (services) | `std_srvs/Trigger` | — |
 
 `ros2 node info /<ns>/rosbot_mcu` and `ros2 topic info -v /<ns>/<topic>`
 output is byte-identical between this bridge and the micro-ROS agent — that
-is the Phase-4 acceptance criterion.
+is the Phase-4 acceptance criterion. The `_imu/*calibration*` entries are the
+one exception: MAVLink-only, see [ROS_API.md](../../ROS_API.md).
 
 ## Parameters
 

@@ -27,6 +27,18 @@
       <field type="uint8_t"  name="mask">Pressed-button bitmask.</field>
     </message>
 
+    <message id="11004" name="ROSBOT_IMU_CALIBRATION">
+      <description>BNO055 calibration state, read live off the chip. The chip calibrates continuously in its fusion mode, so this rises while the robot is moved. MAV_CMD_USER_2 param1 selects the action: 1 start a session (red LED blinks fast until fully calibrated), 2 persist the current offsets (ends the session), 0 stop the session. save_seq/state report the outcome of the last save.</description>
+      <field type="uint8_t" name="sys">System calibration level, 0..3.</field>
+      <field type="uint8_t" name="gyro">Gyroscope calibration level, 0..3.</field>
+      <field type="uint8_t" name="accel">Accelerometer calibration level, 0..3.</field>
+      <field type="uint8_t" name="mag">Magnetometer calibration level, 0..3.</field>
+      <field type="uint8_t" name="state">Last save: 0 none, 1 saving, 2 saved, 3 rejected (not fully calibrated), 4 failed (I2C or flash).</field>
+      <field type="uint8_t" name="save_seq">Incremented each time a save finishes, so a host can tell a fresh result from a stale one.</field>
+      <field type="uint8_t" name="has_saved">1 when flash holds calibration offsets that are applied at boot.</field>
+      <field type="uint8_t" name="session">1 while a calibration session is running.</field>
+    </message>
+
     <message id="11010" name="ROSBOT_WHEEL_SETPOINTS">
       <description>Wheel velocity setpoints, order: FL, FR, RL, RR.</description>
       <field type="uint64_t" name="time_boot_us">Bridge-side stamp for diagnostics [us].</field>

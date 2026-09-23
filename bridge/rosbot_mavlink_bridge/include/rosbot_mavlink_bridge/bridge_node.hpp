@@ -34,6 +34,7 @@
 #include "sensor_msgs/msg/range.hpp"
 #include "std_msgs/msg/float32_multi_array.hpp"
 #include "std_msgs/msg/u_int8.hpp"
+#include "std_msgs/msg/u_int8_multi_array.hpp"
 #include "std_srvs/srv/trigger.hpp"
 
 namespace rosbot_mavlink_bridge
@@ -66,6 +67,7 @@ private:
   void onRosbotButtons(const mavlink_message_t & msg);
   void onDistanceSensor(const mavlink_message_t & msg);
   void onRosbotMcuId(const mavlink_message_t & msg);
+  void onRosbotImuCalibration(const mavlink_message_t & msg);
   void onCommandAck(const mavlink_message_t & msg);
 
   // ROS → MAVLink callbacks
@@ -75,6 +77,16 @@ private:
   void mcuIdServiceCb(
     const std::shared_ptr<std_srvs::srv::Trigger::Request> req,
     std::shared_ptr<std_srvs::srv::Trigger::Response> res);
+  void saveImuCalibrationCb(
+    const std::shared_ptr<std_srvs::srv::Trigger::Request> req,
+    std::shared_ptr<std_srvs::srv::Trigger::Response> res);
+  void calibrationSessionCb(
+    std::uint8_t action,
+    std::shared_ptr<std_srvs::srv::Trigger::Response> res);
+  // Sends MAV_CMD_USER_2(action), retrying until ACKed; returns the
+  // MAV_RESULT, or -1 with no ACK. Call with calib_mutex_ held via `lk`.
+  int sendCalibrationCommand(
+    std::uint8_t action, std::unique_lock<std::mutex> & lk);
 
   std::unique_ptr<Transport> transport_;
   std::thread rx_thread_;
@@ -113,6 +125,15 @@ private:
   bool mcu_id_pending_ = false;
   bool mcu_id_received_ = false;
 
+  // Save-calibration exchange: the ACK says whether the MCU took the
+  // request, the next ROSBOT_IMU_CALIBRATION with a new save_seq carries the
+  // outcome. -1 = no ACK yet.
+  std::mutex calib_mutex_;
+  std::condition_variable calib_cv_;
+  bool calib_seen_ = false;
+  mavlink_rosbot_imu_calibration_t calib_last_{};
+  int calib_ack_result_ = -1;
+
   rclcpp::TimerBase::SharedPtr heartbeat_timer_;
   rclcpp::Publisher<sensor_msgs::msg::BatteryState>::SharedPtr battery_pub_;
   rclcpp::Publisher<sensor_msgs::msg::Imu>::SharedPtr imu_pub_;
@@ -124,6 +145,10 @@ private:
   rclcpp::Subscription<std_msgs::msg::UInt8>::SharedPtr leds_sub_;
   rclcpp::Subscription<sensor_msgs::msg::Image>::SharedPtr led_strip_sub_;
   rclcpp::Service<std_srvs::srv::Trigger>::SharedPtr mcu_id_service_;
+  rclcpp::Publisher<std_msgs::msg::UInt8MultiArray>::SharedPtr calib_pub_;
+  rclcpp::Service<std_srvs::srv::Trigger>::SharedPtr save_calib_service_;
+  rclcpp::Service<std_srvs::srv::Trigger>::SharedPtr start_calib_service_;
+  rclcpp::Service<std_srvs::srv::Trigger>::SharedPtr stop_calib_service_;
 
   // rosbot vs rosbot_xl deltas — keeps one executable for both variants.
   bool enable_ranges_ = false;

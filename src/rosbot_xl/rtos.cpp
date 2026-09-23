@@ -22,6 +22,7 @@
 #include "communication_manager.hpp"
 #include "config.hpp"
 #include "fan.hpp"
+#include "imu_calibration_runtime.hpp"
 #include "imu_interface.hpp"
 #include "led_indicator.hpp"
 #include "led_strip.hpp"
@@ -84,7 +85,13 @@ void hwMonitorTask(void* p) {
     // LED Indicator
     bool battery_low = g_battery->isLow();
     bool error_state = false;
-    g_indicator.update(battery_low, !g_link->isConnected(), error_state);
+    if (imu_calibration::sessionActive(millis())) {
+      ImuCalibrationStatus calib{};
+      g_indicator.calibrating(g_imu->calibrationStatus(calib) &&
+                              calib.fullyCalibrated());
+    } else {
+      g_indicator.update(battery_low, !g_link->isConnected(), error_state);
+    }
 
     if (xTaskGetTickCount() - last_battery_update > pdMS_TO_TICKS(1000)) {
       // Fan
@@ -119,6 +126,11 @@ void imuTask(void* p) {
   ImuStamped data = {};
 
   while (true) {
+    // Before update(): the save borrows the bus for ~60 ms, and running it
+    // here keeps it from ever overlapping a DMA read.
+    if (imu_calibration::g_control.save_requested.exchange(false)) {
+      imu_calibration::serviceSave(*g_imu);
+    }
     if (rtos_get_timestamp_ns(data.timestamp_ns)) {
       g_imu->update();
       data.data = g_imu->getData();

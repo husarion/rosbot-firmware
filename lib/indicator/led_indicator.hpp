@@ -41,6 +41,12 @@ class LedIndicator {
   /// Priority: error > battery_low > disconnected > OK.
   void update(bool battery_low, bool uros_disconnected, bool error);
 
+  /// Overrides update() while a runtime IMU calibration session runs: fast
+  /// blink while the chip is still collecting, off once it is fully
+  /// calibrated (ready to save) — the same red-LED vocabulary as the
+  /// boot-time calibration window, only faster so the two can't be confused.
+  void calibrating(bool fully_calibrated);
+
   const char* name() const { return cfg_.label; }
   bool isAvailable() const { return cfg_.pin != 0; }
 

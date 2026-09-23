@@ -58,9 +58,9 @@ bool run(ImuBno055& imu, uint8_t red_led, uint8_t green_led, uint8_t green_led2,
       if (green_led2 != 0) digitalWrite(green_led2, HIGH);
       const bool captured = imu.captureCalibrationOffsets(out);
       logLine(debug_serial, link_serial,
-              "IMU calibration: fully calibrated (sys=3 gyro=3 accel=3 "
+              "IMU calibration: fully calibrated (sys=%u gyro=3 accel=3 "
               "mag=3), offsets %s.\r\n",
-              captured ? "captured" : "capture FAILED");
+              status.system, captured ? "captured" : "capture FAILED");
       return captured;
     }
     const uint32_t now = millis();

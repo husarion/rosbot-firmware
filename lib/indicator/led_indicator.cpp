@@ -19,6 +19,20 @@ void LedIndicator::init() {
   digitalWrite(cfg_.pin, cfg_.initial_state);
 }
 
+void LedIndicator::calibrating(bool fully_calibrated) {
+  constexpr uint32_t kFastBlinkMs = 100;
+  resetSOS();
+  if (fully_calibrated) {
+    digitalWrite(cfg_.pin, LOW);
+    return;
+  }
+  const uint32_t now = millis();
+  if (now - last_toggle_ >= kFastBlinkMs) {
+    digitalToggle(cfg_.pin);
+    last_toggle_ = now;
+  }
+}
+
 void LedIndicator::update(bool battery_low, bool uros_disconnected,
                           bool error) {
   uint32_t now = millis();

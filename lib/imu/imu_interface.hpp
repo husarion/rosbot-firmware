@@ -31,9 +31,13 @@ struct ImuCalibrationStatus {
   uint8_t accel;
   uint8_t mag;
 
-  bool fullyCalibrated() const {
-    return system == 3 && gyro == 3 && accel == 3 && mag == 3;
-  }
+  // What the offsets need: gyro/accel/mag are the per-sensor "offset
+  // calibration status" (BNO055 datasheet rev 1.8, CALIB_STAT), and those
+  // offsets are what gets persisted. `system` is fusion confidence in the
+  // orientation, and on a robot it can sit at 0-2 indefinitely with all
+  // three sensors at 3 (HW-observed 2026-09-23 on ROSbot 3: >8 min) —
+  // requiring it made calibration effectively impossible to finish.
+  bool fullyCalibrated() const { return gyro == 3 && accel == 3 && mag == 3; }
 };
 
 // Mirrors adafruit_bno055_offsets_t (22 bytes, NUM_BNO055_OFFSET_REGISTERS)
@@ -54,6 +58,20 @@ class ImuInterface {
   virtual void update() = 0;
   virtual const ImuData getData() const { return data_; }
   virtual const char* name() const = 0;
+
+  // Calibration level as of the last update(); false if the driver has
+  // none to report.
+  virtual bool calibrationStatus(ImuCalibrationStatus& out) const {
+    (void)out;
+    return false;
+  }
+
+  // The offsets the chip is using right now, read while the scheduler runs.
+  // Only from the task that calls update() — it shares the bus with it.
+  virtual bool readCalibrationOffsets(ImuCalibrationOffsets& out) {
+    (void)out;
+    return false;
+  }
 
  protected:
   ImuData data_ = {};
