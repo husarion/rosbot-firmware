@@ -85,8 +85,12 @@ DMA_HandleTypeDef s_hdma_rx = {};
 SemaphoreHandle_t s_done_sem = nullptr;
 volatile bool s_xfer_ok = false;
 // CALIB_STAT as of the last good DMA read: sys[7:6] gyro[5:4] accel[3:2]
-// mag[1:0]. 0xFF = never read. Written by the IMU task, read by MAVLink.
-std::atomic<uint8_t> s_calib_stat{0xFF};
+// mag[1:0]. Written by the IMU task, read by MAVLink. The "never read"
+// sentinel sits outside the byte range: 0xFF is a real reading (all four
+// channels at 3), and using it as the sentinel silenced the status and
+// rejected the save exactly when the chip was fully calibrated.
+constexpr uint16_t kCalibStatNeverRead = 0x100;
+std::atomic<uint16_t> s_calib_stat{kCalibStatNeverRead};
 
 inline int16_t le16(const uint8_t* p) {
   return static_cast<int16_t>(static_cast<uint16_t>(p[0]) |
@@ -279,8 +283,8 @@ bool ImuBno055::update() {
 }
 
 bool ImuBno055::calibrationStatus(ImuCalibrationStatus& out) const {
-  const uint8_t raw = s_calib_stat.load();
-  if (raw == 0xFF) return false;
+  const uint16_t raw = s_calib_stat.load();
+  if (raw == kCalibStatNeverRead) return false;
   out.system = (raw >> 6) & 0x03;
   out.gyro = (raw >> 4) & 0x03;
   out.accel = (raw >> 2) & 0x03;
