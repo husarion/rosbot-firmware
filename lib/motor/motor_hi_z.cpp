@@ -194,6 +194,11 @@ void MotorHiZ::update(float dt, bool move) {
   applyPWM(output);
 }
 
+void MotorHiZ::resetController() {
+  target_velocity_.store(0.0f, std::memory_order_relaxed);
+  pid_.reset();
+}
+
 void MotorHiZ::reset() {
   brake();
   target_velocity_.store(0.0f, std::memory_order_relaxed);

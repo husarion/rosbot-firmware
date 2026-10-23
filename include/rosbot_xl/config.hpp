@@ -39,6 +39,7 @@ inline constexpr uint32_t ADC_MAX_VALUE =
 inline constexpr uint8_t AUDIO_SHDN = PB2;
 inline constexpr uint8_t AUDIO_DAC_OUT = PA4;
 inline constexpr uint8_t EN_LOC_5V = PF13;
+inline constexpr uint8_t GPIO_HUB_NRST = PE1;
 
 inline constexpr uint8_t I2C_SDA = PF0;
 inline constexpr uint8_t I2C_SCL = PF1;
@@ -255,12 +256,10 @@ inline constexpr float MOTOR_RESISTANCE = 2.17f;       // [Ω]
 inline constexpr float MOTOR_BACK_EMF = 0.00994f;      // [V·s/rad]
 inline constexpr float MOTOR_SUPPLY_VOLTAGE = 12.0f;   // [V] nominal
 
-inline constexpr DriverGroupConfig right_motors_driver = {PC13, PE0};
-inline constexpr DriverGroupConfig left_motors_driver = {PC14, PE1};
-inline constexpr DriverGroupConfig driver_groups[] = {
-    right_motors_driver,
-    left_motors_driver,
-};
+// DRV8870 / MAX22205 have no nSLEEP/nFAULT wired to the MCU, so there are no
+// driver groups. The pins the rosbot config uses for them are PC13 (rev 1.1
+// fan, unconnected on rev 1.2), PC14 (unconnected on rev 1.2), PE0
+// (unconnected) and PE1 (GPIO_HUB_NRST).
 
 inline constexpr MotorHiZConfig motor_fl_config = {
     .pwm_pin = PF9,

@@ -58,6 +58,7 @@ class MotorHiZ : public MotorInterface {
   void init() override;
   void update(float dt, bool move = true) override;
   void reset() override;
+  void resetController() override;
   void setVelocity(float vel) override;
   void brake() override;
   void setNeutral() override;

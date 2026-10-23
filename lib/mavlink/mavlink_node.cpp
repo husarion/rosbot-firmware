@@ -124,8 +124,9 @@ void MavlinkNode::emitHeartbeatIfDue(uint32_t now_ms) {
   }
   last_heartbeat_ms_ = now_ms;
   mavlink_message_t m;
-  uint8_t system_status =
-      (state_ == CONNECTED) ? MAV_STATE_ACTIVE : MAV_STATE_STANDBY;
+  uint8_t system_status = critical_               ? MAV_STATE_CRITICAL
+                          : (state_ == CONNECTED) ? MAV_STATE_ACTIVE
+                                                  : MAV_STATE_STANDBY;
   mavlink_msg_heartbeat_pack(cfg_.sysid, cfg_.compid, &m, cfg_.mav_type,
                              cfg_.autopilot, /*base_mode=*/0,
                              /*custom_mode=*/0, system_status);

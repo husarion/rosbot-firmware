@@ -56,6 +56,8 @@ class MavlinkNode {
   bool isConnected() const { return state_ == CONNECTED; }
   void setNamespace(const char* ns) { ns_ = ns; }
   void setDiagnosticSerial(HardwareSerial* serial) { diag_serial_ = serial; }
+  /// Reported as MAV_STATE_CRITICAL in HEARTBEAT. Call from the link task.
+  void setCritical(bool critical) { critical_ = critical; }
 
   bool sendMessage(mavlink_message_t& msg);
   static uint64_t timeBootUs();
@@ -86,6 +88,7 @@ class MavlinkNode {
   uint32_t last_peer_heartbeat_ms_ = 0;
   uint32_t last_boot_banner_ms_ = 0;
   bool peer_seen_ = false;
+  bool critical_ = false;
   uint8_t boot_banner_attempts_ = 0;
   State state_ = WAITING;
   SemaphoreHandle_t tx_mutex_ = nullptr;
