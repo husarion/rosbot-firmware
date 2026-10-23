@@ -19,7 +19,8 @@
 #include "mavlink_transport_interface.hpp"
 
 // LwIP raw-API UDP transport. MCU binds local_port and sends to
-// (peer_ip, peer_port). MAVROS default: local=14555, peer=14550.
+// (peer_ip, peer_port); datagrams from any other IP are dropped.
+// MAVROS default: local=14555, peer=14550.
 struct MavlinkUdpConfig {
   IPAddress peer_ip;
   uint16_t peer_port;

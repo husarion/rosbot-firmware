@@ -33,8 +33,14 @@ ip_addr_t s_peer_addr;
 uint16_t s_peer_port = 0;
 
 void rxCallback(void* /*arg*/, struct udp_pcb* /*pcb*/, struct pbuf* p,
-                const ip_addr_t* /*addr*/, u16_t /*port*/) {
+                const ip_addr_t* addr, u16_t /*port*/) {
   if (p == nullptr) return;
+  // The LAN9303 bridges the external RJ45 jack onto this subnet, so only
+  // the SBC may drive the robot. Any source port, for diagnostic tools.
+  if (addr == nullptr || !ip_addr_cmp(addr, &s_peer_addr)) {
+    pbuf_free(p);
+    return;
+  }
   for (struct pbuf* q = p; q != nullptr; q = q->next) {
     // timeout=0 — drop on overflow rather than block LwIP.
     xStreamBufferSend(s_rx_stream, q->payload, q->len, 0);
