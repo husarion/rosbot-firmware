@@ -107,7 +107,7 @@ class MotorArray {
   std::atomic<uint32_t> last_cmd_time_{0};
   std::atomic<bool> watchdog_enabled_{false};
   std::atomic<bool> drivers_enabled_{false};
-  uint32_t last_update_ = 0;
+  uint32_t last_update_us_ = 0;
 
   // driver fault latch
   static constexpr uint8_t kFaultAssertCycles = 2;

@@ -42,7 +42,7 @@ void MotorArray::init() {
   data_.count = count_;
   for (uint8_t i = 0; i < count_; ++i) motors_[i]->init();
 
-  last_update_ = millis();
+  last_update_us_ = micros();
   enableDrivers();
 }
 
@@ -96,11 +96,11 @@ void MotorArray::brakeAll() {
 void MotorArray::update() {
   if (!isDriversEnabled()) return;
 
-  const uint32_t now = millis();
-  const float dt = (now - last_update_) / 1000.0f;
-  last_update_ = now;
+  const uint32_t now_us = micros();
+  const float dt = (now_us - last_update_us_) * 1e-6f;
+  last_update_us_ = now_us;
 
-  const bool fault = updateFaultLatch(now);
+  const bool fault = updateFaultLatch(millis());
 
   if (xSemaphoreTake(mutex_, pdMS_TO_TICKS(5)) == pdTRUE) {
     for (uint8_t i = 0; i < count_; ++i) {
