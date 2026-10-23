@@ -258,8 +258,8 @@ inline constexpr float MOTOR_SUPPLY_VOLTAGE = 12.0f;   // [V] nominal
 
 // DRV8870 / MAX22205 have no nSLEEP/nFAULT wired to the MCU, so there are no
 // driver groups. The pins the rosbot config uses for them are PC13 (rev 1.1
-// fan, unconnected on rev 1.2), PC14 (unconnected on rev 1.2), PE0
-// (unconnected) and PE1 (GPIO_HUB_NRST).
+// fan, unconnected on rev 1.2), PC14 and PE0 (unconnected) and PE1
+// (GPIO_HUB_NRST).
 
 inline constexpr MotorHiZConfig motor_fl_config = {
     .pwm_pin = PF9,
