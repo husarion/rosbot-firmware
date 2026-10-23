@@ -77,20 +77,6 @@ void MotorArray::setVelocities(const float* velocities) {
   }
 }
 
-void MotorArray::stopAll() {
-  if (xSemaphoreTake(mutex_, pdMS_TO_TICKS(10)) == pdTRUE) {
-    for (uint8_t i = 0; i < count_; ++i) motors_[i]->setNeutral();
-    xSemaphoreGive(mutex_);
-  }
-}
-
-void MotorArray::brakeAll() {
-  if (xSemaphoreTake(mutex_, pdMS_TO_TICKS(10)) == pdTRUE) {
-    for (uint8_t i = 0; i < count_; ++i) motors_[i]->brake();
-    xSemaphoreGive(mutex_);
-  }
-}
-
 // ─── update (PID loop — called from control task) ────────────────
 
 void MotorArray::update() {
