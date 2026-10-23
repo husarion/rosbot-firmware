@@ -79,9 +79,9 @@ void MavlinkUdpTransport::close() {
 size_t MavlinkUdpTransport::write(const uint8_t* buf, size_t len) {
   if (s_pcb == nullptr || buf == nullptr || len == 0) return 0;
 
-  // lwIP runs NO_SYS=1; the same raw API is also touched from the
-  // stm32_eth_scheduler TIM IRQ. taskENTER_CRITICAL masks that IRQ to keep
-  // the pbuf pool / pcb chain single-threaded for the call.
+  // lwIP runs NO_SYS=1 and is driven by STM32Ethernet's ethernet_scheduler
+  // task (priority 5). The critical section keeps that task from preempting
+  // this call, so the pbuf pool / pcb chain stay single-threaded.
   taskENTER_CRITICAL();
   struct pbuf* p = pbuf_alloc(PBUF_TRANSPORT, len, PBUF_RAM);
   if (p == nullptr) {

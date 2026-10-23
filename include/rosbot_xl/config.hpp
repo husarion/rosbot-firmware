@@ -349,6 +349,7 @@ inline constexpr PIDConfig pid_config = {
 inline byte MAC[6] = {0x02, 0x47, 0x00, 0x00, 0x00, 0x01};
 inline IPAddress CLIENT_IP = {192, 168, 77, 3};
 inline IPAddress SBC_IP = {192, 168, 77, 2};
+inline constexpr char SBC_HOST[] = "192.168.77.2";  // SBC_IP, for HTTP Host
 
 // ───────── Publishers ─────────
 inline QueueHandle_t battery_queue;
