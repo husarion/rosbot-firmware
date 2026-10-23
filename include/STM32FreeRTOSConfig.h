@@ -119,9 +119,9 @@ extern char _Min_Stack_Size; /* Defined in the linker script */
 #define configIDLE_SHOULD_YIELD 1
 #define configUSE_MUTEXES 1
 #define configQUEUE_REGISTRY_SIZE 8
-#define configCHECK_FOR_STACK_OVERFLOW 0
+#define configCHECK_FOR_STACK_OVERFLOW 2
 #define configUSE_RECURSIVE_MUTEXES 1
-#define configUSE_MALLOC_FAILED_HOOK 0
+#define configUSE_MALLOC_FAILED_HOOK 1
 #define configUSE_APPLICATION_TASK_TAG 0
 #define configUSE_COUNTING_SEMAPHORES 1
 #define configGENERATE_RUN_TIME_STATS 1
@@ -199,13 +199,20 @@ See http://www.FreeRTOS.org/RTOS-Cortex-M3-M4.html. */
 #define configMAX_SYSCALL_INTERRUPT_PRIORITY \
   (configLIBRARY_MAX_SYSCALL_INTERRUPT_PRIORITY << (8 - configPRIO_BITS))
 
-/* Normal assert() semantics without relying on the provision of an assert.h
-header file. */
-#define configASSERT(x)       \
-  if ((x) == 0) {             \
-    taskDISABLE_INTERRUPTS(); \
-    for (;;);                 \
-  }
+/* Spinning here would leave the motor PWM running; fatalError() (lib/fault)
+resets the MCU instead. Declared here, not included: the kernel sources are
+built without lib/fault on their include path. */
+#ifdef __cplusplus
+extern "C" {
+#endif
+void fatalError(void) __attribute__((noreturn));
+#ifdef __cplusplus
+}
+#endif
+#define configASSERT(x)         \
+  do {                          \
+    if ((x) == 0) fatalError(); \
+  } while (0)
 
 /* Definitions that map the FreeRTOS port interrupt handlers to their CMSIS
    standard names. */

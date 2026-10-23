@@ -21,6 +21,7 @@
 #include "boot_option.hpp"
 #include "communication_manager.hpp"
 #include "config.hpp"
+#include "fault.hpp"
 #include "hardware_encoder.hpp"
 #include "i2c_fast_mode.hpp"
 #include "imu_bno055.hpp"
@@ -128,6 +129,7 @@ static persistent_config::Config s_persistent;
 
 /*───────── Setup ─────────*/
 void setup() {
+  installFaultHandlers();
   boardPheripheralsInit();
 
   // Resolve the boot gesture before anything else touches the buttons —
@@ -206,6 +208,9 @@ void setup() {
 
   g_mavlink_node.setNamespace(g_comm_mgr.getNamespace());
   g_mavlink_node.setDiagnosticSerial(g_comm_mgr.debugSerial());
+  if (consumeFaultResetFlag()) {
+    g_mavlink_node.setBootNotice("MCU reset after a firmware fault");
+  }
   g_mavlink_node.begin();
 
   // Must run after any boot-time IMU calibration and before the
