@@ -54,7 +54,11 @@ class MavlinkNode {
   void loop();
   bool isConnected() const { return state_ == CONNECTED; }
   void setNamespace(const char* ns) { ns_ = ns; }
-  void setDiagnosticSerial(HardwareSerial* serial) { diag_serial_ = serial; }
+  // `mutex` is shared with every other writer of `serial` (may be null).
+  void setDiagnosticSerial(HardwareSerial* serial, SemaphoreHandle_t mutex) {
+    diag_serial_ = serial;
+    diag_mutex_ = mutex;
+  }
   /// Logged as an error STATUSTEXT after the boot banner on every connection.
   void setBootNotice(const char* text) { boot_notice_ = text; }
   /// Reported as MAV_STATE_CRITICAL in HEARTBEAT. Call from the link task.
@@ -78,6 +82,7 @@ class MavlinkNode {
   MavlinkTransport& transport_;
   MavlinkNodeConfig cfg_;
   HardwareSerial* diag_serial_ = nullptr;
+  SemaphoreHandle_t diag_mutex_ = nullptr;
   const char* ns_ = "";
   const char* boot_notice_ = nullptr;
   mavlink_status_t rx_status_ = {};

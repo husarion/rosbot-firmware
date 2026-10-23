@@ -61,7 +61,11 @@ void MavlinkNode::log(uint8_t severity, const char* fmt, ...) {
   va_end(args);
 
   if (diag_serial_ != nullptr) {
+    const bool lock = diag_mutex_ != nullptr &&
+                      xTaskGetSchedulerState() == taskSCHEDULER_RUNNING;
+    if (lock) xSemaphoreTake(diag_mutex_, portMAX_DELAY);
     diag_serial_->println(buf);
+    if (lock) xSemaphoreGive(diag_mutex_);
   }
 
   if (!transport_open_) return;

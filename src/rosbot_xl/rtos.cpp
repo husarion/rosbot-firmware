@@ -55,7 +55,7 @@ void linkTask(void* p);
 TaskConfig tasks[] = {
     {"HwMonitor", Priority::OBSERVING, Stack::S, 10, hwMonitorTask},
     {"Imu", Priority::SENSORS, Stack::M, 100, imuTask},
-    {"LedStrip", Priority::COMMUNICATION, Stack::M, 30, ledStripTask},
+    {"LedStrip", Priority::OBSERVING, Stack::M, 30, ledStripTask},
 #ifndef RELEASE
     {"Monitor", Priority::BLOCKING, Stack::XL, 1, monitorTask},
 #endif
@@ -111,8 +111,9 @@ void hwMonitorTask(void* p) {
       board_info_pending = !power_board.boardInfo().isValid();
     } else if (board_info_pending &&
                now - last_battery_update > pdMS_TO_TICKS(500)) {
-      // Half a second apart: both replies together (102 B) overflow the
-      // 64 B UART RX buffer between two 100 ms drains.
+      // Half a second apart: requesting both at once lost replies on HW
+      // (2026-09). The cause is unconfirmed — the RX ring is 512 B, not the
+      // 64 B assumed then.
       power_board.requestBoardInfo();
       board_info_pending = false;
     }
@@ -154,6 +155,7 @@ void ledStripTask(void* p) {
   TickType_t last_idle_change = 0;
   int idle_state = 0;
   bool reset = true;
+  IdleAnimation idle_animation;
 
   while (true) {
     TickType_t now = xTaskGetTickCount();
@@ -167,15 +169,18 @@ void ledStripTask(void* p) {
     } else if (((now - last_msg_time) > timeout &&
                 (now - last_idle_change) > idle_period)) {
       if (idle_state == 0) {
-        idleAnimation(g_led_strip, 0xA0, 0xA0, 0xA0, interval, reset);
+        idle_animation.run(g_led_strip, 0xA0, 0xA0, 0xA0, interval, reset);
         idle_state = 1;
         reset = false;
       } else {
-        idleAnimation(g_led_strip, 0xA0, 0x00, 0x00, interval);
+        idle_animation.run(g_led_strip, 0xA0, 0x00, 0x00, interval);
         idle_state = 0;
       }
 
       last_idle_change = now;
+      // The animation blocks for seconds; without this, vTaskDelayUntil would
+      // return at once until the missed periods are caught up.
+      wake_time = xTaskGetTickCount();
     }
     vTaskDelayUntil(&wake_time, period);
   }
@@ -189,6 +194,7 @@ void monitorTask(void* p) {
   while (true) {
     vTaskGetRunTimeStats(buf);
     if (g_comm_mgr.hasDebugSerial()) {
+      DebugSerialLock lock(g_comm_mgr.debugMutex());
       g_comm_mgr.debugSerial()->printf("\r\n%s\r\n", buf);
 
       for (size_t i = 0; i < sizeof(taskHandles) / sizeof(taskHandles[0]);

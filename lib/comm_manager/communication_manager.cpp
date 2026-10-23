@@ -106,6 +106,11 @@ HardwareSerial* CommunicationManager::debugSerial() {
   return debug_available_ ? cfg_.diagnostic_serial.serial : nullptr;
 }
 
+SemaphoreHandle_t CommunicationManager::debugMutex() {
+  if (debug_mutex_ == nullptr) debug_mutex_ = xSemaphoreCreateMutex();
+  return debug_mutex_;
+}
+
 void CommunicationManager::initSerial(const SerialConfig& cfg) {
   cfg.serial->setRx(cfg.rxPin);
   cfg.serial->setTx(cfg.txPin);

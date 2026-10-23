@@ -143,7 +143,7 @@ bool ImuBno055::init() {
     return false;
   }
   // Adafruit's begin() calls Wire.begin(), which re-inits the bus at
-  // 100 kHz and drops the 400 kHz boardPheripheralsInit() set. At 100 kHz
+  // 100 kHz and drops the 400 kHz boardPeripheralsInit() set. At 100 kHz
   // the DMA block took 5-9 ms and nearly every read hit the 4 ms timeout
   // (HW 2026-09-23, ROSbot 3).
   setI2cFastMode(*cfg_.bus);

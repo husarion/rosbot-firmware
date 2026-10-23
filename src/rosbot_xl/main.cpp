@@ -92,7 +92,7 @@ CommunicationManager g_comm_mgr(communication_config);
 
 static float supplyVoltage() { return g_battery->getData().voltage; }
 
-void boardPheripheralsInit() {
+void boardPeripheralsInit() {
   // Audio
   pinMode(AUDIO_SHDN, OUTPUT);
   digitalWrite(AUDIO_SHDN, HIGH);
@@ -165,7 +165,7 @@ static persistent_config::Config s_persistent;
 /*───────── Setup ─────────*/
 void setup() {
   installFaultHandlers();
-  boardPheripheralsInit();
+  boardPeripheralsInit();
 
   // Resolve the boot gesture before anything else touches the button —
   // see boot_option.hpp. rosbot_xl only exposes PUSH_BUTTON1 as a
@@ -237,7 +237,8 @@ void setup() {
   power_board.init();
 
   g_mavlink_node.setNamespace(g_comm_mgr.getNamespace());
-  g_mavlink_node.setDiagnosticSerial(g_comm_mgr.debugSerial());
+  g_mavlink_node.setDiagnosticSerial(g_comm_mgr.debugSerial(),
+                                     g_comm_mgr.debugMutex());
   if (consumeFaultResetFlag()) {
     g_mavlink_node.setBootNotice("MCU reset after a firmware fault");
   }

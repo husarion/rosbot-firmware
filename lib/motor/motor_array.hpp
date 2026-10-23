@@ -70,8 +70,6 @@ class MotorArray {
 
   // ── bulk operations (mutex-protected) ─────────────────────
   void setVelocities(const float* velocities);
-  void stopAll();
-  void brakeAll();
 
   // ── data access ──────────────────────────────────────────
   MotorsData getData() const { return data_; }

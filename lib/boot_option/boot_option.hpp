@@ -49,7 +49,7 @@ struct BootOptionConfig {
   // Covers the operator who presses the button just before/around reset
   // rather than holding it continuously through the reset edge — without
   // this window, a press that starts a few hundred ms after
-  // boardPheripheralsInit() would be missed entirely (checked only once,
+  // boardPeripheralsInit() would be missed entirely (checked only once,
   // at t=0).
   uint32_t press_detect_window_ms = 1500;
 };
