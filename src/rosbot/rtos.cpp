@@ -127,6 +127,7 @@ void monitorTask(void* p) {
   while (true) {
     vTaskGetRunTimeStats(buf);
     if (g_comm_mgr.hasDebugSerial()) {
+      DebugSerialLock lock(g_comm_mgr.debugMutex());
       g_comm_mgr.debugSerial()->printf("%s\r\n", buf);
 
       for (size_t i = 0; i < sizeof(taskHandles) / sizeof(taskHandles[0]);

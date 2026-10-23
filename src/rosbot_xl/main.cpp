@@ -237,7 +237,8 @@ void setup() {
   power_board.init();
 
   g_mavlink_node.setNamespace(g_comm_mgr.getNamespace());
-  g_mavlink_node.setDiagnosticSerial(g_comm_mgr.debugSerial());
+  g_mavlink_node.setDiagnosticSerial(g_comm_mgr.debugSerial(),
+                                     g_comm_mgr.debugMutex());
   if (consumeFaultResetFlag()) {
     g_mavlink_node.setBootNotice("MCU reset after a firmware fault");
   }
