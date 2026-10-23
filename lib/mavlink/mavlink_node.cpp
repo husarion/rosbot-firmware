@@ -28,6 +28,7 @@ namespace {
 constexpr uint8_t kChannel = MAVLINK_COMM_0;
 constexpr size_t kMaxFrame = MAVLINK_MAX_PACKET_LEN;
 constexpr size_t kLogBufSize = 64;
+constexpr size_t kRxChunk = 64;
 }  // namespace
 
 uint64_t MavlinkNode::timeBootUs() { return time_boot_us(); }
@@ -149,10 +150,13 @@ void MavlinkNode::emitTimesyncIfDue(uint32_t now_ms) {
 }
 
 void MavlinkNode::drainRx() {
-  uint8_t c;
-  while (transport_.read(&c, 1, 0) == 1) {
-    if (mavlink_parse_char(kChannel, c, &rx_msg_, &rx_status_)) {
-      dispatchMessage(rx_msg_);
+  uint8_t buf[kRxChunk];
+  size_t n;
+  while ((n = transport_.read(buf, sizeof(buf), 0)) > 0) {
+    for (size_t i = 0; i < n; ++i) {
+      if (mavlink_parse_char(kChannel, buf[i], &rx_msg_, &rx_status_)) {
+        dispatchMessage(rx_msg_);
+      }
     }
   }
 }

@@ -16,6 +16,8 @@
 
 #include <Arduino.h>
 
+#include <cmath>
+
 #include "encoder_interface.hpp"
 
 struct HardwareEncoderConfig {
@@ -41,7 +43,7 @@ class HardwareEncoder : public EncoderInterface {
   uint32_t getTicks() const { return timer_handle_->Instance->CNT; }
   float lowPass(float prev, float input) const {
     float filtered = cfg_.alpha * input + (1.0f - cfg_.alpha) * prev;
-    return fabs(filtered) > ZERO_THRESHOLD ? filtered : 0.0f;
+    return std::fabs(filtered) > ZERO_THRESHOLD ? filtered : 0.0f;
   }
 
   HardwareEncoderConfig cfg_ = {};

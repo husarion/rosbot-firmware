@@ -533,11 +533,13 @@ connection.
 lwIP is built with `NO_SYS=1`, so it is not thread-safe. With
 `ETHERNET_USE_FREERTOS`, STM32Ethernet drives it from its own
 `ethernet_scheduler` task (priority 5, every tick): RX, timers and every raw
-API callback run there. Any other task that calls lwIP must do it inside
-`taskENTER_CRITICAL()` and must not wait for lwIP to make progress while in
-it — see `MavlinkUdpTransport::write()` and `sendShutdownRequest()` in
-`src/rosbot_xl/rtos.cpp`. Follow-up work (send, close) belongs in the lwIP
-callbacks.
+API callback run there; no ISR touches lwIP (`ETH_INPUT_USE_IT` is off).
+Any other task that calls lwIP must keep `ethernet_scheduler` out — inside
+`taskENTER_CRITICAL()` or with the scheduler suspended (`vTaskSuspendAll()`,
+which leaves IRQs enabled) — and must not wait for lwIP to make progress
+meanwhile: `MavlinkUdpTransport::write()` suspends the scheduler,
+`sendShutdownRequest()` in `src/rosbot_xl/rtos.cpp` uses a critical
+section. Follow-up work (send, close) belongs in the lwIP callbacks.
 
 Do not use `EthernetClient` from a task: its `connect()` calls lwIP
 unprotected, and the `stm32_eth_scheduler()` it spins on is a no-op under
@@ -756,7 +758,8 @@ elsewhere on rosbot_xl).
 - `[env:rosbot]` — debug, `-D ROSBOT`, `-D ENABLE_HWSERIAL1`,
   `-D ENABLE_HWSERIAL3`, `build_src_filter = +<rosbot/*> -<rosbot_xl/*>`.
 - `[env:rosbot_release]` — same + `[release_flags]` (`-O2 -D RELEASE`,
-  cortex-m4 / fpv4 flags). Strips `-g`.
+  cortex-m4 / fpv4 flags). Strips `-g`. The `-O2` is not what the compiler
+  ends up using — see "Optimisation level" below.
 - `[env:rosbot_xl]` — debug, `-D ROSBOT_XL`, `-D ENABLE_HWSERIAL1`,
   `-D ETHERNET_USE_FREERTOS`, `-D LAN9303`,
   `build_src_filter = -<rosbot/*> +<rosbot_xl/*>`.
@@ -778,6 +781,25 @@ third-party libraries are not).
 `-D FW_VERSION=\"vX.Y.Z-jazzy\"` carries the firmware version. The release
 workflow (`.github/workflows/release.yaml`) bumps it before tagging.
 
+### Optimisation level (measured 2026-10, not yet changed)
+
+The stm32duino platform puts its own `-Os` after the env's `build_flags`,
+so every release object is compiled with `-O2 … -Os` and the **effective
+level is `-Os`** (check with `pio run -e rosbot_release -v`). Release text
+size per option (`arm-none-eabi-size`, bytes):
+
+| option | rosbot_release | rosbot_xl_release |
+|---|---:|---:|
+| `-Os` (what ships) | 87 328 | 120 496 |
+| `-Os -flto` | 70 208 | 101 504 |
+| real `-O2` (`-Os` unflagged; with `-funroll-loops`) | 184 128 | 221 536 |
+| real `-O2 -flto` | 150 788 | 195 856 |
+
+All four fit the 896 KB application area and build cleanly, LTO included.
+Which is faster, and whether LTO is safe at runtime (the comment in
+`platformio.ini` mentions FreeRTOS issues), needs a HW comparison of task
+timing and idle time — idle is already ~90 % at `-Os`.
+
 Build output sizes (release, after micro-ROS was removed):
 - rosbot ~88 KB Flash (10 %), ~11 KB static RAM (8 %)
 - rosbot_xl ~125 KB Flash (14 %), ~54 KB static RAM (41 %)
@@ -785,8 +807,9 @@ Build output sizes (release, after micro-ROS was removed):
 With micro-ROS still linked (v2.1.0-jazzy) the same builds were 207 KB /
 53 KB and 244 KB / 95 KB.
 
-CCM RAM usage is implicit (compiler may place stack/BSS there). DMA
-buffers are explicitly declared with `alignas(4)` at file scope to land
+Nothing is placed in CCM RAM: the linker script defines the region but
+no section uses it, which is what lets `lib/fault` keep its reset marker
+there. DMA buffers are declared with `alignas(4)` at file scope and land
 in regular SRAM.
 
 ---

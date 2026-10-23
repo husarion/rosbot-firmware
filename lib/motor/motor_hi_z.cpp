@@ -101,14 +101,14 @@ void MotorHiZ::applyPWM(float duty) {
   // or a back-EMF model is available (then it becomes a torque value).
   current_effort_.store(duty, std::memory_order_relaxed);
 
-  if (fabs(duty) < 0.01f) {
+  if (std::fabs(duty) < 0.01f) {
     setMode(Mode::Brake);
     return;
   }
 
   setMode(duty > 0 ? Mode::Forward : Mode::Reverse);
 
-  uint16_t pwm_value = static_cast<uint16_t>(fabs(duty) * pwm_arr_);
+  uint16_t pwm_value = static_cast<uint16_t>(std::fabs(duty) * pwm_arr_);
   pwm_timer_->setCaptureCompare(pwm_channel_, pwm_value);
 
   const bool has_sensor = !current_sense_disabled_ &&
@@ -158,7 +158,7 @@ void MotorHiZ::applyCurrentSample(float i_motor) {
 
 void MotorHiZ::setVelocity(float vel) {
   float v = constrain(vel, -cfg_.max_velocity, cfg_.max_velocity);
-  if (fabs(v) < cfg_.min_velocity) v = 0.0f;
+  if (std::fabs(v) < cfg_.min_velocity) v = 0.0f;
   target_velocity_.store(v, std::memory_order_relaxed);
 }
 
