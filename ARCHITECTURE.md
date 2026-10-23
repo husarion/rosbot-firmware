@@ -336,7 +336,7 @@ state; `COMMAND_LONG` `MAV_CMD_USER_2` with `param1` = 1 start / 0 stop /
 `vTaskStartScheduler()`:
 
 1. `setup()` calls `resolveBootAction()` (`lib/boot_option/`) as the very
-   first thing after `boardPheripheralsInit()`, before anything else —
+   first thing after `boardPeripheralsInit()`, before anything else —
    including `g_comm_mgr.selectTransport()` — reads the same buttons.
    `resolveBootAction()` classifies a single press by how long it's held
    and returns one of three mutually-exclusive actions, so there's no
@@ -639,7 +639,9 @@ look right, and what changed:
   `hwMonitorTask` ran 119 ms once a second. It now drains what the UART
   holds and keeps a partial frame; the reply is picked up on a later
   10 Hz tick. The board-info request goes half a second after the battery
-  one, because both replies together (102 B) overflow the 64 B RX buffer.
+  one: sending both at once lost replies on HW. The cause is unconfirmed —
+  it was put down to a 64 B RX buffer, but the Husarion core fork's ring is
+  512 B (`SERIAL_RX_BUFFER_SIZE`, asserted in `mavlink_serial_transport.cpp`).
 - `rangeTask` and `ledStripTask` used `vTaskDelay`, so their period grew by
   the execution time (range: 101 ms instead of 100).
 - The run-time stats timer ticks at 50 kHz, not 100 kHz: TIM5 is on APB1

@@ -92,7 +92,7 @@ CommunicationManager g_comm_mgr(communication_config);
 
 static float supplyVoltage() { return g_battery->getData().voltage; }
 
-void boardPheripheralsInit() {
+void boardPeripheralsInit() {
   // Audio
   pinMode(AUDIO_SHDN, OUTPUT);
   digitalWrite(AUDIO_SHDN, HIGH);
@@ -165,7 +165,7 @@ static persistent_config::Config s_persistent;
 /*───────── Setup ─────────*/
 void setup() {
   installFaultHandlers();
-  boardPheripheralsInit();
+  boardPeripheralsInit();
 
   // Resolve the boot gesture before anything else touches the button —
   // see boot_option.hpp. rosbot_xl only exposes PUSH_BUTTON1 as a

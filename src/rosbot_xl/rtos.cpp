@@ -111,8 +111,9 @@ void hwMonitorTask(void* p) {
       board_info_pending = !power_board.boardInfo().isValid();
     } else if (board_info_pending &&
                now - last_battery_update > pdMS_TO_TICKS(500)) {
-      // Half a second apart: both replies together (102 B) overflow the
-      // 64 B UART RX buffer between two 100 ms drains.
+      // Half a second apart: requesting both at once lost replies on HW
+      // (2026-09). The cause is unconfirmed — the RX ring is 512 B, not the
+      // 64 B assumed then.
       power_board.requestBoardInfo();
       board_info_pending = false;
     }

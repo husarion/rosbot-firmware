@@ -161,16 +161,15 @@ inline constexpr uint8_t FAN_PWM_PIN = PB0;
 
 inline constexpr FanConfig rev1_2_fan_config{
     .pin = FAN_PWM_PIN,
-    .timer_instance = TIM8,  // ← jawnie, bez auto-detekcji
-    .timer_channel = 2,      // CH2 — library wykryje CH2N z PinMap
+    .timer_instance = TIM8,  // explicit, no auto-detection
+    .timer_channel = 2,      // PB0 is TIM8_CH2N
     .gpio_af = GPIO_AF3_TIM8,
-    .complementary = true,  // CH2N = odwrócony sygnał
+    .complementary = true,
     .mode = FanMode::Proportional,
     .pwm_frequency = 25000,  // 25 kHz — standard PC fan
-    .temp_low = 30,          // poniżej 30°C — duty_min
-    .temp_high = 55,         // powyżej 55°C — duty_max
-    .duty_min = 20,          // 20% — minimalne obroty (żeby fan nie zatkał)
-    .duty_max = 100          // 100% — full blast
+    .temp_low = 30,          // off at or below 30 °C
+    .temp_high = 55,         // 100% at or above 55 °C
+    .duty_min = 20,          // lowest duty that still spins the fan
 };
 
 inline constexpr FanConfig rev1_1_fan_config{.pin = FAN_PP_PIN,

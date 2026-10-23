@@ -95,7 +95,7 @@ CommunicationManager g_comm_mgr(communication_config);
 
 static float supplyVoltage() { return g_battery->getData().voltage; }
 
-void boardPheripheralsInit() {
+void boardPeripheralsInit() {
   // Initialize Buttons
   pinMode(PUSH_BUTTON1, INPUT_PULLUP);
   pinMode(PUSH_BUTTON2, INPUT_PULLUP);
@@ -130,7 +130,7 @@ static persistent_config::Config s_persistent;
 /*───────── Setup ─────────*/
 void setup() {
   installFaultHandlers();
-  boardPheripheralsInit();
+  boardPeripheralsInit();
 
   // Resolve the boot gesture before anything else touches the buttons —
   // see boot_option.hpp. rosbot has two interchangeable buttons; either

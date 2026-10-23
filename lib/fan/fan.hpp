@@ -34,10 +34,9 @@ struct FanConfig {
   bool complementary = false;             // true for CHxN
   FanMode mode = FanMode::AlwaysOn;
   uint32_t pwm_frequency = 25000;  // Hz
-  int8_t temp_low = 35;            // °C — fan off / min duty
-  int8_t temp_high = 50;           // °C — fan 100%
-  uint8_t duty_min = 0;            // % — minimalny duty (0 = pełne wyłączenie)
-  uint8_t duty_max = 100;          // % — maksymalny duty (100 = pełna moc)
+  int8_t temp_low = 35;            // °C — fan off at or below
+  int8_t temp_high = 50;           // °C — fan 100% at or above
+  uint8_t duty_min = 0;            // % — Proportional duty just above temp_low
 };
 
 // ─── Class ───────────────────────────────────────────────────────────
