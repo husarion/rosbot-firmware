@@ -115,6 +115,7 @@ void HardwareEncoder::init() {
 void HardwareEncoder::reset() {
   __HAL_TIM_SET_COUNTER(timer_handle_, 0);
   last_cnt_ = 0;
+  total_ticks_ = 0;
   last_time_us_ = micros();
   data_ = {};
   last_velocity_ = 0.0f;
@@ -128,8 +129,11 @@ void HardwareEncoder::update() {
     const uint32_t cnt = getTicks();
     int32_t delta = compute_delta(cnt, last_cnt_);
 
-    float delta_pos = static_cast<float>(delta) * cfg_.rad_per_tick;
-    data_.position += delta_pos;
+    total_ticks_ += delta;
+    data_.position = static_cast<float>(static_cast<double>(total_ticks_) *
+                                        cfg_.rad_per_tick);
+
+    const float delta_pos = static_cast<float>(delta) * cfg_.rad_per_tick;
 
     float dt = static_cast<float>(dt_us) * US_TO_SEC;
     float vel = delta_pos / dt;

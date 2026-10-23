@@ -49,6 +49,9 @@ class HardwareEncoder : public EncoderInterface {
   TIM_HandleTypeDef* timer_handle_ = nullptr;
   TIM_Encoder_InitTypeDef encoder_cfg_ = {};
   uint32_t last_cnt_ = 0;
+  // Position is rebuilt from this each update: summing float increments
+  // loses ticks once the position grows past a few thousand rad.
+  int64_t total_ticks_ = 0;
   uint32_t last_time_us_ = 0;
   float last_velocity_ = 0.0f;
 
