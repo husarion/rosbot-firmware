@@ -81,20 +81,17 @@ void MavlinkNode::loop() {
   const uint32_t now = millis();
 
   emitHeartbeatIfDue(now);
-  emitBootBannerIfDue(now);
   drainRx();
 
   switch (state_) {
     case WAITING:
       if (peer_seen_) {
-        state_ = AWAIT_TIMESYNC;
+        state_ = CONNECTED;
         last_timesync_ms_ = 0;
+        // Once per connection: the peer is listening now, and a restarted
+        // bridge gets it again without an MCU reset.
+        log(MAV_SEVERITY_INFO, "%s", cfg_.boot_banner);
       }
-      break;
-
-    case AWAIT_TIMESYNC:
-      emitTimesyncIfDue(now);
-      state_ = CONNECTED;
       break;
 
     case CONNECTED:
@@ -110,8 +107,6 @@ void MavlinkNode::loop() {
 
     case DISCONNECTED:
       peer_seen_ = false;
-      boot_banner_sent_ = false;
-      boot_banner_attempts_ = 0;
       state_ = WAITING;
       break;
   }
@@ -133,28 +128,11 @@ void MavlinkNode::emitHeartbeatIfDue(uint32_t now_ms) {
   sendMessage(m);
 }
 
-void MavlinkNode::emitBootBannerIfDue(uint32_t now_ms) {
-  constexpr uint8_t kBannerAttempts = 10;
-  if (boot_banner_sent_) return;
-  if (state_ == CONNECTED) {
-    boot_banner_sent_ = true;
-    return;
-  }
-  if (last_heartbeat_ms_ == 0) return;
-  if ((now_ms - last_boot_banner_ms_) < 1000 && last_boot_banner_ms_ != 0) {
-    return;
-  }
-  last_boot_banner_ms_ = now_ms;
-  log(MAV_SEVERITY_INFO, "%s", cfg_.boot_banner);
-  boot_banner_attempts_++;
-  if (boot_banner_attempts_ >= kBannerAttempts) boot_banner_sent_ = true;
-}
-
 void MavlinkNode::emitTimesyncIfDue(uint32_t now_ms) {
-  const uint32_t period = (state_ == CONNECTED)
-                              ? cfg_.timesync_period_ms
-                              : cfg_.timesync_active_period_ms;
-  if ((now_ms - last_timesync_ms_) < period && last_timesync_ms_ != 0) return;
+  if ((now_ms - last_timesync_ms_) < cfg_.timesync_period_ms &&
+      last_timesync_ms_ != 0) {
+    return;
+  }
   last_timesync_ms_ = now_ms;
 
   mavlink_message_t m;
