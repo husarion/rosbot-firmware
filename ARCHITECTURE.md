@@ -498,6 +498,23 @@ in `lib/mavlink/transport/` replace both with blocking primitives:
     resolved at runtime from the Serial pointer — see "USART → DMA mapping"
     below.
 
+### lwIP ownership (rosbot_xl)
+
+lwIP is built with `NO_SYS=1`, so it is not thread-safe. With
+`ETHERNET_USE_FREERTOS`, STM32Ethernet drives it from its own
+`ethernet_scheduler` task (priority 5, every tick): RX, timers and every raw
+API callback run there. Any other task that calls lwIP must do it inside
+`taskENTER_CRITICAL()` and must not wait for lwIP to make progress while in
+it — see `MavlinkUdpTransport::write()` and `sendShutdownRequest()` in
+`src/rosbot_xl/rtos.cpp`. Follow-up work (send, close) belongs in the lwIP
+callbacks.
+
+Do not use `EthernetClient` from a task: its `connect()` calls lwIP
+unprotected, and the `stm32_eth_scheduler()` it spins on is a no-op under
+FreeRTOS (core ≥ 1.6.1), so it only works because `ethernet_scheduler`
+preempts it. For the same reason it never connects with the scheduler
+suspended.
+
 ### FreeRTOS-safe IRQ priorities
 
 `configMAX_SYSCALL_INTERRUPT_PRIORITY = 5` (numerical). Cortex-M

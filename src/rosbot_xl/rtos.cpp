@@ -14,8 +14,8 @@
 
 #include "rtos.hpp"
 
-#include <STM32Ethernet.h>
 #include <STM32FreeRTOS.h>
+#include <lwip/tcp.h>
 
 #include "animations/led_animations.hpp"
 #include "battery_interface.hpp"
@@ -222,17 +222,51 @@ void motorControlTask(void* p) {
   }
 }
 
+namespace {
+
+// Served by rosbot-snap's db-server on the SBC.
+constexpr uint16_t kShutdownPort = 3000;
+
+// Runs in STM32Ethernet's ethernet_scheduler task, which owns lwIP.
+err_t onShutdownConnected(void* /*arg*/, tcp_pcb* pcb, err_t /*err*/) {
+  constexpr char kHead[] = "GET /shutdown HTTP/1.1\r\nHost: ";
+  constexpr char kTail[] = "\r\nConnection: close\r\n\r\n";
+  constexpr uint8_t kMore = TCP_WRITE_FLAG_COPY | TCP_WRITE_FLAG_MORE;
+  if (tcp_write(pcb, kHead, sizeof(kHead) - 1, kMore) != ERR_OK ||
+      tcp_write(pcb, SBC_HOST, sizeof(SBC_HOST) - 1, kMore) != ERR_OK ||
+      tcp_write(pcb, kTail, sizeof(kTail) - 1, TCP_WRITE_FLAG_COPY) != ERR_OK ||
+      tcp_close(pcb) != ERR_OK) {
+    tcp_abort(pcb);
+    return ERR_ABRT;
+  }
+  return ERR_OK;
+}
+
+// lwIP (NO_SYS) is not thread-safe and EthernetClient cannot be used from
+// here: its connect() only waits for ethernet_scheduler to make progress.
+// Start the connection under a critical section, as the UDP transport does,
+// and let the callback send the request.
+void sendShutdownRequest() {
+  ip_addr_t addr =
+      IPADDR4_INIT_BYTES(SBC_IP[0], SBC_IP[1], SBC_IP[2], SBC_IP[3]);
+  taskENTER_CRITICAL();
+  tcp_pcb* pcb = tcp_new();
+  if (pcb != nullptr &&
+      tcp_connect(pcb, &addr, kShutdownPort, onShutdownConnected) != ERR_OK) {
+    tcp_abort(pcb);
+  }
+  taskEXIT_CRITICAL();
+}
+
+}  // namespace
+
 void shutdownTask(void* p) {
   TickType_t period = taskGetPeriod(p);
   TickType_t wake_time = xTaskGetTickCount();
 
-  EthernetClient eth_client;
   while (true) {
     if (digitalRead(PB_SHD_DETECT) == HIGH) {
-      if (eth_client.connect(SBC_IP, 3000, 100)) {
-        eth_client.println("GET /shutdown HTTP/1.1");
-        eth_client.stop();
-      }
+      sendShutdownRequest();
 
       vTaskDelay(pdMS_TO_TICKS(SHUTDOWN_WAIT_MS));
       digitalWrite(PB_SHD_CONFIRM, HIGH);
