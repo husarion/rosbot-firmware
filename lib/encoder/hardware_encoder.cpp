@@ -14,7 +14,7 @@
 
 #include "hardware_encoder.hpp"
 
-#include <cassert>
+#include <STM32FreeRTOS.h>
 
 static TIM_HandleTypeDef s_htim_pool[4];
 static uint8_t s_htim_count = 0;
@@ -35,18 +35,11 @@ static void enableTimerClock(TIM_TypeDef* tim) {
   else if (tim == TIM8)
     __HAL_RCC_TIM8_CLK_ENABLE();
   else
-    assert(!"Invalid timer instance");
+    configASSERT(!"Invalid timer instance");
 }
 
-static void enableGpioClock(GPIO_TypeDef* port) {
-  if (port == GPIOA)
-    __HAL_RCC_GPIOA_CLK_ENABLE();
-  else if (port == GPIOB)
-    __HAL_RCC_GPIOB_CLK_ENABLE();
-  else if (port == GPIOC)
-    __HAL_RCC_GPIOC_CLK_ENABLE();
-  else if (port == GPIOD)
-    __HAL_RCC_GPIOD_CLK_ENABLE();
+static GPIO_TypeDef* enableGpioClock(uint32_t pin) {
+  return set_GPIO_Port_Clock(STM_PORT(digitalPinToPinName(pin)));
 }
 
 static uint8_t timerAF(TIM_TypeDef* tim) {
@@ -57,22 +50,22 @@ static uint8_t timerAF(TIM_TypeDef* tim) {
   if (tim == TIM8) return GPIO_AF3_TIM8;
 
   // TIM6, TIM7 no AF
-  assert(!"Timer does not support GPIO Alternate Function");
+  configASSERT(!"Timer does not support GPIO Alternate Function");
+  return 0;
 }
 
 HardwareEncoder::HardwareEncoder(const HardwareEncoderConfig& cfg)
     : cfg_(cfg) {}
 
 void HardwareEncoder::init() {
+  configASSERT(s_htim_count < sizeof(s_htim_pool) / sizeof(s_htim_pool[0]));
   timer_handle_ = &s_htim_pool[s_htim_count++];
 
   enableTimerClock(cfg_.timer);
 
   // GPIO setup
-  GPIO_TypeDef* port_a = digitalPinToPort(cfg_.pin_a);
-  GPIO_TypeDef* port_b = digitalPinToPort(cfg_.pin_b);
-  enableGpioClock(port_a);
-  enableGpioClock(port_b);
+  GPIO_TypeDef* port_a = enableGpioClock(cfg_.pin_a);
+  GPIO_TypeDef* port_b = enableGpioClock(cfg_.pin_b);
 
   GPIO_InitTypeDef gpio = {};
   gpio.Mode = GPIO_MODE_AF_PP;
