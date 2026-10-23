@@ -33,7 +33,7 @@ class SpiTransport : public Transport {
   explicit SpiTransport(const SpiTransportConfig& cfg);
 
   bool init() override;
-  void transfer(uint8_t byte) override;
+  void transfer(uint8_t value) override;
 
  private:
   SpiTransportConfig cfg_;

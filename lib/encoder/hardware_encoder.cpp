@@ -124,7 +124,7 @@ void HardwareEncoder::update() {
 
     total_ticks_ += delta;
     data_.position = static_cast<float>(static_cast<double>(total_ticks_) *
-                                        cfg_.rad_per_tick);
+                                        static_cast<double>(cfg_.rad_per_tick));
 
     const float delta_pos = static_cast<float>(delta) * cfg_.rad_per_tick;
 
