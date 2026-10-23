@@ -45,10 +45,10 @@ ros2 launch rosbot_mavlink_bridge rosbot.launch.py namespace:=rosbot \
   --ros-args -p serial_port:=/dev/ttyS4
 ```
 
-The bridge waits for the firmware's boot banner
-(`rosbot[_xl] <version> mavlink`) before declaring itself CONNECTED and
-publishing telemetry, so a bridge never runs against firmware of another
-version.
+The firmware sends its boot banner (`rosbot[_xl] <version> mavlink`) as a
+STATUSTEXT on every new connection, and the bridge logs it when it matches.
+It is informational only: the firmware variant is already checked by the
+`pre_communication` handshake, so a missing banner never blocks telemetry.
 
 ## Topics / services
 
@@ -80,4 +80,4 @@ parameters:
 - `publish_link_state` — if true, advertise an extra `mcu_link_state`
   `std_msgs/UInt8` topic for diagnostics (off by default for API parity)
 - `timesync_alpha` — EWMA factor for the time-offset filter
-- `expected_banner_regex` — boot-banner gate string
+- `expected_banner_regex` — regex the boot banner is matched against (logged, not a gate)

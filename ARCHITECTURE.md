@@ -793,15 +793,14 @@ comes up.
 
 ### State machine
 
-`MavlinkNode::loop()` cycles WAITING → AWAIT_TIMESYNC → CONNECTED →
-DISCONNECTED:
+`MavlinkNode::loop()` cycles WAITING → CONNECTED → DISCONNECTED:
 
 ```
-WAITING        send HEARTBEAT 1 Hz, retry boot STATUSTEXT every 1 s for
-                up to 10 s; on first peer HEARTBEAT → AWAIT_TIMESYNC
-AWAIT_TIMESYNC send TIMESYNC every 200 ms; on first reply → CONNECTED
-CONNECTED      send HEARTBEAT 1 Hz, TIMESYNC 0.5 Hz, telemetry at the
-                rates below; if no peer HEARTBEAT for 3 s → DISCONNECTED
+WAITING        send HEARTBEAT 1 Hz; on first peer HEARTBEAT → CONNECTED,
+                sending the boot banner STATUSTEXT once
+CONNECTED      send HEARTBEAT 1 Hz, TIMESYNC right away and then 0.5 Hz,
+                telemetry at the rates below; if no peer HEARTBEAT for
+                3 s → DISCONNECTED
 DISCONNECTED   reset → WAITING (motor watchdog already stopped wheels
                 500 ms after the last command)
 ```
