@@ -240,7 +240,7 @@ CONTROL = 5    (highest)
 |---|---|---|---|
 | HwMonitor | OBSERVING | 10 | Battery (via PowerBoard UART) + fan + LED status, rate-limited internally |
 | Imu | SENSORS | 100 | same as rosbot |
-| LedStrip | COMMUNICATION | 30 | Drain `led_strip_queue`, render via SPI |
+| LedStrip | OBSERVING | 30 | Drain `led_strip_queue`, render via SPI; idle animation blocks for seconds |
 | Monitor | BLOCKING | 1 | Runtime stats (debug builds) |
 | MotorControl | CONTROL | 200 | same as rosbot |
 | Shutdown | OBSERVING | 3 | Detect graceful shutdown signal from power board, stop scheduler |

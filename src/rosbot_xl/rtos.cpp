@@ -55,7 +55,7 @@ void linkTask(void* p);
 TaskConfig tasks[] = {
     {"HwMonitor", Priority::OBSERVING, Stack::S, 10, hwMonitorTask},
     {"Imu", Priority::SENSORS, Stack::M, 100, imuTask},
-    {"LedStrip", Priority::COMMUNICATION, Stack::M, 30, ledStripTask},
+    {"LedStrip", Priority::OBSERVING, Stack::M, 30, ledStripTask},
 #ifndef RELEASE
     {"Monitor", Priority::BLOCKING, Stack::XL, 1, monitorTask},
 #endif
@@ -154,6 +154,7 @@ void ledStripTask(void* p) {
   TickType_t last_idle_change = 0;
   int idle_state = 0;
   bool reset = true;
+  IdleAnimation idle_animation;
 
   while (true) {
     TickType_t now = xTaskGetTickCount();
@@ -167,15 +168,18 @@ void ledStripTask(void* p) {
     } else if (((now - last_msg_time) > timeout &&
                 (now - last_idle_change) > idle_period)) {
       if (idle_state == 0) {
-        idleAnimation(g_led_strip, 0xA0, 0xA0, 0xA0, interval, reset);
+        idle_animation.run(g_led_strip, 0xA0, 0xA0, 0xA0, interval, reset);
         idle_state = 1;
         reset = false;
       } else {
-        idleAnimation(g_led_strip, 0xA0, 0x00, 0x00, interval);
+        idle_animation.run(g_led_strip, 0xA0, 0x00, 0x00, interval);
         idle_state = 0;
       }
 
       last_idle_change = now;
+      // The animation blocks for seconds; without this, vTaskDelayUntil would
+      // return at once until the missed periods are caught up.
+      wake_time = xTaskGetTickCount();
     }
     vTaskDelayUntil(&wake_time, period);
   }
