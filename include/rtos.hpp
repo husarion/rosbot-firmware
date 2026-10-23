@@ -18,17 +18,11 @@
 #include <STM32FreeRTOS.h>
 
 #include "communication_manager.hpp"
+#include "time_base.hpp"
 
 // Monotonic time since boot; the bridge owns wall-clock time via TIMESYNC.
-// The accumulator folds the uint32 micros() delta into uint64 so the value
-// survives the ~71 min wrap.
-static inline int64_t rtos_timestamp_ns() {
-  static uint32_t s_last_us = 0;
-  static uint64_t s_accum_us = 0;
-  const uint32_t now = micros();
-  s_accum_us += static_cast<uint32_t>(now - s_last_us);
-  s_last_us = now;
-  return static_cast<int64_t>(s_accum_us * 1000ULL);
+inline int64_t rtos_timestamp_ns() {
+  return static_cast<int64_t>(time_boot_us() * 1000ULL);
 }
 
 void createQueues();
