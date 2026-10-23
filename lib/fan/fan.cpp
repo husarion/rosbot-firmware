@@ -14,6 +14,8 @@
 
 #include "fan.hpp"
 
+#include <cmath>
+
 FanController::~FanController() {
   stop();
   if (initialized_ && config_.mode != FanMode::AlwaysOn) {
@@ -245,6 +247,12 @@ void FanController::setDuty(uint8_t duty) {
 void FanController::update(float temp) {
   if (!initialized_ || config_.mode == FanMode::AlwaysOn) return;
 
+  if (!std::isfinite(temp)) {
+    applyDuty(100);
+    running_ = true;
+    return;
+  }
+
   if (config_.mode == FanMode::Threshold) {
     if (!running_ && temp >= config_.temp_high) {
       applyDuty(100);
@@ -264,7 +272,7 @@ void FanController::update(float temp) {
     applyDuty(100);
     running_ = true;
   } else {
-    static const auto range = config_.temp_high - config_.temp_low;
+    const auto range = config_.temp_high - config_.temp_low;
     const auto normalized = (temp - config_.temp_low) / range;
     applyDuty(static_cast<uint8_t>(
         (normalized * (100u - config_.duty_min) + config_.duty_min)));
