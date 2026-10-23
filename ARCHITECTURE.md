@@ -504,8 +504,8 @@ in `lib/mavlink/transport/` replace both with blocking primitives:
     the win at zero invasion.
   - **TX**: DMA-driven. `write()` pushes bytes into a 2 KB `xStreamBuffer`;
     the DMA TC IRQ chains the next chunk and only marks idle when the buffer
-    drains. `xStreamBufferSend` blocks the caller for a few ms when the
-    buffer is full, then returns the partial count. DMA stream + channel are
+    drains. A frame that does not fit in the free space is dropped whole
+    (never split), without blocking the caller. DMA stream + channel are
     resolved at runtime from the Serial pointer — see "USART → DMA mapping"
     below.
 

@@ -27,7 +27,6 @@ namespace {
 
 constexpr size_t kTxStreamSize = 2048;
 constexpr size_t kTxDmaBufSize = 256;
-constexpr uint32_t kTxStreamSendTimeoutMs = 5;
 constexpr uint32_t kIrqPriority = 5;
 
 struct UartTxDmaMap {
@@ -154,8 +153,11 @@ size_t MavlinkSerialTransport::write(const uint8_t* buf, size_t len) {
   if (s_tx_stream == nullptr || s_uart == nullptr || s_map == nullptr) return 0;
   if (buf == nullptr || len == 0) return 0;
 
-  const size_t sent = xStreamBufferSend(s_tx_stream, buf, len,
-                                        pdMS_TO_TICKS(kTxStreamSendTimeoutMs));
+  // A partial frame would corrupt the stream for the receiver, so drop the
+  // whole frame instead. Writers are serialised by MavlinkNode's tx mutex
+  // and the DMA IRQ only frees space, so the check cannot go stale.
+  if (xStreamBufferSpacesAvailable(s_tx_stream) < len) return 0;
+  const size_t sent = xStreamBufferSend(s_tx_stream, buf, len, 0);
 
   // The whole check-receive-arm sequence must be atomic vs txCpltCallback
   // and any concurrent writer; otherwise a writer can be stranded with a
