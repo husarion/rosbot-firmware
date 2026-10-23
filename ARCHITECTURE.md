@@ -738,7 +738,7 @@ help:
 
 ## Build
 
-`platformio.ini` defines a base `[env]` with shared
+`platformio.ini` defines a base `[stm32]` section with shared
 `framework-arduinoststm32` (Husarion fork), STM32Ethernet, LwIP,
 STM32FreeRTOS, Adafruit BNO055, VL53L0X. Then four
 concrete envs select variant + debug/release:
@@ -761,6 +761,19 @@ elsewhere on rosbot_xl).
   `-D ETHERNET_USE_FREERTOS`, `-D LAN9303`,
   `build_src_filter = -<rosbot/*> +<rosbot_xl/*>`.
 - `[env:rosbot_xl_release]` — release variant of the above.
+- `[env:native]` — host unit tests (`pio test -e native`, `just test`, CI
+  job `test-native`) for hardware-free code: PID, `time_base`, encoder
+  counter delta, NTC conversion. `test/native_stubs/` stands in for
+  `Arduino.h` / `STM32FreeRTOS.h`; its critical-section hook lets a test
+  simulate preemption. Code that touches HAL, FreeRTOS or a peripheral
+  needs a seam before it can be tested here (PowerBoard parser,
+  `persistent_config`, `MavlinkNode`).
+
+The release envs list `${stm32.build_unflags}` before `-g`: overriding
+`build_unflags` alone dropped the base `-std=gnu++14` unflag and compiled
+parts of the tree as C++14. All firmware envs build with
+`-Wdouble-promotion -Wshadow`; our code is warning-free with them (the
+third-party libraries are not).
 
 `-D FW_VERSION=\"vX.Y.Z-jazzy\"` carries the firmware version. The release
 workflow (`.github/workflows/release.yaml`) bumps it before tagging.

@@ -43,6 +43,9 @@ platformio run -e rosbot_xl
 # release (smaller, debug stripped, -O2)
 platformio run -e rosbot_release
 platformio run -e rosbot_xl_release
+
+# host unit tests (hardware-free libs, test/)
+platformio test -e native
 ```
 
 **After any change in `lib/`, `include/config.hpp`, or `platformio.ini`
