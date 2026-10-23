@@ -19,6 +19,7 @@
 #include "battery_interface.hpp"
 #include "communication_manager.hpp"
 #include "config.hpp"
+#include "critical_state.hpp"
 #include "imu_calibration_runtime.hpp"
 #include "imu_interface.hpp"
 #include "led_indicator.hpp"
@@ -104,7 +105,7 @@ void ledIndicatorTask(void* p) {
 
   while (true) {
     bool battery_low = g_battery->isLow();
-    bool error_state = false;
+    const bool error_state = g_motors.hasFault();
 
     if (imu_calibration::sessionActive(millis())) {
       ImuCalibrationStatus calib{};
@@ -177,7 +178,9 @@ void rangeTask(void* p) {
 void linkTask(void* p) {
   TickType_t period = taskGetPeriod(p);
   TickType_t wake_time = xTaskGetTickCount();
+  CriticalStateReporter critical_state;
   while (true) {
+    critical_state.update();
     g_mavlink_node.loop();
     vTaskDelayUntil(&wake_time, period);
   }

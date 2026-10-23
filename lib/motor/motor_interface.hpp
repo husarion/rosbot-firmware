@@ -30,6 +30,8 @@ class MotorInterface {
   virtual void init() = 0;
   virtual void update(float dt, bool move = true) = 0;
   virtual void reset() = 0;
+  /// Zero the target and controller state, keep the encoder position.
+  virtual void resetController() = 0;
   virtual void setVelocity(float vel) = 0;
 
   virtual void brake() = 0;

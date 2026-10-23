@@ -100,9 +100,14 @@ void MotorArray::update() {
   const float dt = (now - last_update_) / 1000.0f;
   last_update_ = now;
 
+  const bool fault = updateFaultLatch(now);
+
   if (xSemaphoreTake(mutex_, pdMS_TO_TICKS(5)) == pdTRUE) {
     for (uint8_t i = 0; i < count_; ++i) {
-      motors_[i]->update(dt, !isWatchdogExpired());
+      // Commands that arrive during a fault are dropped, so the wheels only
+      // move again on a fresh setpoint and without a stale integral.
+      if (fault) motors_[i]->resetController();
+      motors_[i]->update(dt, !fault && !isWatchdogExpired());
       const auto d = motors_[i]->getData();
       data_.position[i] = d.position;
       data_.velocity[i] = d.velocity;
@@ -110,6 +115,20 @@ void MotorArray::update() {
     }
     xSemaphoreGive(mutex_);
   }
+}
+
+bool MotorArray::updateFaultLatch(uint32_t now_ms) {
+  bool latched = fault_latched_.load(std::memory_order_relaxed);
+  if (checkFaults()) {
+    last_fault_ms_ = now_ms;
+    if (fault_cycles_ < kFaultAssertCycles) ++fault_cycles_;
+    if (fault_cycles_ >= kFaultAssertCycles) latched = true;
+  } else {
+    fault_cycles_ = 0;
+    if (latched && now_ms - last_fault_ms_ >= kFaultClearMs) latched = false;
+  }
+  fault_latched_.store(latched, std::memory_order_relaxed);
+  return latched;
 }
 
 // ─── watchdog ────────────────────────────────────────────────────

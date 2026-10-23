@@ -59,8 +59,6 @@ static MotorHiZ motor_rl(motor_rl_config, &enc_rl, PIDController(pid_config));
 static MotorHiZ motor_rr(motor_rr_config, &enc_rr, PIDController(pid_config));
 static MotorInterface* motors[] = {&motor_fl, &motor_fr, &motor_rl, &motor_rr};
 static constexpr uint8_t MOTOR_COUNT = sizeof(motors) / sizeof(motors[0]);
-static constexpr uint8_t DRIVER_GROUP_COUNT =
-    sizeof(driver_groups) / sizeof(driver_groups[0]);
 
 // ───────── Power Board ─────────
 PowerBoard power_board(power_board_config);
@@ -70,7 +68,7 @@ BatteryInterface* g_battery = &power_board;
 ImuInterface* g_imu = &imu_bno055;
 LedIndicator g_indicator(led_status_config);
 LedStrip g_led_strip;
-MotorArray g_motors(motors, MOTOR_COUNT, driver_groups, DRIVER_GROUP_COUNT);
+MotorArray g_motors(motors, MOTOR_COUNT);
 
 // Resolved once by resolveBootAction() at the very start of setup(),
 // before anything else reads PUSH_BUTTON1 — see boot_option.hpp.
@@ -97,6 +95,9 @@ void boardPheripheralsInit() {
   // Audio
   pinMode(AUDIO_SHDN, OUTPUT);
   digitalWrite(AUDIO_SHDN, HIGH);
+
+  // Active-low hub reset; the pull-up keeps the hub running.
+  pinMode(GPIO_HUB_NRST, INPUT_PULLUP);
 
   // Buttons
   pinMode(PUSH_BUTTON1, INPUT_PULLUP);
