@@ -49,7 +49,8 @@ inline constexpr uint8_t PUSH_BUTTON2 = PG13;
 inline constexpr float GEAR_RATIO = 34.0f;
 inline constexpr uint16_t ENCODER_CPR = 48;
 inline constexpr float TICKS_PER_REVOLUTION = ENCODER_CPR * GEAR_RATIO;
-inline constexpr float RAD_PER_TICK = (2.0f * PI) / TICKS_PER_REVOLUTION;
+inline constexpr float RAD_PER_TICK =
+    static_cast<float>(2.0 * PI / static_cast<double>(TICKS_PER_REVOLUTION));
 inline constexpr float LOW_PASS_ALPHA = 0.2f;
 
 inline constexpr HardwareEncoderConfig enc_fl_config = {

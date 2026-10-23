@@ -240,7 +240,7 @@ void PowerBoard::dispatch(const Frame& frame) {
 void PowerBoard::handleBoardInfo(const Frame& frame) {
   if (frame.arg_size != BOARD_INFO_ARG_LEN) return;
 
-  memset(&board_info_, 0, sizeof(board_info_));
+  board_info_ = {};
   memcpy(board_info_.firmware_version, &frame.args[FIRMWARE_VERSION_OFFSET],
          FIRMWARE_VERSION_LEN);
   memcpy(board_info_.board_version, &frame.args[BOARD_VERSION_OFFSET],

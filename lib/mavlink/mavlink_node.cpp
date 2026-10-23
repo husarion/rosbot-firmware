@@ -149,9 +149,9 @@ void MavlinkNode::emitTimesyncIfDue(uint32_t now_ms) {
 }
 
 void MavlinkNode::drainRx() {
-  uint8_t byte;
-  while (transport_.read(&byte, 1, 0) == 1) {
-    if (mavlink_parse_char(kChannel, byte, &rx_msg_, &rx_status_)) {
+  uint8_t c;
+  while (transport_.read(&c, 1, 0) == 1) {
+    if (mavlink_parse_char(kChannel, c, &rx_msg_, &rx_status_)) {
       dispatchMessage(rx_msg_);
     }
   }

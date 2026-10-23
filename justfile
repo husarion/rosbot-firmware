@@ -81,6 +81,11 @@ build-all:
     #!/bin/bash
     pio run -e rosbot -e rosbot_release -e rosbot_xl -e rosbot_xl_release
 
+# Host unit tests for the hardware-free libraries (test/, env:native).
+test:
+    #!/bin/bash
+    pio test -e native
+
 # Wipe PlatformIO build outputs.
 clean:
     #!/bin/bash

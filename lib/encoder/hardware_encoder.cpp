@@ -16,6 +16,8 @@
 
 #include <STM32FreeRTOS.h>
 
+#include "counter_delta.hpp"
+
 static TIM_HandleTypeDef s_htim_pool[4];
 static uint8_t s_htim_count = 0;
 
@@ -120,11 +122,11 @@ void HardwareEncoder::update() {
 
   if (dt_us >= MIN_DT_US) {
     const uint32_t cnt = getTicks();
-    int32_t delta = compute_delta(cnt, last_cnt_);
+    const int32_t delta = counterDelta(cnt, last_cnt_, CNT_MAX);
 
     total_ticks_ += delta;
     data_.position = static_cast<float>(static_cast<double>(total_ticks_) *
-                                        cfg_.rad_per_tick);
+                                        static_cast<double>(cfg_.rad_per_tick));
 
     const float delta_pos = static_cast<float>(delta) * cfg_.rad_per_tick;
 
@@ -136,16 +138,4 @@ void HardwareEncoder::update() {
     last_cnt_ = cnt;
     last_time_us_ = now;
   }
-}
-
-inline int32_t HardwareEncoder::compute_delta(uint32_t cnt, uint32_t last_cnt) {
-  int32_t delta = static_cast<int32_t>(cnt - last_cnt);
-
-  // Wrap-around detection (dla 16-bit timer)
-  if (delta > CNT_HALF)
-    delta -= (CNT_MAX + 1);
-  else if (delta < -CNT_HALF)
-    delta += (CNT_MAX + 1);
-
-  return delta;
 }

@@ -190,7 +190,7 @@ void setup() {
   // useAlt() already returns a fixed value decided by resolveBootAction()
   // above — no need for selectTransport()'s own ~1.5 s polling window on
   // top of it. timeout_ms=1 still lets its single check fire.
-  const SerialConfig* transport = g_comm_mgr.selectTransport(1);
+  g_comm_mgr.selectTransport(1);
   g_comm_mgr.configureNamespace();
 
   persistent_config::Config now{};

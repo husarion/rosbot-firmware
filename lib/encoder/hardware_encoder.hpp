@@ -43,7 +43,6 @@ class HardwareEncoder : public EncoderInterface {
     float filtered = cfg_.alpha * input + (1.0f - cfg_.alpha) * prev;
     return fabs(filtered) > ZERO_THRESHOLD ? filtered : 0.0f;
   }
-  static inline int32_t compute_delta(uint32_t cnt, uint32_t last_cnt);
 
   HardwareEncoderConfig cfg_ = {};
   TIM_HandleTypeDef* timer_handle_ = nullptr;
@@ -57,7 +56,6 @@ class HardwareEncoder : public EncoderInterface {
 
   // ARR is set to CNT_MAX, so the 32-bit TIM2/TIM5 wrap like 16-bit timers.
   static constexpr uint32_t CNT_MAX = 0xFFFF;
-  static constexpr int32_t CNT_HALF = 0x8000;
   static constexpr uint32_t MIN_DT_US = 100;
   static constexpr float ZERO_THRESHOLD = 0.01f;  // rad/s
   static constexpr float US_TO_SEC = 1.0f / 1000000.0f;

@@ -261,7 +261,7 @@ bool ImuBno055::update() {
   data_.acceleration[2] = le16(&s_buf[4]) / 100.0f;
 
   // Gyroscope: 1 LSB = 1/16 deg/s → rad/s  (offsets 12..17)
-  constexpr float kGyroToRad = (1.0f / 16.0f) * DEG_TO_RAD;
+  constexpr float kGyroToRad = static_cast<float>(DEG_TO_RAD / 16.0);
   data_.angular_velocity[0] = le16(&s_buf[12]) * kGyroToRad;
   data_.angular_velocity[1] = le16(&s_buf[14]) * kGyroToRad;
   data_.angular_velocity[2] = le16(&s_buf[16]) * kGyroToRad;
@@ -338,7 +338,7 @@ bool ImuBno055::captureCalibrationOffsets(ImuCalibrationOffsets& out) {
   if (cfg_.bus->endTransmission(false) == 0 &&
       cfg_.bus->requestFrom(static_cast<uint8_t>(cfg_.i2c_addr),
                             static_cast<uint8_t>(kOffsetsLen)) == kOffsetsLen) {
-    for (auto& byte : raw) byte = cfg_.bus->read();
+    for (auto& b : raw) b = cfg_.bus->read();
     ok = true;
   }
   bno_.setMode(OPERATION_MODE_NDOF);

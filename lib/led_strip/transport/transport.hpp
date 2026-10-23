@@ -25,5 +25,5 @@ class Transport {
   virtual bool init() = 0;
 
   /// Send a single byte over the transport.
-  virtual void transfer(uint8_t byte) = 0;
+  virtual void transfer(uint8_t value) = 0;
 };
