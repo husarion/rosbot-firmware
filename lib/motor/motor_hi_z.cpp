@@ -14,6 +14,8 @@
 
 #include "motor_hi_z.hpp"
 
+#include <cmath>
+
 // 10-bit ADC, Vref = 3.3V. Matches ADC_MAX_VALUE used elsewhere on the
 // board (e.g. battery_adc).
 static constexpr float kAdcVref = 3.3f;
@@ -92,6 +94,8 @@ void MotorHiZ::setMode(Mode movement) {
 }
 
 void MotorHiZ::applyPWM(float duty) {
+  // constrain() passes NaN through, and casting NaN to uint16_t is UB.
+  if (!std::isfinite(duty)) duty = 0.0f;
   duty = constrain(duty, -1.0f, 1.0f);
   // Default effort = commanded duty. Overridden below if a current sensor
   // or a back-EMF model is available (then it becomes a torque value).
