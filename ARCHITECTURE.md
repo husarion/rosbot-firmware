@@ -819,7 +819,10 @@ comes up.
 - **rosbot**: SBC ↔ MCU over Serial1 @ 921600.
 - **rosbot_xl**: SBC ↔ MCU over UDP. MCU binds **14555**, sends to peer
   at **14550** (mavros default port layout). Bridge does the
-  opposite — binds 14550, sends to 14555 on the MCU IP.
+  opposite — binds 14550, sends to 14555 on the MCU IP. The MCU drops
+  datagrams from any IP other than `SBC_IP` (the LAN9303 bridges the external
+  RJ45 jack onto this subnet); this stops stray traffic, not a deliberate
+  spoof — MAVLink 2 signing would be the real fix.
 
 ### State machine
 
