@@ -35,6 +35,7 @@ class Ntc {
 
   void init();
 
+  /// NAN when the sensor reads open, shorted or out of range.
   float readCelsius() const;
 
  private:

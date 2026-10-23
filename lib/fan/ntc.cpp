@@ -14,6 +14,13 @@
 
 #include "ntc.hpp"
 
+namespace {
+// An open sensor (ADC at max) or a shorted one (ADC near 0) converts to
+// far outside this window.
+constexpr float kMinValidCelsius = -40.0f;
+constexpr float kMaxValidCelsius = 150.0f;
+}  // namespace
+
 // ─── Constructor ─────────────────────────────────────────────────
 Ntc::Ntc(const NtcConfig& config) : config_(config) {}
 
@@ -24,13 +31,13 @@ void Ntc::init() { pinMode(config_.pin, INPUT); }
 float Ntc::readCelsius() const {
   const float adc_value = static_cast<float>(analogRead(config_.pin));
 
-  // Guard: ADC saturated -> resistance would be infinite
-  if (adc_value >= config_.adc_max) {
-    return -127.0f;
-  }
+  if (adc_value >= config_.adc_max) return NAN;
 
-  const float resistance = adcToResistance(adc_value);
-  return resistanceToCelsius(resistance);
+  const float celsius = resistanceToCelsius(adcToResistance(adc_value));
+  if (!(celsius >= kMinValidCelsius && celsius <= kMaxValidCelsius)) {
+    return NAN;
+  }
+  return celsius;
 }
 
 // ─── Private: ADC -> Resistance ─────────────────────────────────
