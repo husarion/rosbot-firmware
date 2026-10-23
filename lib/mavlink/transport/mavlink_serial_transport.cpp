@@ -18,6 +18,11 @@
 #include <STM32FreeRTOS.h>
 #include <stream_buffer.h>
 
+// At 921600 baud up to ~460 B arrive per 5 ms link-task period; the stock
+// stm32duino 64 B ring would overflow. The Husarion core fork sets 512.
+static_assert(SERIAL_RX_BUFFER_SIZE >= 512,
+              "Serial RX ring too small for the MAVLink link");
+
 namespace {
 
 constexpr size_t kTxStreamSize = 2048;
