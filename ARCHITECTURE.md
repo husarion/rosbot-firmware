@@ -172,6 +172,7 @@ upstream stack; it was removed after v2.1.0-jazzy (see git history).
 | `eeprom/` | I2C EEPROM driver + `BoardRevision` (revision string read on rosbot_xl) |
 | `encoder/` | `EncoderInterface` + `HardwareEncoder` (STM32 timer in encoder mode, x4) |
 | `fan/` | Fan + NTC thermistor (rosbot_xl only) |
+| `fault/` | `fatalError()` and the fault/hook plumbing — see "Fatal errors" under "Patterns" |
 | `imu/` | `ImuInterface` + `ImuBno055` (BNO055, DMA path — see "Patterns"). Also exposes on-chip calibration status/offsets, persisted via `persistent_config` — see "IMU calibration" under "Patterns" |
 | `indicator/` | Status LED state machine |
 | `led_strip/` | APA102-style LED strip over SPI (rosbot_xl only) |
@@ -497,6 +498,25 @@ in `lib/mavlink/transport/` replace both with blocking primitives:
     buffer is full, then returns the partial count. DMA stream + channel are
     resolved at runtime from the Serial pointer — see "USART → DMA mapping"
     below.
+
+### Fatal errors
+
+Every unrecoverable error ends in `fatalError()` (`lib/fault/`):
+`configASSERT`, the FreeRTOS stack-overflow hook (`configCHECK_FOR_STACK_OVERFLOW
+2`) and malloc-failed hook, and HardFault/MemManage/BusFault/UsageFault. It
+resets the MCU — every pin goes Hi-Z, so the motor drivers stop driving —
+after halting on a breakpoint if a debugger is attached. Spinning in place,
+which is what the old `configASSERT` and STM32FreeRTOS's fault handlers did,
+leaves the timers generating the last PWM duty with no watchdog running.
+
+STM32FreeRTOS defines the fault handlers as strong symbols, so they cannot
+be overridden at link time; `installFaultHandlers()` (first call in
+`setup()`) copies the vector table to RAM and repoints `VTOR`. Before
+resetting, `fatalError()` leaves a marker at the top of CCM RAM, which the
+linker script never uses and the startup code never clears. On the next
+boot `consumeFaultResetFlag()` sees it and the MAVLink node reports
+"MCU reset after a firmware fault" after the boot banner on every
+connection.
 
 ### lwIP ownership (rosbot_xl)
 

@@ -59,7 +59,7 @@ TaskConfig tasks[] = {
 #ifndef RELEASE
     {"Monitor", Priority::BLOCKING, Stack::XL, 1, monitorTask},
 #endif
-    {"MotorControl", Priority::CONTROL, Stack::XXS, 200, motorControlTask},
+    {"MotorControl", Priority::CONTROL, Stack::M, 200, motorControlTask},
     {"Shutdown", Priority::OBSERVING, Stack::M, 3, shutdownTask},
     {"Link", Priority::COMMUNICATION, Stack::XXL, 1000, linkTask},
 };

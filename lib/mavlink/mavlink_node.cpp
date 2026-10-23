@@ -91,6 +91,8 @@ void MavlinkNode::loop() {
         // Once per connection: the peer is listening now, and a restarted
         // bridge gets it again without an MCU reset.
         log(MAV_SEVERITY_INFO, "%s", cfg_.boot_banner);
+        if (boot_notice_ != nullptr)
+          log(MAV_SEVERITY_ERROR, "%s", boot_notice_);
       }
       break;
 
