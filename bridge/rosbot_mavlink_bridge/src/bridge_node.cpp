@@ -26,6 +26,10 @@ namespace
 {
 constexpr std::uint8_t kChannel = MAVLINK_COMM_0;
 constexpr std::size_t kMaxFrame = MAVLINK_MAX_PACKET_LEN;
+// Fast requests until the offset has a few two-way samples, then 1 Hz.
+constexpr std::chrono::milliseconds kTimesyncFastPeriod{200};
+constexpr std::chrono::seconds kTimesyncPeriod{1};
+constexpr std::size_t kTimesyncFastSamples = 5;
 
 rclcpp::QoS bestEffortDepth1()
 {
@@ -44,7 +48,8 @@ BridgeNode::BridgeNode(
   enable_led_strip_ = this->declare_parameter<bool>("enable_led_strip", false);
   publish_link_state_ =
     this->declare_parameter<bool>("publish_link_state", false);
-  timesync_alpha_ = this->declare_parameter<double>("timesync_alpha", 0.05);
+  timesync_ = TimesyncEstimator(
+    this->declare_parameter<double>("timesync_alpha", 0.05));
   // Informational only: the firmware variant is already verified by
   // pre_communication (FW: + BACKEND: handshake) on the same link before
   // this node starts. A matching banner is logged once if it arrives, but
@@ -120,6 +125,8 @@ BridgeNode::BridgeNode(
 
   heartbeat_timer_ = this->create_wall_timer(std::chrono::seconds(1),
       [this]() {heartbeatTimer();});
+  timesync_timer_ = this->create_wall_timer(kTimesyncFastPeriod,
+      [this]() {timesyncTimer();});
 
   rx_running_.store(true);
   rx_thread_ = std::thread(&BridgeNode::rxLoop, this);
@@ -180,6 +187,23 @@ void BridgeNode::heartbeatTimer()
                 "MCU HEARTBEAT timeout (%ld ms) — declaring DISCONNECTED.",
                 peer_timeout_.count());
   }
+}
+
+void BridgeNode::timesyncTimer()
+{
+  if (!peer_alive_.load()) {return;}
+  const std::int64_t now_ns = nowUnixNs();
+  if (timesync_two_way_samples_.load() >= kTimesyncFastSamples &&
+    now_ns - timesync_request_ns_.load() <
+    std::chrono::nanoseconds(kTimesyncPeriod).count())
+  {
+    return;
+  }
+  timesync_request_ns_.store(now_ns);
+  mavlink_message_t m;
+  mavlink_msg_timesync_pack(bridge_sysid_, bridge_compid_, &m, /*tc1=*/0,
+                            /*ts1=*/now_ns);
+  sendMavlink(m);
 }
 
 void BridgeNode::rxLoop()
@@ -273,35 +297,40 @@ void BridgeNode::onHeartbeat(const mavlink_message_t & msg)
 
 void BridgeNode::onTimesync(const mavlink_message_t & msg)
 {
+  if (msg.sysid != mcu_sysid_) {return;}
   mavlink_timesync_t ts;
   mavlink_msg_timesync_decode(&msg, &ts);
+  const std::int64_t bridge_unix_ns = nowUnixNs();
 
-  // tc1==0 → MCU-initiated; echo ts1 and update our offset estimate from
-  // the same exchange. RTT on UDP is sub-ms, EWMA absorbs the asymmetry.
   if (ts.tc1 == 0) {
-    const std::int64_t bridge_unix_ns = nowUnixNs();
+    // MCU-initiated: echo it, and use it as a one-way sample until the
+    // two-way exchange below takes over.
     mavlink_message_t reply;
     mavlink_msg_timesync_pack(bridge_sysid_, bridge_compid_, &reply,
                               bridge_unix_ns, ts.ts1);
     sendMavlink(reply);
-
-    const std::int64_t sample = bridge_unix_ns - ts.ts1;
-    std::int64_t prev = time_offset_ns_.load();
-    std::int64_t next;
-    if (!time_synced_.load()) {
-      next = sample;
-      time_synced_.store(true);
+    const bool was_synced = timesync_.synced();
+    timesync_.addOneWay(bridge_unix_ns, ts.ts1);
+    if (!was_synced && timesync_.synced()) {
       RCLCPP_INFO(this->get_logger(),
-                  "TIMESYNC: initial MCU-boot → wall offset = %ld ns.", sample);
-    } else {
-      // Cast through double — direct int64 multiply wraps on early boot
-      // when prev/sample still diverge widely.
-      const double a = timesync_alpha_;
-      next = static_cast<std::int64_t>(a * static_cast<double>(sample) +
-        (1.0 - a) * static_cast<double>(prev));
+                  "TIMESYNC: one-way MCU-boot → wall offset = %ld ns.",
+                  timesync_.offset());
     }
-    time_offset_ns_.store(next);
+  } else {
+    // Reply to our request: tc1 is the MCU stamp, ts1 echoes our send time.
+    if (ts.ts1 != timesync_request_ns_.load()) {return;}
+    const bool was_two_way = timesync_.twoWay();
+    if (!timesync_.addTwoWay(ts.ts1, ts.tc1, bridge_unix_ns)) {return;}
+    timesync_two_way_samples_.fetch_add(1);
+    if (!was_two_way) {
+      RCLCPP_INFO(this->get_logger(),
+                  "TIMESYNC: two-way, offset = %ld ns, RTT = %ld us.",
+                  timesync_.offset(), timesync_.lastRtt() / 1000);
+    }
   }
+
+  time_offset_ns_.store(timesync_.offset());
+  time_synced_.store(timesync_.synced());
 }
 
 void BridgeNode::onStatustext(const mavlink_message_t & msg)
