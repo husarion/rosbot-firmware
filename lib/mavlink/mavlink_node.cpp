@@ -22,6 +22,7 @@
 
 #include "publishers/publisher_interface.hpp"
 #include "subscribers/subscriber_interface.hpp"
+#include "time_base.hpp"
 
 namespace {
 constexpr uint8_t kChannel = MAVLINK_COMM_0;
@@ -29,16 +30,7 @@ constexpr size_t kMaxFrame = MAVLINK_MAX_PACKET_LEN;
 constexpr size_t kLogBufSize = 64;
 }  // namespace
 
-// Folds the uint32 micros() delta into a uint64 accumulator so the value
-// stays monotonic across the ~71 min wrap. Single-writer (link task).
-uint64_t MavlinkNode::timeBootUs() {
-  static uint32_t s_last_us = 0;
-  static uint64_t s_accum_us = 0;
-  const uint32_t now = micros();
-  s_accum_us += static_cast<uint32_t>(now - s_last_us);
-  s_last_us = now;
-  return s_accum_us;
-}
+uint64_t MavlinkNode::timeBootUs() { return time_boot_us(); }
 
 bool MavlinkNode::begin() {
   if (transport_open_) return true;

@@ -181,6 +181,7 @@ upstream stack; it was removed after v2.1.0-jazzy (see git history).
 | `power_board/` | UART protocol to rosbot_xl power board MCU (battery state) |
 | `range/` | `RangeInterface` + `RangeVl53l0x` + `RangeArray` (rosbot only) |
 | `imu_calibration/` | Runtime calibration: session flag (LED), save request serviced from `imuTask` — see "IMU calibration" |
+| `time_base/` | `time_boot_us()` — the one monotonic µs clock behind every MAVLink timestamp and TIMESYNC; safe from any task/ISR and before the scheduler. Reads `micros()` outside its critical section, because with SysTick masked `micros()` steps back ~1 ms |
 | `mavlink/` | MAVLink stack: `MavlinkNode`, publishers/subscribers, transports, `rosbot` dialect (see "MAVLink build") |
 
 Each `*Interface` is the abstract base; the implementation file follows
