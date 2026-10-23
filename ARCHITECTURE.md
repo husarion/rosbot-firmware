@@ -253,6 +253,16 @@ Queue depths are 1 (`xQueueOverwrite`) for telemetry — newest sample
 wins, no buffering. Watchdog on `MotorArray` stops motors after 500 ms
 without `setVelocities()` (in `feedWatchdog()`).
 
+`MotorArray::update()` also latches driver nFAULT (2 consecutive cycles
+low → brake + `resetController()` every cycle, cleared 500 ms after the pin
+releases). Only ROSbot 3 has driver groups; DRV8870 / MAX22205 on rosbot_xl
+have no nSLEEP/nFAULT wired to the MCU. The `Link` task's
+`CriticalStateReporter` turns a latched fault or a critical battery into
+`MAV_STATE_CRITICAL` in HEARTBEAT plus one STATUSTEXT per transition; the
+status LED shows SOS for a driver fault. A critical battery only signals —
+the percentage is a linear map of one voltage sample, so it does not stop
+the motors.
+
 ---
 
 ## ROS interface
