@@ -533,11 +533,13 @@ connection.
 lwIP is built with `NO_SYS=1`, so it is not thread-safe. With
 `ETHERNET_USE_FREERTOS`, STM32Ethernet drives it from its own
 `ethernet_scheduler` task (priority 5, every tick): RX, timers and every raw
-API callback run there. Any other task that calls lwIP must do it inside
-`taskENTER_CRITICAL()` and must not wait for lwIP to make progress while in
-it — see `MavlinkUdpTransport::write()` and `sendShutdownRequest()` in
-`src/rosbot_xl/rtos.cpp`. Follow-up work (send, close) belongs in the lwIP
-callbacks.
+API callback run there; no ISR touches lwIP (`ETH_INPUT_USE_IT` is off).
+Any other task that calls lwIP must keep `ethernet_scheduler` out — inside
+`taskENTER_CRITICAL()` or with the scheduler suspended (`vTaskSuspendAll()`,
+which leaves IRQs enabled) — and must not wait for lwIP to make progress
+meanwhile: `MavlinkUdpTransport::write()` suspends the scheduler,
+`sendShutdownRequest()` in `src/rosbot_xl/rtos.cpp` uses a critical
+section. Follow-up work (send, close) belongs in the lwIP callbacks.
 
 Do not use `EthernetClient` from a task: its `connect()` calls lwIP
 unprotected, and the `stm32_eth_scheduler()` it spins on is a no-op under

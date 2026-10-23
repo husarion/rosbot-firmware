@@ -86,22 +86,23 @@ size_t MavlinkUdpTransport::write(const uint8_t* buf, size_t len) {
   if (s_pcb == nullptr || buf == nullptr || len == 0) return 0;
 
   // lwIP runs NO_SYS=1 and is driven by STM32Ethernet's ethernet_scheduler
-  // task (priority 5). The critical section keeps that task from preempting
-  // this call, so the pbuf pool / pcb chain stay single-threaded.
-  taskENTER_CRITICAL();
+  // task (priority 5); no ISR touches it (ETH_INPUT_USE_IT is off).
+  // Suspending the scheduler keeps that task out without masking IRQs.
+  // Only called from the link task, so the scheduler is always running.
+  vTaskSuspendAll();
   struct pbuf* p = pbuf_alloc(PBUF_TRANSPORT, len, PBUF_RAM);
   if (p == nullptr) {
-    taskEXIT_CRITICAL();
+    xTaskResumeAll();
     return 0;
   }
   if (pbuf_take(p, buf, len) != ERR_OK) {
     pbuf_free(p);
-    taskEXIT_CRITICAL();
+    xTaskResumeAll();
     return 0;
   }
   const err_t err = udp_sendto(s_pcb, p, &s_peer_addr, s_peer_port);
   pbuf_free(p);
-  taskEXIT_CRITICAL();
+  xTaskResumeAll();
   return (err == ERR_OK) ? len : 0;
 }
 
