@@ -79,5 +79,5 @@ parameters:
 - `enable_ranges`, `enable_led_strip` — variant gates
 - `publish_link_state` — if true, advertise an extra `mcu_link_state`
   `std_msgs/UInt8` topic for diagnostics (off by default for API parity)
-- `timesync_alpha` — EWMA factor for the time-offset filter
+- `timesync_alpha` — EWMA factor for the MCU-boot → wall-clock offset (see "Time synchronization" in the firmware ARCHITECTURE.md)
 - `expected_banner_regex` — regex the boot banner is matched against (logged, not a gate)

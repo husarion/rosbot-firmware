@@ -825,6 +825,28 @@ DISCONNECTED   reset → WAITING (motor watchdog already stopped wheels
                 500 ms after the last command)
 ```
 
+### Time synchronization
+
+The bridge turns `time_boot_us` into ROS time with `wall = mcu + offset`
+(`TimesyncEstimator`, `bridge/.../timesync_estimator.hpp`, unit-tested).
+
+- **Two-way (primary).** Once the MCU is alive the bridge sends
+  `TIMESYNC(tc1=0, ts1=t1)` every 200 ms until it has 5 accepted samples,
+  then at 1 Hz. The MCU answers with `tc1 = its time_boot_us·1000` and `ts1`
+  echoed; the bridge stamps the reply `t4` and takes
+  `offset = (t1 + t4)/2 − tc1`, so the symmetric part of the link delay
+  cancels. A reply that does not echo the last request is ignored; a sample
+  whose RTT exceeds 2× the median of the last 8 is dropped (it sat in a
+  queue). Accepted samples feed an EWMA (`timesync_alpha`).
+- **One-way (fallback).** The MCU still sends its own `TIMESYNC(tc1=0)` every
+  2 s; the bridge echoes it and, until the first two-way sample, uses
+  `bridge_now − ts1`, which includes the whole uplink delay. The first
+  two-way sample replaces that estimate outright. This keeps any firmware
+  and any bridge version interoperable.
+- Not modelled: MCU clock drift (tens of ppm, a few hundred µs of EWMA lag)
+  and the MCU's TX queueing ahead of the reply, which the RTT filter only
+  partly absorbs.
+
 ### Telemetry rates and topic mapping
 
 | ROS topic | Wire | Rate | Stamping |
