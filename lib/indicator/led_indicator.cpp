@@ -37,12 +37,9 @@ void LedIndicator::update(bool battery_low, bool link_disconnected,
                           bool error) {
   uint32_t now = millis();
 
-  // Priority 1: error → SOS pattern
-  if (error) {
-    handleSOS(now);
-    return;
-  }
-  resetSOS();
+  // Priority 1: error → SOS, kept for at least kMinSosCycles full cycles so a
+  // short fault is still readable.
+  if ((error || sos_step_ != kSosIdle) && handleSOS(now, error)) return;
 
   // Priority 2: battery low → blink
   if (battery_low) {
@@ -67,7 +64,7 @@ void LedIndicator::handleBlink(uint32_t now) {
   }
 }
 
-void LedIndicator::handleSOS(uint32_t now) {
+bool LedIndicator::handleSOS(uint32_t now, bool error) {
   // Morse SOS: dot 200, dash 600, 200 between marks, 600 between letters,
   // 1400 before repeating. Explicit levels, so the phase cannot drift.
   struct Step {
@@ -84,9 +81,21 @@ void LedIndicator::handleSOS(uint32_t now) {
   if (sos_step_ == kSosIdle) {
     sos_step_ = 0;
     last_toggle_ = now;
+    sos_cycles_left_ = kMinSosCycles;
   } else if (now - last_toggle_ >= kSos[sos_step_].ms) {
-    sos_step_ = (sos_step_ + 1) % kSteps;
     last_toggle_ = now;
+    if (++sos_step_ == kSteps) {
+      sos_step_ = 0;
+      if (sos_cycles_left_ > 0) --sos_cycles_left_;
+      if (sos_cycles_left_ == 0) {
+        if (!error) {
+          resetSOS();
+          return false;
+        }
+        sos_cycles_left_ = 1;
+      }
+    }
   }
   digitalWrite(cfg_.pin, kSos[sos_step_].on ? HIGH : LOW);
+  return true;
 }

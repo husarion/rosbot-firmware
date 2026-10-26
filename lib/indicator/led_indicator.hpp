@@ -52,13 +52,16 @@ class LedIndicator {
 
  private:
   void handleBlink(uint32_t now);
-  void handleSOS(uint32_t now);
+  // Returns false once the minimum cycles are done and the error is gone.
+  bool handleSOS(uint32_t now, bool error);
   static constexpr uint8_t kSosIdle = 0xFF;
+  static constexpr uint8_t kMinSosCycles = 2;
   void resetSOS() { sos_step_ = kSosIdle; }
 
   LedIndicatorConfig cfg_ = {};
   uint32_t last_toggle_ = 0;
   uint8_t sos_step_ = kSosIdle;
+  uint8_t sos_cycles_left_ = 0;
 };
 
 extern LedIndicator g_indicator;
