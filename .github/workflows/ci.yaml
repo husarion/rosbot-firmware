@@ -19,6 +19,8 @@ jobs:
       fail-fast: false
       matrix:
         env:
+          - rosbot
+          - rosbot_xl
           - rosbot_release
           - rosbot_xl_release
     steps:

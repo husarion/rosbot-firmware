@@ -90,9 +90,9 @@ void MotorArray::update() {
 
   if (xSemaphoreTake(mutex_, pdMS_TO_TICKS(5)) == pdTRUE) {
     for (uint8_t i = 0; i < count_; ++i) {
-      // Commands that arrive during a fault are dropped, so the wheels only
-      // move again on a fresh setpoint and without a stale integral.
-      if (fault) motors_[i]->resetController();
+      // update(dt, false) brakes, which zeroes the target and the PID every
+      // cycle: setpoints that arrive during a fault are dropped, and the
+      // wheels move again only on a fresh one, without a stale integral.
       motors_[i]->update(dt, !fault && !isWatchdogExpired());
       const auto d = motors_[i]->getData();
       data_.position[i] = d.position;

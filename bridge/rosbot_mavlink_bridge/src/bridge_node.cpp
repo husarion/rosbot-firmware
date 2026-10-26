@@ -26,10 +26,12 @@ namespace
 {
 constexpr std::uint8_t kChannel = MAVLINK_COMM_0;
 constexpr std::size_t kMaxFrame = MAVLINK_MAX_PACKET_LEN;
-// Fast requests until the offset has a few two-way samples, then 1 Hz.
+// Fast requests until the offset has a few two-way samples (or a firmware
+// that never answers has had a fair chance), then 1 Hz.
 constexpr std::chrono::milliseconds kTimesyncFastPeriod{200};
 constexpr std::chrono::seconds kTimesyncPeriod{1};
 constexpr std::size_t kTimesyncFastSamples = 5;
+constexpr std::size_t kTimesyncFastRequests = 25;
 
 rclcpp::QoS bestEffortDepth1()
 {
@@ -48,8 +50,14 @@ BridgeNode::BridgeNode(
   enable_led_strip_ = this->declare_parameter<bool>("enable_led_strip", false);
   publish_link_state_ =
     this->declare_parameter<bool>("publish_link_state", false);
-  timesync_ = TimesyncEstimator(
-    this->declare_parameter<double>("timesync_alpha", 0.05));
+  double timesync_alpha =
+    this->declare_parameter<double>("timesync_alpha", 0.05);
+  if (!(timesync_alpha > 0.0 && timesync_alpha <= 1.0)) {
+    RCLCPP_WARN(this->get_logger(),
+                "timesync_alpha=%f outside (0, 1], using 0.05.", timesync_alpha);
+    timesync_alpha = 0.05;
+  }
+  timesync_ = TimesyncEstimator(timesync_alpha);
   // Informational only: the firmware variant is already verified by
   // pre_communication (FW: + BACKEND: handshake) on the same link before
   // this node starts. A matching banner is logged once if it arrives, but
@@ -193,13 +201,16 @@ void BridgeNode::timesyncTimer()
 {
   if (!peer_alive_.load()) {return;}
   const std::int64_t now_ns = nowUnixNs();
-  if (timesync_two_way_samples_.load() >= kTimesyncFastSamples &&
+  const bool fast = timesync_two_way_samples_.load() < kTimesyncFastSamples &&
+    timesync_requests_.load() < kTimesyncFastRequests;
+  if (!fast &&
     now_ns - timesync_request_ns_.load() <
     std::chrono::nanoseconds(kTimesyncPeriod).count())
   {
     return;
   }
   timesync_request_ns_.store(now_ns);
+  timesync_requests_.fetch_add(1);
   mavlink_message_t m;
   mavlink_msg_timesync_pack(bridge_sysid_, bridge_compid_, &m, /*tc1=*/0,
                             /*ts1=*/now_ns);
@@ -292,6 +303,12 @@ void BridgeNode::onHeartbeat(const mavlink_message_t & msg)
     RCLCPP_INFO(this->get_logger(),
                 "MCU HEARTBEAT (sysid=%u compid=%u) — bridge CONNECTED.",
                 msg.sysid, msg.compid);
+    // A reconnect usually means the MCU rebooted and its clock restarted
+    // near zero: start the offset over instead of averaging into it.
+    timesync_.reset();
+    time_synced_.store(false);
+    timesync_two_way_samples_.store(0);
+    timesync_requests_.store(0);
   }
 }
 
@@ -301,6 +318,8 @@ void BridgeNode::onTimesync(const mavlink_message_t & msg)
   mavlink_timesync_t ts;
   mavlink_msg_timesync_decode(&msg, &ts);
   const std::int64_t bridge_unix_ns = nowUnixNs();
+  const bool was_synced = timesync_.synced();
+  const std::int64_t old_offset = timesync_.offset();
 
   if (ts.tc1 == 0) {
     // MCU-initiated: echo it, and use it as a one-way sample until the
@@ -309,7 +328,6 @@ void BridgeNode::onTimesync(const mavlink_message_t & msg)
     mavlink_msg_timesync_pack(bridge_sysid_, bridge_compid_, &reply,
                               bridge_unix_ns, ts.ts1);
     sendMavlink(reply);
-    const bool was_synced = timesync_.synced();
     timesync_.addOneWay(bridge_unix_ns, ts.ts1);
     if (!was_synced && timesync_.synced()) {
       RCLCPP_INFO(this->get_logger(),
@@ -329,6 +347,14 @@ void BridgeNode::onTimesync(const mavlink_message_t & msg)
     }
   }
 
+  const std::int64_t jump = timesync_.offset() - old_offset;
+  if (was_synced && (jump > TimesyncEstimator::kStepNs ||
+    jump < -TimesyncEstimator::kStepNs))
+  {
+    RCLCPP_WARN(this->get_logger(),
+                "TIMESYNC: offset stepped by %ld ms, re-seeded.",
+                jump / 1000000);
+  }
   time_offset_ns_.store(timesync_.offset());
   time_synced_.store(timesync_.synced());
 }

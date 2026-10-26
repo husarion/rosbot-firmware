@@ -37,7 +37,7 @@ NtcConfig xlConfig() {
 void setUp() {}
 void tearDown() {}
 
-void test_mid_scale_reads_room_temperature() {
+void test_mid_scale_reads_37_celsius() {
   TEST_ASSERT_FLOAT_WITHIN(0.5f, 37.4f, ntcAdcToCelsius(xlConfig(), 512.0f));
 }
 
@@ -56,7 +56,7 @@ void test_shorted_sensor_is_nan() {
 
 int main() {
   UNITY_BEGIN();
-  RUN_TEST(test_mid_scale_reads_room_temperature);
+  RUN_TEST(test_mid_scale_reads_37_celsius);
   RUN_TEST(test_cold_end_is_still_valid);
   RUN_TEST(test_open_sensor_is_nan);
   RUN_TEST(test_shorted_sensor_is_nan);

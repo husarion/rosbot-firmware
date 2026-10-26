@@ -40,7 +40,7 @@ specialists (e.g. independent code review).
 platformio run -e rosbot
 platformio run -e rosbot_xl
 
-# release (smaller, debug stripped, -O2)
+# release (debug stripped; effectively -Os, see ARCHITECTURE.md "Optimisation level")
 platformio run -e rosbot_release
 platformio run -e rosbot_xl_release
 

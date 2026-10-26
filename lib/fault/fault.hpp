@@ -18,8 +18,8 @@
 extern "C" {
 #endif
 
-// Resets the MCU, which leaves every pin Hi-Z so the motor drivers stop
-// driving. With a debugger attached it first halts on a breakpoint.
+// Stops every timer (motor PWM), then resets the MCU, which leaves every pin
+// Hi-Z. With a debugger attached it halts on a breakpoint before the reset.
 // Safe from any context: task, ISR, fault handler.
 void fatalError(void) __attribute__((noreturn));
 

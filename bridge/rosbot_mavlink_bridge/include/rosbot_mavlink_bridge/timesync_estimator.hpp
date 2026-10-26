@@ -29,12 +29,19 @@ namespace rosbot_mavlink_bridge
 // One-way samples (MCU-initiated TIMESYNC, received at bridge time) include
 // the full uplink delay, so they only seed the estimate until the first
 // two-way sample replaces it.
+//
+// Accepted samples are averaged with weight max(alpha, 1/n): a plain mean
+// while few samples exist, then an EWMA. A step larger than kStepNs seen in
+// kStepSamples consecutive samples (MCU reboot, SBC wall-clock step) re-seeds
+// the estimate instead of letting the EWMA crawl towards it for minutes.
 class TimesyncEstimator
 {
 public:
   static constexpr std::size_t kRttWindow = 8;
   // Below this many RTTs there is no meaningful median yet.
   static constexpr std::size_t kMinRttsForFilter = 4;
+  static constexpr std::int64_t kStepNs = 50000000;
+  static constexpr int kStepSamples = 3;
 
   explicit TimesyncEstimator(double alpha)
   : alpha_(alpha) {}
@@ -71,6 +78,8 @@ public:
     return true;
   }
 
+  void reset() {*this = TimesyncEstimator(alpha_);}
+
   bool synced() const {return synced_;}
   bool twoWay() const {return two_way_;}
   std::int64_t offset() const {return offset_;}
@@ -79,15 +88,31 @@ public:
 private:
   void update(std::int64_t sample)
   {
+    if (synced_) {
+      const std::int64_t diff = sample - offset_;
+      if (diff > kStepNs || diff < -kStepNs) {
+        if (++step_count_ >= kStepSamples) {
+          synced_ = false;
+        } else {
+          return;
+        }
+      } else {
+        step_count_ = 0;
+      }
+    }
     if (!synced_) {
       offset_ = sample;
       synced_ = true;
+      samples_ = 1;
+      step_count_ = 0;
       return;
     }
-    // EWMA on the difference: a double holds a ~1.7e18 ns offset only to
-    // ~256 ns, but the step itself is small.
+    ++samples_;
+    const double weight = std::max(alpha_, 1.0 / static_cast<double>(samples_));
+    // On the difference: a double holds a ~1.7e18 ns offset only to ~256 ns,
+    // but the step itself is small.
     offset_ += static_cast<std::int64_t>(
-      alpha_ * static_cast<double>(sample - offset_));
+      weight * static_cast<double>(sample - offset_));
   }
 
   std::int64_t medianRtt() const
@@ -106,6 +131,8 @@ private:
   std::size_t rtt_count_ = 0;
   std::size_t rtt_next_ = 0;
   std::int64_t last_rtt_ns_ = 0;
+  std::size_t samples_ = 0;
+  int step_count_ = 0;
 };
 
 }  // namespace rosbot_mavlink_bridge

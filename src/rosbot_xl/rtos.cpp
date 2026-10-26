@@ -17,6 +17,8 @@
 #include <STM32FreeRTOS.h>
 #include <lwip/tcp.h>
 
+#include <cstring>
+
 #include "animations/led_animations.hpp"
 #include "battery_interface.hpp"
 #include "communication_manager.hpp"
@@ -238,8 +240,9 @@ err_t onShutdownConnected(void* /*arg*/, tcp_pcb* pcb, err_t /*err*/) {
   constexpr char kHead[] = "GET /shutdown HTTP/1.1\r\nHost: ";
   constexpr char kTail[] = "\r\nConnection: close\r\n\r\n";
   constexpr uint8_t kMore = TCP_WRITE_FLAG_COPY | TCP_WRITE_FLAG_MORE;
+  const char* host = ipaddr_ntoa(&pcb->remote_ip);
   if (tcp_write(pcb, kHead, sizeof(kHead) - 1, kMore) != ERR_OK ||
-      tcp_write(pcb, SBC_HOST, sizeof(SBC_HOST) - 1, kMore) != ERR_OK ||
+      tcp_write(pcb, host, std::strlen(host), kMore) != ERR_OK ||
       tcp_write(pcb, kTail, sizeof(kTail) - 1, TCP_WRITE_FLAG_COPY) != ERR_OK ||
       tcp_close(pcb) != ERR_OK) {
     tcp_abort(pcb);
@@ -250,8 +253,8 @@ err_t onShutdownConnected(void* /*arg*/, tcp_pcb* pcb, err_t /*err*/) {
 
 // lwIP (NO_SYS) is not thread-safe and EthernetClient cannot be used from
 // here: its connect() only waits for ethernet_scheduler to make progress.
-// Start the connection under a critical section, as the UDP transport does,
-// and let the callback send the request.
+// Start the connection under a critical section (connect() does not wait, so
+// masking the tick is fine) and let the callback send the request.
 void sendShutdownRequest() {
   ip_addr_t addr =
       IPADDR4_INIT_BYTES(SBC_IP[0], SBC_IP[1], SBC_IP[2], SBC_IP[3]);
