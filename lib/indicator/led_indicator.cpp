@@ -68,18 +68,25 @@ void LedIndicator::handleBlink(uint32_t now) {
 }
 
 void LedIndicator::handleSOS(uint32_t now) {
-  static const uint16_t sos_pattern[] = {
-      200, 200, 200,  // S (dit dit dit)
-      600, 200, 600,  // O (dah dah dah)
-      200, 200, 200,  // S (dit dit dit)
-      1000            // pause
+  // Morse SOS: dot 200, dash 600, 200 between marks, 600 between letters,
+  // 1400 before repeating. Explicit levels, so the phase cannot drift.
+  struct Step {
+    bool on;
+    uint16_t ms;
   };
+  static constexpr Step kSos[] = {
+      {true, 200},  {false, 200}, {true, 200},  {false, 200}, {true, 200},
+      {false, 600}, {true, 600},  {false, 200}, {true, 600},  {false, 200},
+      {true, 600},  {false, 600}, {true, 200},  {false, 200}, {true, 200},
+      {false, 200}, {true, 200},  {false, 1400}};
+  constexpr uint8_t kSteps = sizeof(kSos) / sizeof(kSos[0]);
 
-  if (now - last_toggle_ >= sos_pattern[sos_step_]) {
-    digitalToggle(cfg_.pin);
+  if (sos_step_ == kSosIdle) {
+    sos_step_ = 0;
     last_toggle_ = now;
-    sos_step_++;
-    if (sos_step_ >= sizeof(sos_pattern) / sizeof(sos_pattern[0]))
-      sos_step_ = 0;
+  } else if (now - last_toggle_ >= kSos[sos_step_].ms) {
+    sos_step_ = (sos_step_ + 1) % kSteps;
+    last_toggle_ = now;
   }
+  digitalWrite(cfg_.pin, kSos[sos_step_].on ? HIGH : LOW);
 }

@@ -53,11 +53,12 @@ class LedIndicator {
  private:
   void handleBlink(uint32_t now);
   void handleSOS(uint32_t now);
-  void resetSOS() { sos_step_ = 0; }
+  static constexpr uint8_t kSosIdle = 0xFF;
+  void resetSOS() { sos_step_ = kSosIdle; }
 
   LedIndicatorConfig cfg_ = {};
   uint32_t last_toggle_ = 0;
-  uint8_t sos_step_ = 0;
+  uint8_t sos_step_ = kSosIdle;
 };
 
 extern LedIndicator g_indicator;
