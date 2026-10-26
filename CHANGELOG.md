@@ -15,7 +15,7 @@ MAVLink merged into `jazzy` in 2.0.0.
 
 ## [Unreleased]
 
-Fixes from the 2026-10 static firmware audit. Not yet tested on hardware.
+Fixes from the 2026-10 static firmware audit. HW-tested 2026-10-26 on ROSbot 3 and ROSbot XL rev 1.2 (driving A/B vs 2.2.1, fault paths via test builds, UDP filter, shutdown).
 
 ### Fixed
 - NaN/Inf wheel setpoints are rejected (watchdog not fed); PID and PWM guard against non-finite values.
@@ -31,6 +31,7 @@ Fixes from the 2026-10 static firmware audit. Not yet tested on hardware.
 - Release builds compiled parts of the tree as C++14 (`build_unflags` override dropped the base `-std=gnu++14` unflag).
 - Debug-serial output from several tasks no longer interleaves (shared mutex; the link task never waits on it).
 - Bridge: after an MCU reboot the time offset is re-seeded instead of taking ~5 min to converge.
+- Status LED SOS is real Morse (three short, three long, three short) and shows at least two full cycles per fault; the old toggle list lost its phase and did not read as SOS.
 
 ### Added
 - Motor driver nFAULT latch (ROSbot 3): brake and reset the controllers while asserted, SOS on the status LED.
