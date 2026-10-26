@@ -6,8 +6,9 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
 for the `X.Y.Z` portion of each tag.
 
-Release tags carry a track suffix (`-jazzy` for the micro-ROS track,
-`-jazzy-mavlink` for the MAVLink track, etc.). Versions are independent
+Release tags carry a track suffix (`-jazzy` for the main track — micro-ROS
+until 2.2.0, MAVLink-only since — and `-jazzy-mavlink` for the former
+MAVLink preview track). Versions are independent
 per track — `v0.1.0-jazzy-mavlink` and `v1.1.0-jazzy` are not comparable
 across the suffix boundary; they were parallel release lineages until
 MAVLink merged into `jazzy` in 2.0.0.
@@ -27,11 +28,15 @@ Fixes from the 2026-10 static firmware audit. Not yet tested on hardware.
 - Wheel position is rebuilt from an int64 tick count; float accumulation lost ticks once the position grew.
 - Fatal errors (assert, stack overflow, malloc failure, HardFault/BusFault/UsageFault) reset the MCU instead of spinning with the motor PWM still running; the next connection reports "MCU reset after a firmware fault".
 - Encoder init enables GPIO clocks for every port and asserts on bad timers in release too; LED strip validates its size before storing it; a serial TX frame that does not fit is dropped whole, never split.
+- Release builds compiled parts of the tree as C++14 (`build_unflags` override dropped the base `-std=gnu++14` unflag).
+- Debug-serial output from several tasks no longer interleaves (shared mutex; the link task never waits on it).
+- Bridge: after an MCU reboot the time offset is re-seeded instead of taking ~5 min to converge.
 
 ### Added
 - Motor driver nFAULT latch (ROSbot 3): brake and reset the controllers while asserted, SOS on the status LED.
 - `MAV_STATE_CRITICAL` in HEARTBEAT and a STATUSTEXT per transition for a driver fault or critical battery (signal only).
 - Bridge: two-way TIMESYNC with an RTT outlier filter; MCU-initiated TIMESYNC remains as a fallback.
+- Host unit tests (`pio test -e native`, `just test`) for PID, `time_base`, encoder counter delta and NTC conversion, run in CI.
 
 ### Changed
 - ROSbot XL accepts MAVLink over UDP only from `SBC_IP`.
@@ -39,6 +44,9 @@ Fixes from the 2026-10 static firmware audit. Not yet tested on hardware.
 - ROSbot XL `MotorControl` stack 576 B → 1 KB; `LedStrip` task priority 4 → 2.
 - The Arduino core fork is pinned to a commit and its 512 B serial RX ring is asserted at build time.
 - Removed the no-op `AWAIT_TIMESYNC` link state and `TODO.md`.
+- MAVLink RX is drained in 64-byte blocks; the XL UDP write suspends the scheduler instead of masking IRQs.
+- Builds use `-Wdouble-promotion -Wshadow`; shared STM32 settings moved from `[env]` to `[stm32]` in `platformio.ini`.
+- Documented that release builds are effectively `-Os` (the platform appends it after `-O2`).
 
 ## [2.2.1-jazzy] - 2026-09-25
 
