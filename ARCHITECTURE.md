@@ -657,6 +657,26 @@ encoder timers in encoder mode, USART1 923 kbaud for a 921.6 kbaud link
 BRR gets at 42 MHz, still inside UART tolerance. The XL LED-strip SPI
 asks for 4 MHz and gets 2.625 MHz (the next power-of-two divider).
 
+### Stack and CPU measured on HW (2026-10, `devel` debug build)
+
+Minimum free stack per task (`uxTaskGetStackHighWaterMark`, Monitor
+output) while driving a test profile on a stand; IDLE from the run-time
+stats.
+
+| ROSbot 3 | free | ROSbot XL rev 1.2 | free |
+|---|---:|---|---:|
+| Battery | 216 B | HwMonitor | 276 B |
+| Range | 396 B | MotorControl | 488 B |
+| LedIndicator | 380 B | Imu | 500 B |
+| Imu | 596 B | Monitor | 564 B |
+| MotorControl | 600 B | LedStrip | 572 B |
+| Monitor | 656 B | Shutdown | 772 B |
+| Link | 3504 B | Link | 3304 B |
+| IDLE | 92 % | IDLE | 88–91 % |
+
+XL `MotorControl` uses ~536 B of its 1 KB: with the old 576 B (`Stack::XXS`)
+the margin would have been ~40 B. Free heap: 89 KB (ROSbot 3), 44 KB (XL).
+
 ### USART → DMA mapping (and IRQ-handler symbol collisions)
 
 `mavlink_serial_transport` resolves the DMA stream / channel for each Serial at
