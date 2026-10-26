@@ -110,6 +110,7 @@ private:
   // ts1 of the last bridge-initiated TIMESYNC; a reply must echo it.
   std::atomic<std::int64_t> timesync_request_ns_{0};
   std::atomic<std::size_t> timesync_two_way_samples_{0};
+  std::atomic<std::size_t> timesync_requests_{0};
 
   // A recent HEARTBEAT is the sole gate for publishing telemetry. The boot
   // banner is informational — banner_seen_ only latches the one-shot

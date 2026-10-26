@@ -884,13 +884,18 @@ The bridge turns `time_boot_us` into ROS time with `wall = mcu + offset`
 (`TimesyncEstimator`, `bridge/.../timesync_estimator.hpp`, unit-tested).
 
 - **Two-way (primary).** Once the MCU is alive the bridge sends
-  `TIMESYNC(tc1=0, ts1=t1)` every 200 ms until it has 5 accepted samples,
-  then at 1 Hz. The MCU answers with `tc1 = its time_boot_us·1000` and `ts1`
+  `TIMESYNC(tc1=0, ts1=t1)` every 200 ms until it has 5 accepted samples
+  (or has sent 25 requests without them), then at 1 Hz. The MCU answers with `tc1 = its time_boot_us·1000` and `ts1`
   echoed; the bridge stamps the reply `t4` and takes
   `offset = (t1 + t4)/2 − tc1`, so the symmetric part of the link delay
   cancels. A reply that does not echo the last request is ignored; a sample
   whose RTT exceeds 2× the median of the last 8 is dropped (it sat in a
-  queue). Accepted samples feed an EWMA (`timesync_alpha`).
+  queue). Accepted samples are averaged with weight
+  `max(timesync_alpha, 1/n)` — a plain mean at first, then an EWMA.
+- **Re-seeding.** A HEARTBEAT reconnect (typically an MCU reboot, whose
+  clock restarts near 0) resets the estimate, and so do 3 consecutive
+  samples more than 50 ms off it (MCU reboot inside the 3 s timeout, SBC
+  wall-clock step). Without that the EWMA took ~5 min to follow a reboot.
 - **One-way (fallback).** The MCU still sends its own `TIMESYNC(tc1=0)` every
   2 s; the bridge echoes it and, until the first two-way sample, uses
   `bridge_now − ts1`, which includes the whole uplink delay. The first
