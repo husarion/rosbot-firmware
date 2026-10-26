@@ -15,10 +15,10 @@
 #include "led_strip.hpp"
 
 bool LedStrip::init(const LedStripConfig& cfg, Transport* transport) {
+  num_leds = 0;
+  if (cfg.num_leds > MAX_NUM_LEDS || transport == nullptr) return false;
   transport_ = transport;
   num_leds = cfg.num_leds;
-
-  if (num_leds > MAX_NUM_LEDS || !transport_) return false;
 
   // ── Initialize transport ────────────────────────────────
   if (!transport_->init()) return false;

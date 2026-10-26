@@ -15,6 +15,7 @@
 #pragma once
 
 #include <HardwareSerial.h>
+#include <STM32FreeRTOS.h>
 
 #include <array>
 #include <cstddef>
@@ -73,6 +74,8 @@ class CommunicationManager {
   // True when diagnostic serial is free for debug printing.
   bool hasDebugSerial() const { return debug_available_; }
   HardwareSerial* debugSerial();
+  // Shared by every task that writes to debugSerial(); see DebugSerialLock.
+  SemaphoreHandle_t debugMutex();
 
   const char* getNamespace() const { return namespace_.data(); }
 
@@ -92,6 +95,26 @@ class CommunicationManager {
   const SerialConfig* selected_serial_ = nullptr;
   bool debug_available_ = false;
   std::array<char, NS_MAX_LENGTH> namespace_{};
+  SemaphoreHandle_t debug_mutex_ = nullptr;
+};
+
+// Holds the debug-serial mutex for its scope; a no-op before the scheduler
+// runs, when there is only one writer anyway.
+class DebugSerialLock {
+ public:
+  explicit DebugSerialLock(SemaphoreHandle_t mutex)
+      : mutex_(xTaskGetSchedulerState() == taskSCHEDULER_RUNNING ? mutex
+                                                                 : nullptr) {
+    if (mutex_ != nullptr) xSemaphoreTake(mutex_, portMAX_DELAY);
+  }
+  ~DebugSerialLock() {
+    if (mutex_ != nullptr) xSemaphoreGive(mutex_);
+  }
+  DebugSerialLock(const DebugSerialLock&) = delete;
+  DebugSerialLock& operator=(const DebugSerialLock&) = delete;
+
+ private:
+  SemaphoreHandle_t mutex_;
 };
 
 extern CommunicationManager g_comm_mgr;

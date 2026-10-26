@@ -31,11 +31,10 @@ struct MavlinkNodeConfig {
   uint8_t compid = MAV_COMP_ID_AUTOPILOT1;
   uint8_t mav_type = MAV_TYPE_GROUND_ROVER;
   uint8_t autopilot = MAV_AUTOPILOT_GENERIC;
-  // Bridge gates the CONNECTED transition on seeing this banner.
+  // STATUSTEXT sent on every new connection; the bridge only logs it.
   const char* boot_banner = "rosbot mavlink";
   uint32_t heartbeat_period_ms = 1000;
   uint32_t timesync_period_ms = 2000;
-  uint32_t timesync_active_period_ms = 200;
   uint32_t peer_timeout_ms = 3000;
   MavlinkPublisherInterface** publishers = nullptr;
   size_t pub_count = 0;
@@ -45,7 +44,7 @@ struct MavlinkNodeConfig {
 
 class MavlinkNode {
  public:
-  enum State : uint8_t { WAITING, AWAIT_TIMESYNC, CONNECTED, DISCONNECTED };
+  enum State : uint8_t { WAITING, CONNECTED, DISCONNECTED };
 
   MavlinkNode(MavlinkTransport& transport, const MavlinkNodeConfig& cfg)
       : transport_(transport), cfg_(cfg) {}
@@ -55,7 +54,15 @@ class MavlinkNode {
   void loop();
   bool isConnected() const { return state_ == CONNECTED; }
   void setNamespace(const char* ns) { ns_ = ns; }
-  void setDiagnosticSerial(HardwareSerial* serial) { diag_serial_ = serial; }
+  // `mutex` is shared with every other writer of `serial` (may be null).
+  void setDiagnosticSerial(HardwareSerial* serial, SemaphoreHandle_t mutex) {
+    diag_serial_ = serial;
+    diag_mutex_ = mutex;
+  }
+  /// Logged as an error STATUSTEXT after the boot banner on every connection.
+  void setBootNotice(const char* text) { boot_notice_ = text; }
+  /// Reported as MAV_STATE_CRITICAL in HEARTBEAT. Call from the link task.
+  void setCritical(bool critical) { critical_ = critical; }
 
   bool sendMessage(mavlink_message_t& msg);
   static uint64_t timeBootUs();
@@ -68,7 +75,6 @@ class MavlinkNode {
 
  private:
   void emitHeartbeatIfDue(uint32_t now_ms);
-  void emitBootBannerIfDue(uint32_t now_ms);
   void emitTimesyncIfDue(uint32_t now_ms);
   void drainRx();
   void dispatchMessage(const mavlink_message_t& msg);
@@ -76,17 +82,17 @@ class MavlinkNode {
   MavlinkTransport& transport_;
   MavlinkNodeConfig cfg_;
   HardwareSerial* diag_serial_ = nullptr;
+  SemaphoreHandle_t diag_mutex_ = nullptr;
   const char* ns_ = "";
+  const char* boot_notice_ = nullptr;
   mavlink_status_t rx_status_ = {};
   mavlink_message_t rx_msg_ = {};
   bool transport_open_ = false;
-  bool boot_banner_sent_ = false;
   uint32_t last_heartbeat_ms_ = 0;
   uint32_t last_timesync_ms_ = 0;
   uint32_t last_peer_heartbeat_ms_ = 0;
-  uint32_t last_boot_banner_ms_ = 0;
   bool peer_seen_ = false;
-  uint8_t boot_banner_attempts_ = 0;
+  bool critical_ = false;
   State state_ = WAITING;
   SemaphoreHandle_t tx_mutex_ = nullptr;
 };

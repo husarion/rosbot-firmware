@@ -74,8 +74,7 @@ void PowerBoard::requestBatteryState() {
 // ═══════════════════════════════════════════════════════════════════
 
 bool PowerBoard::hasBatteryUpdate() {
-  if (!battery_updated_ || data_.voltage <= 4.0f)
-    return false;  // BUG: Sometimes PB sends ~3.39V
+  if (!battery_updated_) return false;
   battery_updated_ = false;
   return true;
 }
@@ -241,7 +240,7 @@ void PowerBoard::dispatch(const Frame& frame) {
 void PowerBoard::handleBoardInfo(const Frame& frame) {
   if (frame.arg_size != BOARD_INFO_ARG_LEN) return;
 
-  memset(&board_info_, 0, sizeof(board_info_));
+  board_info_ = {};
   memcpy(board_info_.firmware_version, &frame.args[FIRMWARE_VERSION_OFFSET],
          FIRMWARE_VERSION_LEN);
   memcpy(board_info_.board_version, &frame.args[BOARD_VERSION_OFFSET],
@@ -269,8 +268,11 @@ void PowerBoard::handleBatteryState(const Frame& frame) {
 
   const uint8_t* a = frame.args;
 
-  // Base interface data
-  data_.voltage = readU16(&a[1]) * 0.001f;
+  // The power board sometimes reports ~3.39 V. Drop the whole frame before it
+  // reaches data_, which the LED, critical-battery check and motor model read.
+  const float voltage = readU16(&a[1]) * 0.001f;
+  if (voltage <= 4.0f) return;
+  data_.voltage = voltage;
 
   const int16_t temp_raw = readS16(&a[3]);
   data_.temperature =
@@ -282,8 +284,7 @@ void PowerBoard::handleBatteryState(const Frame& frame) {
 
   // Percentage not provided by this protocol
   if (cfg_.v_max > cfg_.v_min) {
-    static float voltage_range_inv_ = 1.0f / (cfg_.v_max - cfg_.v_min);
-    float pct = (data_.voltage - cfg_.v_min) * voltage_range_inv_;
+    const float pct = (data_.voltage - cfg_.v_min) / (cfg_.v_max - cfg_.v_min);
     data_.percentage = fmaxf(0.0f, fminf(1.0f, pct));
   } else {
     data_.percentage = NAN;

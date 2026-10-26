@@ -26,6 +26,7 @@
 #include "mavlink.h"  // NOLINT(build/include_subdir) -- mavgen's flat vendored layout
 #include "rclcpp/rclcpp.hpp"
 #include "rosbot_mavlink_bridge/boot_text.hpp"
+#include "rosbot_mavlink_bridge/timesync_estimator.hpp"
 #include "rosbot_mavlink_bridge/transport/transport_interface.hpp"
 #include "sensor_msgs/msg/battery_state.hpp"
 #include "sensor_msgs/msg/image.hpp"
@@ -51,6 +52,7 @@ private:
   void rxLoop();
   void onBootText(std::uint8_t byte);
   void heartbeatTimer();
+  void timesyncTimer();
   void onMavlinkMessage(const mavlink_message_t & msg);
 
   void sendMavlink(mavlink_message_t & msg);
@@ -100,10 +102,15 @@ private:
   std::uint8_t mcu_sysid_ = 1;
   std::uint8_t mcu_compid_ = MAV_COMP_ID_AUTOPILOT1;
 
-  // EWMA offset = bridge_unix_ns - mcu_boot_ns; applied to telemetry stamps.
+  // offset = bridge_unix_ns - mcu_boot_ns; applied to telemetry stamps.
+  // The estimator is rxLoop-only; the atomics publish its result.
   std::atomic<std::int64_t> time_offset_ns_{0};
   std::atomic<bool> time_synced_{false};
-  double timesync_alpha_ = 0.05;
+  TimesyncEstimator timesync_{0.05};
+  // ts1 of the last bridge-initiated TIMESYNC; a reply must echo it.
+  std::atomic<std::int64_t> timesync_request_ns_{0};
+  std::atomic<std::size_t> timesync_two_way_samples_{0};
+  std::atomic<std::size_t> timesync_requests_{0};
 
   // A recent HEARTBEAT is the sole gate for publishing telemetry. The boot
   // banner is informational — banner_seen_ only latches the one-shot
@@ -135,6 +142,7 @@ private:
   int calib_ack_result_ = -1;
 
   rclcpp::TimerBase::SharedPtr heartbeat_timer_;
+  rclcpp::TimerBase::SharedPtr timesync_timer_;
   rclcpp::Publisher<sensor_msgs::msg::BatteryState>::SharedPtr battery_pub_;
   rclcpp::Publisher<sensor_msgs::msg::Imu>::SharedPtr imu_pub_;
   rclcpp::Publisher<sensor_msgs::msg::JointState>::SharedPtr joint_state_pub_;

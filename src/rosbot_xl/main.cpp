@@ -20,6 +20,7 @@
 #include "boot_option.hpp"
 #include "communication_manager.hpp"
 #include "config.hpp"
+#include "fault.hpp"
 #include "hardware_encoder.hpp"
 #include "i2c_fast_mode.hpp"
 #include "imu_bno055.hpp"
@@ -59,8 +60,6 @@ static MotorHiZ motor_rl(motor_rl_config, &enc_rl, PIDController(pid_config));
 static MotorHiZ motor_rr(motor_rr_config, &enc_rr, PIDController(pid_config));
 static MotorInterface* motors[] = {&motor_fl, &motor_fr, &motor_rl, &motor_rr};
 static constexpr uint8_t MOTOR_COUNT = sizeof(motors) / sizeof(motors[0]);
-static constexpr uint8_t DRIVER_GROUP_COUNT =
-    sizeof(driver_groups) / sizeof(driver_groups[0]);
 
 // ───────── Power Board ─────────
 PowerBoard power_board(power_board_config);
@@ -70,7 +69,7 @@ BatteryInterface* g_battery = &power_board;
 ImuInterface* g_imu = &imu_bno055;
 LedIndicator g_indicator(led_status_config);
 LedStrip g_led_strip;
-MotorArray g_motors(motors, MOTOR_COUNT, driver_groups, DRIVER_GROUP_COUNT);
+MotorArray g_motors(motors, MOTOR_COUNT);
 
 // Resolved once by resolveBootAction() at the very start of setup(),
 // before anything else reads PUSH_BUTTON1 — see boot_option.hpp.
@@ -93,10 +92,13 @@ CommunicationManager g_comm_mgr(communication_config);
 
 static float supplyVoltage() { return g_battery->getData().voltage; }
 
-void boardPheripheralsInit() {
+void boardPeripheralsInit() {
   // Audio
   pinMode(AUDIO_SHDN, OUTPUT);
   digitalWrite(AUDIO_SHDN, HIGH);
+
+  // Active-low hub reset; the pull-up keeps the hub running.
+  pinMode(GPIO_HUB_NRST, INPUT_PULLUP);
 
   // Buttons
   pinMode(PUSH_BUTTON1, INPUT_PULLUP);
@@ -162,7 +164,8 @@ static persistent_config::Config s_persistent;
 
 /*───────── Setup ─────────*/
 void setup() {
-  boardPheripheralsInit();
+  installFaultHandlers();
+  boardPeripheralsInit();
 
   // Resolve the boot gesture before anything else touches the button —
   // see boot_option.hpp. rosbot_xl only exposes PUSH_BUTTON1 as a
@@ -187,7 +190,7 @@ void setup() {
   // useAlt() already returns a fixed value decided by resolveBootAction()
   // above — no need for selectTransport()'s own ~1.5 s polling window on
   // top of it. timeout_ms=1 still lets its single check fire.
-  const SerialConfig* transport = g_comm_mgr.selectTransport(1);
+  g_comm_mgr.selectTransport(1);
   g_comm_mgr.configureNamespace();
 
   persistent_config::Config now{};
@@ -234,7 +237,11 @@ void setup() {
   power_board.init();
 
   g_mavlink_node.setNamespace(g_comm_mgr.getNamespace());
-  g_mavlink_node.setDiagnosticSerial(g_comm_mgr.debugSerial());
+  g_mavlink_node.setDiagnosticSerial(g_comm_mgr.debugSerial(),
+                                     g_comm_mgr.debugMutex());
+  if (consumeFaultResetFlag()) {
+    g_mavlink_node.setBootNotice("MCU reset after a firmware fault");
+  }
   g_mavlink_node.begin();
 
   // Must run after any boot-time IMU calibration and before the

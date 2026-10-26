@@ -15,18 +15,8 @@
 #pragma once
 
 #include <Arduino.h>
-#include <math.h>
 
-// ─── Configuration ───────────────────────────────────────────────
-struct NtcConfig {
-  uint8_t pin;              // analog input pin
-  float pullup_resistance;  // pull-up resistor value [Ohm]
-  float c1;                 // Steinhart-Hart coefficient
-  float c2;                 // Steinhart-Hart coefficient
-  float c3;                 // Steinhart-Hart coefficient
-  float offset = 273.15f;   // Kelvin -> Celsius
-  float adc_max = 1023.0f;  // 10-bit: 1023, 12-bit: 4095
-};
+#include "ntc_math.hpp"
 
 // ─── NTC Temperature Sensor ─────────────────────────────────────
 class Ntc {
@@ -35,11 +25,9 @@ class Ntc {
 
   void init();
 
+  /// NAN when the sensor reads open, shorted or out of range.
   float readCelsius() const;
 
  private:
-  float adcToResistance(float adc_value) const;
-  float resistanceToCelsius(float resistance) const;
-
   NtcConfig config_;
 };

@@ -17,6 +17,7 @@
 #include <Arduino.h>
 
 #include <algorithm>
+#include <cmath>
 
 PIDController::PIDController(const PIDConfig& cfg) : cfg_(cfg) {
   if (cfg_.max_integral == 0.0f && cfg_.ki != 0.0f) {
@@ -31,6 +32,11 @@ void PIDController::reset() {
 }
 
 float PIDController::compute(float setpoint, float measurement, float dt) {
+  if (!std::isfinite(setpoint) || !std::isfinite(measurement) ||
+      !std::isfinite(dt)) {
+    reset();
+    return 0.0f;
+  }
   if (dt <= 0.0f) return 0.0f;
 
   // ========== ACCELERATION LIMITING ==========
@@ -81,7 +87,8 @@ float PIDController::compute(float setpoint, float measurement, float dt) {
   }
 
   // Inertia compensation to overcome static friction at low speeds
-  if (fabs(setpoint) > 0.01f && fabs(output) < cfg_.min_power_to_move) {
+  if (std::fabs(setpoint) > 0.01f &&
+      std::fabs(output) < cfg_.min_power_to_move) {
     output += ((output > 0) ? 1 : -1) * inertiaCompensation(measurement);
   }
 
@@ -103,7 +110,7 @@ float PIDController::calculateRampedSetpoint(float setpoint, float dt) {
 }
 
 float PIDController::inertiaCompensation(float measurement) {
-  float drive_scale =
-      std::max(0.0f, 1.0f - fabs(measurement) / cfg_.compensation_up_to_speed);
+  float drive_scale = std::max(
+      0.0f, 1.0f - std::fabs(measurement) / cfg_.compensation_up_to_speed);
   return cfg_.min_power_to_move * drive_scale;
 }

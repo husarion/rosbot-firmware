@@ -59,14 +59,17 @@ class MotorArray {
   void enableDrivers();
   void disableDrivers();
   bool checkFaults() const;
+  /// Latched nFAULT: set after kFaultAssertCycles consecutive control cycles,
+  /// cleared kFaultClearMs after the pin releases.
+  bool hasFault() const {
+    return fault_latched_.load(std::memory_order_relaxed);
+  }
   bool isDriversEnabled() const {
     return drivers_enabled_.load(std::memory_order_relaxed);
   }
 
   // ── bulk operations (mutex-protected) ─────────────────────
   void setVelocities(const float* velocities);
-  void stopAll();
-  void brakeAll();
 
   // ── data access ──────────────────────────────────────────
   MotorsData getData() const { return data_; }
@@ -102,7 +105,15 @@ class MotorArray {
   std::atomic<uint32_t> last_cmd_time_{0};
   std::atomic<bool> watchdog_enabled_{false};
   std::atomic<bool> drivers_enabled_{false};
-  uint32_t last_update_ = 0;
+  uint32_t last_update_us_ = 0;
+
+  // driver fault latch
+  static constexpr uint8_t kFaultAssertCycles = 2;
+  static constexpr uint32_t kFaultClearMs = 500;
+  bool updateFaultLatch(uint32_t now_ms);
+  uint8_t fault_cycles_ = 0;
+  uint32_t last_fault_ms_ = 0;
+  std::atomic<bool> fault_latched_{false};
 
   // FreeRTOS
   SemaphoreHandle_t mutex_ = nullptr;

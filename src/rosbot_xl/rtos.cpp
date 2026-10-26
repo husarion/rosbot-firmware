@@ -14,13 +14,16 @@
 
 #include "rtos.hpp"
 
-#include <STM32Ethernet.h>
 #include <STM32FreeRTOS.h>
+#include <lwip/tcp.h>
+
+#include <cstring>
 
 #include "animations/led_animations.hpp"
 #include "battery_interface.hpp"
 #include "communication_manager.hpp"
 #include "config.hpp"
+#include "critical_state.hpp"
 #include "fan.hpp"
 #include "imu_calibration_runtime.hpp"
 #include "imu_interface.hpp"
@@ -54,11 +57,11 @@ void linkTask(void* p);
 TaskConfig tasks[] = {
     {"HwMonitor", Priority::OBSERVING, Stack::S, 10, hwMonitorTask},
     {"Imu", Priority::SENSORS, Stack::M, 100, imuTask},
-    {"LedStrip", Priority::COMMUNICATION, Stack::M, 30, ledStripTask},
+    {"LedStrip", Priority::OBSERVING, Stack::M, 30, ledStripTask},
 #ifndef RELEASE
     {"Monitor", Priority::BLOCKING, Stack::XL, 1, monitorTask},
 #endif
-    {"MotorControl", Priority::CONTROL, Stack::XXS, 200, motorControlTask},
+    {"MotorControl", Priority::CONTROL, Stack::M, 200, motorControlTask},
     {"Shutdown", Priority::OBSERVING, Stack::M, 3, shutdownTask},
     {"Link", Priority::COMMUNICATION, Stack::XXL, 1000, linkTask},
 };
@@ -81,7 +84,7 @@ void hwMonitorTask(void* p) {
   while (true) {
     // LED Indicator
     bool battery_low = g_battery->isLow();
-    bool error_state = false;
+    const bool error_state = g_motors.hasFault();
     if (imu_calibration::sessionActive(millis())) {
       ImuCalibrationStatus calib{};
       g_indicator.calibrating(g_imu->calibrationStatus(calib) &&
@@ -110,8 +113,9 @@ void hwMonitorTask(void* p) {
       board_info_pending = !power_board.boardInfo().isValid();
     } else if (board_info_pending &&
                now - last_battery_update > pdMS_TO_TICKS(500)) {
-      // Half a second apart: both replies together (102 B) overflow the
-      // 64 B UART RX buffer between two 100 ms drains.
+      // Half a second apart: requesting both at once lost replies on HW
+      // (2026-09). The cause is unconfirmed — the RX ring is 512 B, not the
+      // 64 B assumed then.
       power_board.requestBoardInfo();
       board_info_pending = false;
     }
@@ -153,6 +157,7 @@ void ledStripTask(void* p) {
   TickType_t last_idle_change = 0;
   int idle_state = 0;
   bool reset = true;
+  IdleAnimation idle_animation;
 
   while (true) {
     TickType_t now = xTaskGetTickCount();
@@ -166,15 +171,18 @@ void ledStripTask(void* p) {
     } else if (((now - last_msg_time) > timeout &&
                 (now - last_idle_change) > idle_period)) {
       if (idle_state == 0) {
-        idleAnimation(g_led_strip, 0xA0, 0xA0, 0xA0, interval, reset);
+        idle_animation.run(g_led_strip, 0xA0, 0xA0, 0xA0, interval, reset);
         idle_state = 1;
         reset = false;
       } else {
-        idleAnimation(g_led_strip, 0xA0, 0x00, 0x00, interval);
+        idle_animation.run(g_led_strip, 0xA0, 0x00, 0x00, interval);
         idle_state = 0;
       }
 
       last_idle_change = now;
+      // The animation blocks for seconds; without this, vTaskDelayUntil would
+      // return at once until the missed periods are caught up.
+      wake_time = xTaskGetTickCount();
     }
     vTaskDelayUntil(&wake_time, period);
   }
@@ -188,6 +196,7 @@ void monitorTask(void* p) {
   while (true) {
     vTaskGetRunTimeStats(buf);
     if (g_comm_mgr.hasDebugSerial()) {
+      DebugSerialLock lock(g_comm_mgr.debugMutex());
       g_comm_mgr.debugSerial()->printf("\r\n%s\r\n", buf);
 
       for (size_t i = 0; i < sizeof(taskHandles) / sizeof(taskHandles[0]);
@@ -221,17 +230,52 @@ void motorControlTask(void* p) {
   }
 }
 
+namespace {
+
+// Served by rosbot-snap's db-server on the SBC.
+constexpr uint16_t kShutdownPort = 3000;
+
+// Runs in STM32Ethernet's ethernet_scheduler task, which owns lwIP.
+err_t onShutdownConnected(void* /*arg*/, tcp_pcb* pcb, err_t /*err*/) {
+  constexpr char kHead[] = "GET /shutdown HTTP/1.1\r\nHost: ";
+  constexpr char kTail[] = "\r\nConnection: close\r\n\r\n";
+  constexpr uint8_t kMore = TCP_WRITE_FLAG_COPY | TCP_WRITE_FLAG_MORE;
+  const char* host = ipaddr_ntoa(&pcb->remote_ip);
+  if (tcp_write(pcb, kHead, sizeof(kHead) - 1, kMore) != ERR_OK ||
+      tcp_write(pcb, host, std::strlen(host), kMore) != ERR_OK ||
+      tcp_write(pcb, kTail, sizeof(kTail) - 1, TCP_WRITE_FLAG_COPY) != ERR_OK ||
+      tcp_close(pcb) != ERR_OK) {
+    tcp_abort(pcb);
+    return ERR_ABRT;
+  }
+  return ERR_OK;
+}
+
+// lwIP (NO_SYS) is not thread-safe and EthernetClient cannot be used from
+// here: its connect() only waits for ethernet_scheduler to make progress.
+// Start the connection under a critical section (connect() does not wait, so
+// masking the tick is fine) and let the callback send the request.
+void sendShutdownRequest() {
+  ip_addr_t addr =
+      IPADDR4_INIT_BYTES(SBC_IP[0], SBC_IP[1], SBC_IP[2], SBC_IP[3]);
+  taskENTER_CRITICAL();
+  tcp_pcb* pcb = tcp_new();
+  if (pcb != nullptr &&
+      tcp_connect(pcb, &addr, kShutdownPort, onShutdownConnected) != ERR_OK) {
+    tcp_abort(pcb);
+  }
+  taskEXIT_CRITICAL();
+}
+
+}  // namespace
+
 void shutdownTask(void* p) {
   TickType_t period = taskGetPeriod(p);
   TickType_t wake_time = xTaskGetTickCount();
 
-  EthernetClient eth_client;
   while (true) {
     if (digitalRead(PB_SHD_DETECT) == HIGH) {
-      if (eth_client.connect(SBC_IP, 3000, 100)) {
-        eth_client.println("GET /shutdown HTTP/1.1");
-        eth_client.stop();
-      }
+      sendShutdownRequest();
 
       vTaskDelay(pdMS_TO_TICKS(SHUTDOWN_WAIT_MS));
       digitalWrite(PB_SHD_CONFIRM, HIGH);
@@ -244,8 +288,10 @@ void shutdownTask(void* p) {
 void linkTask(void* p) {
   TickType_t period = taskGetPeriod(p);
   TickType_t wake_time = xTaskGetTickCount();
+  CriticalStateReporter critical_state;
 
   while (true) {
+    critical_state.update();
     g_mavlink_node.loop();
     vTaskDelayUntil(&wake_time, period);
   }

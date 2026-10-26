@@ -42,7 +42,7 @@ void MotorArray::init() {
   data_.count = count_;
   for (uint8_t i = 0; i < count_; ++i) motors_[i]->init();
 
-  last_update_ = millis();
+  last_update_us_ = micros();
   enableDrivers();
 }
 
@@ -77,32 +77,23 @@ void MotorArray::setVelocities(const float* velocities) {
   }
 }
 
-void MotorArray::stopAll() {
-  if (xSemaphoreTake(mutex_, pdMS_TO_TICKS(10)) == pdTRUE) {
-    for (uint8_t i = 0; i < count_; ++i) motors_[i]->setNeutral();
-    xSemaphoreGive(mutex_);
-  }
-}
-
-void MotorArray::brakeAll() {
-  if (xSemaphoreTake(mutex_, pdMS_TO_TICKS(10)) == pdTRUE) {
-    for (uint8_t i = 0; i < count_; ++i) motors_[i]->brake();
-    xSemaphoreGive(mutex_);
-  }
-}
-
 // ─── update (PID loop — called from control task) ────────────────
 
 void MotorArray::update() {
   if (!isDriversEnabled()) return;
 
-  const uint32_t now = millis();
-  const float dt = (now - last_update_) / 1000.0f;
-  last_update_ = now;
+  const uint32_t now_us = micros();
+  const float dt = (now_us - last_update_us_) * 1e-6f;
+  last_update_us_ = now_us;
+
+  const bool fault = updateFaultLatch(millis());
 
   if (xSemaphoreTake(mutex_, pdMS_TO_TICKS(5)) == pdTRUE) {
     for (uint8_t i = 0; i < count_; ++i) {
-      motors_[i]->update(dt, !isWatchdogExpired());
+      // update(dt, false) brakes, which zeroes the target and the PID every
+      // cycle: setpoints that arrive during a fault are dropped, and the
+      // wheels move again only on a fresh one, without a stale integral.
+      motors_[i]->update(dt, !fault && !isWatchdogExpired());
       const auto d = motors_[i]->getData();
       data_.position[i] = d.position;
       data_.velocity[i] = d.velocity;
@@ -110,6 +101,20 @@ void MotorArray::update() {
     }
     xSemaphoreGive(mutex_);
   }
+}
+
+bool MotorArray::updateFaultLatch(uint32_t now_ms) {
+  bool latched = fault_latched_.load(std::memory_order_relaxed);
+  if (checkFaults()) {
+    last_fault_ms_ = now_ms;
+    if (fault_cycles_ < kFaultAssertCycles) ++fault_cycles_;
+    if (fault_cycles_ >= kFaultAssertCycles) latched = true;
+  } else {
+    fault_cycles_ = 0;
+    if (latched && now_ms - last_fault_ms_ >= kFaultClearMs) latched = false;
+  }
+  fault_latched_.store(latched, std::memory_order_relaxed);
+  return latched;
 }
 
 // ─── watchdog ────────────────────────────────────────────────────

@@ -172,6 +172,7 @@ upstream stack; it was removed after v2.1.0-jazzy (see git history).
 | `eeprom/` | I2C EEPROM driver + `BoardRevision` (revision string read on rosbot_xl) |
 | `encoder/` | `EncoderInterface` + `HardwareEncoder` (STM32 timer in encoder mode, x4) |
 | `fan/` | Fan + NTC thermistor (rosbot_xl only) |
+| `fault/` | `fatalError()` and the fault/hook plumbing — see "Fatal errors" under "Patterns" |
 | `imu/` | `ImuInterface` + `ImuBno055` (BNO055, DMA path — see "Patterns"). Also exposes on-chip calibration status/offsets, persisted via `persistent_config` — see "IMU calibration" under "Patterns" |
 | `indicator/` | Status LED state machine |
 | `led_strip/` | APA102-style LED strip over SPI (rosbot_xl only) |
@@ -181,6 +182,7 @@ upstream stack; it was removed after v2.1.0-jazzy (see git history).
 | `power_board/` | UART protocol to rosbot_xl power board MCU (battery state) |
 | `range/` | `RangeInterface` + `RangeVl53l0x` + `RangeArray` (rosbot only) |
 | `imu_calibration/` | Runtime calibration: session flag (LED), save request serviced from `imuTask` — see "IMU calibration" |
+| `time_base/` | `time_boot_us()` — the one monotonic µs clock behind every MAVLink timestamp and TIMESYNC; safe from any task/ISR and before the scheduler. Reads `micros()` outside its critical section, because with SysTick masked `micros()` steps back ~1 ms |
 | `mavlink/` | MAVLink stack: `MavlinkNode`, publishers/subscribers, transports, `rosbot` dialect (see "MAVLink build") |
 
 Each `*Interface` is the abstract base; the implementation file follows
@@ -238,7 +240,7 @@ CONTROL = 5    (highest)
 |---|---|---|---|
 | HwMonitor | OBSERVING | 10 | Battery (via PowerBoard UART) + fan + LED status, rate-limited internally |
 | Imu | SENSORS | 100 | same as rosbot |
-| LedStrip | COMMUNICATION | 30 | Drain `led_strip_queue`, render via SPI |
+| LedStrip | OBSERVING | 30 | Drain `led_strip_queue`, render via SPI; idle animation blocks for seconds |
 | Monitor | BLOCKING | 1 | Runtime stats (debug builds) |
 | MotorControl | CONTROL | 200 | same as rosbot |
 | Shutdown | OBSERVING | 3 | Detect graceful shutdown signal from power board, stop scheduler |
@@ -250,6 +252,18 @@ transport is event-driven — see "Patterns: serial transport").
 Queue depths are 1 (`xQueueOverwrite`) for telemetry — newest sample
 wins, no buffering. Watchdog on `MotorArray` stops motors after 500 ms
 without `setVelocities()` (in `feedWatchdog()`).
+
+`MotorArray::update()` also latches driver nFAULT (2 consecutive cycles
+low → brake + `resetController()` every cycle, cleared 500 ms after the pin
+releases). Only ROSbot 3 has driver groups; DRV8870 / MAX22205 on rosbot_xl
+have no nSLEEP/nFAULT wired to the MCU. The `Link` task's
+`CriticalStateReporter` turns a latched fault or a critical battery into
+`MAV_STATE_CRITICAL` in HEARTBEAT plus one STATUSTEXT per transition (the
+bridge does not read `system_status` yet, so on the ROS side only the
+STATUSTEXT log shows it); the
+status LED shows SOS for a driver fault. A critical battery only signals —
+the percentage is a linear map of one voltage sample, so it does not stop
+the motors.
 
 ---
 
@@ -324,7 +338,7 @@ state; `COMMAND_LONG` `MAV_CMD_USER_2` with `param1` = 1 start / 0 stop /
 `vTaskStartScheduler()`:
 
 1. `setup()` calls `resolveBootAction()` (`lib/boot_option/`) as the very
-   first thing after `boardPheripheralsInit()`, before anything else —
+   first thing after `boardPeripheralsInit()`, before anything else —
    including `g_comm_mgr.selectTransport()` — reads the same buttons.
    `resolveBootAction()` classifies a single press by how long it's held
    and returns one of three mutually-exclusive actions, so there's no
@@ -492,10 +506,48 @@ in `lib/mavlink/transport/` replace both with blocking primitives:
     the win at zero invasion.
   - **TX**: DMA-driven. `write()` pushes bytes into a 2 KB `xStreamBuffer`;
     the DMA TC IRQ chains the next chunk and only marks idle when the buffer
-    drains. `xStreamBufferSend` blocks the caller for a few ms when the
-    buffer is full, then returns the partial count. DMA stream + channel are
+    drains. A frame that does not fit in the free space is dropped whole
+    (never split), without blocking the caller. DMA stream + channel are
     resolved at runtime from the Serial pointer — see "USART → DMA mapping"
     below.
+
+### Fatal errors
+
+Every unrecoverable error ends in `fatalError()` (`lib/fault/`):
+`configASSERT`, the FreeRTOS stack-overflow hook (`configCHECK_FOR_STACK_OVERFLOW
+2`) and malloc-failed hook, and HardFault/MemManage/BusFault/UsageFault. It
+resets the MCU — every pin goes Hi-Z, so the motor drivers stop driving —
+after halting on a breakpoint if a debugger is attached. Spinning in place,
+which is what the old `configASSERT` and STM32FreeRTOS's fault handlers did,
+leaves the timers generating the last PWM duty with no watchdog running.
+
+STM32FreeRTOS defines the fault handlers as strong symbols, so they cannot
+be overridden at link time; `installFaultHandlers()` (first call in
+`setup()`) copies the vector table to RAM and repoints `VTOR`. Before
+resetting, `fatalError()` leaves a marker at the top of CCM RAM, which the
+linker script never uses and the startup code never clears. On the next
+boot `consumeFaultResetFlag()` sees it and the MAVLink node reports
+"MCU reset after a firmware fault" after the boot banner on every
+connection.
+
+### lwIP ownership (rosbot_xl)
+
+lwIP is built with `NO_SYS=1`, so it is not thread-safe. With
+`ETHERNET_USE_FREERTOS`, STM32Ethernet drives it from its own
+`ethernet_scheduler` task (priority 5, every tick): RX, timers and every raw
+API callback run there; no ISR touches lwIP (`ETH_INPUT_USE_IT` is off).
+Any other task that calls lwIP must keep `ethernet_scheduler` out — inside
+`taskENTER_CRITICAL()` or with the scheduler suspended (`vTaskSuspendAll()`,
+which leaves IRQs enabled) — and must not wait for lwIP to make progress
+meanwhile: `MavlinkUdpTransport::write()` suspends the scheduler,
+`sendShutdownRequest()` in `src/rosbot_xl/rtos.cpp` uses a critical
+section. Follow-up work (send, close) belongs in the lwIP callbacks.
+
+Do not use `EthernetClient` from a task: its `connect()` calls lwIP
+unprotected, and the `stm32_eth_scheduler()` it spins on is a no-op under
+FreeRTOS (core ≥ 1.6.1), so it only works because `ethernet_scheduler`
+preempts it. For the same reason it never connects with the scheduler
+suspended.
 
 ### FreeRTOS-safe IRQ priorities
 
@@ -591,7 +643,9 @@ look right, and what changed:
   `hwMonitorTask` ran 119 ms once a second. It now drains what the UART
   holds and keeps a partial frame; the reply is picked up on a later
   10 Hz tick. The board-info request goes half a second after the battery
-  one, because both replies together (102 B) overflow the 64 B RX buffer.
+  one: sending both at once lost replies on HW. The cause is unconfirmed —
+  it was put down to a 64 B RX buffer, but the Husarion core fork's ring is
+  512 B (`SERIAL_RX_BUFFER_SIZE`, asserted in `mavlink_serial_transport.cpp`).
 - `rangeTask` and `ledStripTask` used `vTaskDelay`, so their period grew by
   the execution time (range: 101 ms instead of 100).
 - The run-time stats timer ticks at 50 kHz, not 100 kHz: TIM5 is on APB1
@@ -602,6 +656,26 @@ encoder timers in encoder mode, USART1 923 kbaud for a 921.6 kbaud link
 (+0.16%). The rear-panel USART3 on ROSbot 3 runs +1.27% fast — the best
 BRR gets at 42 MHz, still inside UART tolerance. The XL LED-strip SPI
 asks for 4 MHz and gets 2.625 MHz (the next power-of-two divider).
+
+### Stack and CPU measured on HW (2026-10, `devel` debug build)
+
+Minimum free stack per task (`uxTaskGetStackHighWaterMark`, Monitor
+output) while driving a test profile on a stand; IDLE from the run-time
+stats.
+
+| ROSbot 3 | free | ROSbot XL rev 1.2 | free |
+|---|---:|---|---:|
+| Battery | 216 B | HwMonitor | 276 B |
+| Range | 396 B | MotorControl | 488 B |
+| LedIndicator | 380 B | Imu | 500 B |
+| Imu | 596 B | Monitor | 564 B |
+| MotorControl | 600 B | LedStrip | 572 B |
+| Monitor | 656 B | Shutdown | 772 B |
+| Link | 3504 B | Link | 3304 B |
+| IDLE | 92 % | IDLE | 88–91 % |
+
+XL `MotorControl` uses ~536 B of its 1 KB: with the old 576 B (`Stack::XXS`)
+the margin would have been ~40 B. Free heap: 89 KB (ROSbot 3), 44 KB (XL).
 
 ### USART → DMA mapping (and IRQ-handler symbol collisions)
 
@@ -688,7 +762,7 @@ help:
 
 ## Build
 
-`platformio.ini` defines a base `[env]` with shared
+`platformio.ini` defines a base `[stm32]` section with shared
 `framework-arduinoststm32` (Husarion fork), STM32Ethernet, LwIP,
 STM32FreeRTOS, Adafruit BNO055, VL53L0X. Then four
 concrete envs select variant + debug/release:
@@ -706,14 +780,47 @@ elsewhere on rosbot_xl).
 - `[env:rosbot]` — debug, `-D ROSBOT`, `-D ENABLE_HWSERIAL1`,
   `-D ENABLE_HWSERIAL3`, `build_src_filter = +<rosbot/*> -<rosbot_xl/*>`.
 - `[env:rosbot_release]` — same + `[release_flags]` (`-O2 -D RELEASE`,
-  cortex-m4 / fpv4 flags). Strips `-g`.
+  cortex-m4 / fpv4 flags). Strips `-g`. The `-O2` is not what the compiler
+  ends up using — see "Optimisation level" below.
 - `[env:rosbot_xl]` — debug, `-D ROSBOT_XL`, `-D ENABLE_HWSERIAL1`,
   `-D ETHERNET_USE_FREERTOS`, `-D LAN9303`,
   `build_src_filter = -<rosbot/*> +<rosbot_xl/*>`.
 - `[env:rosbot_xl_release]` — release variant of the above.
+- `[env:native]` — host unit tests (`pio test -e native`, `just test`, CI
+  job `test-native`) for hardware-free code: PID, `time_base`, encoder
+  counter delta, NTC conversion. `test/native_stubs/` stands in for
+  `Arduino.h` / `STM32FreeRTOS.h`; its critical-section hook lets a test
+  simulate preemption. Code that touches HAL, FreeRTOS or a peripheral
+  needs a seam before it can be tested here (PowerBoard parser,
+  `persistent_config`, `MavlinkNode`).
+
+The release envs list `${stm32.build_unflags}` before `-g`: overriding
+`build_unflags` alone dropped the base `-std=gnu++14` unflag and compiled
+parts of the tree as C++14. All firmware envs build with
+`-Wdouble-promotion -Wshadow`; our code is warning-free with them (the
+third-party libraries are not).
 
 `-D FW_VERSION=\"vX.Y.Z-jazzy\"` carries the firmware version. The release
 workflow (`.github/workflows/release.yaml`) bumps it before tagging.
+
+### Optimisation level (measured 2026-10, not yet changed)
+
+The stm32duino platform puts its own `-Os` after the env's `build_flags`,
+so every release object is compiled with `-O2 … -Os` and the **effective
+level is `-Os`** (check with `pio run -e rosbot_release -v`). Release text
+size per option (`arm-none-eabi-size`, bytes):
+
+| option | rosbot_release | rosbot_xl_release |
+|---|---:|---:|
+| `-Os` (what ships) | 87 328 | 120 496 |
+| `-Os -flto` | 70 208 | 101 504 |
+| real `-O2` (`-Os` unflagged; with `-funroll-loops`) | 184 128 | 221 536 |
+| real `-O2 -flto` | 150 788 | 195 856 |
+
+All four fit the 896 KB application area and build cleanly, LTO included.
+Which is faster, and whether LTO is safe at runtime (the comment in
+`platformio.ini` mentions FreeRTOS issues), needs a HW comparison of task
+timing and idle time — idle is already ~90 % at `-Os`.
 
 Build output sizes (release, after micro-ROS was removed):
 - rosbot ~88 KB Flash (10 %), ~11 KB static RAM (8 %)
@@ -722,8 +829,9 @@ Build output sizes (release, after micro-ROS was removed):
 With micro-ROS still linked (v2.1.0-jazzy) the same builds were 207 KB /
 53 KB and 244 KB / 95 KB.
 
-CCM RAM usage is implicit (compiler may place stack/BSS there). DMA
-buffers are explicitly declared with `alignas(4)` at file scope to land
+Nothing is placed in CCM RAM: the linker script defines the region but
+no section uses it, which is what lets `lib/fault` keep its reset marker
+there. DMA buffers are declared with `alignas(4)` at file scope and land
 in regular SRAM.
 
 ---
@@ -771,22 +879,51 @@ comes up.
 - **rosbot**: SBC ↔ MCU over Serial1 @ 921600.
 - **rosbot_xl**: SBC ↔ MCU over UDP. MCU binds **14555**, sends to peer
   at **14550** (mavros default port layout). Bridge does the
-  opposite — binds 14550, sends to 14555 on the MCU IP.
+  opposite — binds 14550, sends to 14555 on the MCU IP. The MCU drops
+  datagrams from any IP other than `SBC_IP` (the LAN9303 bridges the external
+  RJ45 jack onto this subnet); this stops stray traffic, not a deliberate
+  spoof — MAVLink 2 signing would be the real fix.
 
 ### State machine
 
-`MavlinkNode::loop()` cycles WAITING → AWAIT_TIMESYNC → CONNECTED →
-DISCONNECTED:
+`MavlinkNode::loop()` cycles WAITING → CONNECTED → DISCONNECTED:
 
 ```
-WAITING        send HEARTBEAT 1 Hz, retry boot STATUSTEXT every 1 s for
-                up to 10 s; on first peer HEARTBEAT → AWAIT_TIMESYNC
-AWAIT_TIMESYNC send TIMESYNC every 200 ms; on first reply → CONNECTED
-CONNECTED      send HEARTBEAT 1 Hz, TIMESYNC 0.5 Hz, telemetry at the
-                rates below; if no peer HEARTBEAT for 3 s → DISCONNECTED
+WAITING        send HEARTBEAT 1 Hz; on first peer HEARTBEAT → CONNECTED,
+                sending the boot banner STATUSTEXT once
+CONNECTED      send HEARTBEAT 1 Hz, TIMESYNC right away and then 0.5 Hz,
+                telemetry at the rates below; if no peer HEARTBEAT for
+                3 s → DISCONNECTED
 DISCONNECTED   reset → WAITING (motor watchdog already stopped wheels
                 500 ms after the last command)
 ```
+
+### Time synchronization
+
+The bridge turns `time_boot_us` into ROS time with `wall = mcu + offset`
+(`TimesyncEstimator`, `bridge/.../timesync_estimator.hpp`, unit-tested).
+
+- **Two-way (primary).** Once the MCU is alive the bridge sends
+  `TIMESYNC(tc1=0, ts1=t1)` every 200 ms until it has 5 accepted samples
+  (or has sent 25 requests without them), then at 1 Hz. The MCU answers with `tc1 = its time_boot_us·1000` and `ts1`
+  echoed; the bridge stamps the reply `t4` and takes
+  `offset = (t1 + t4)/2 − tc1`, so the symmetric part of the link delay
+  cancels. A reply that does not echo the last request is ignored; a sample
+  whose RTT exceeds 2× the median of the last 8 is dropped (it sat in a
+  queue). Accepted samples are averaged with weight
+  `max(timesync_alpha, 1/n)` — a plain mean at first, then an EWMA.
+- **Re-seeding.** A HEARTBEAT reconnect (typically an MCU reboot, whose
+  clock restarts near 0) resets the estimate, and so do 3 consecutive
+  samples more than 50 ms off it (MCU reboot inside the 3 s timeout, SBC
+  wall-clock step). Without that the EWMA took ~5 min to follow a reboot.
+- **One-way (fallback).** The MCU still sends its own `TIMESYNC(tc1=0)` every
+  2 s; the bridge echoes it and, until the first two-way sample, uses
+  `bridge_now − ts1`, which includes the whole uplink delay. The first
+  two-way sample replaces that estimate outright. This keeps any firmware
+  and any bridge version interoperable.
+- Not modelled: MCU clock drift (tens of ppm, a few hundred µs of EWMA lag)
+  and the MCU's TX queueing ahead of the reply, which the RTT filter only
+  partly absorbs.
 
 ### Telemetry rates and topic mapping
 

@@ -16,6 +16,8 @@
 
 #include <Arduino.h>
 
+#include <cmath>
+
 #include "encoder_interface.hpp"
 
 struct HardwareEncoderConfig {
@@ -38,23 +40,24 @@ class HardwareEncoder : public EncoderInterface {
   const char* name() const override { return cfg_.frame_id; }
 
  private:
-  const uint32_t getTicks() const { return timer_handle_->Instance->CNT; }
+  uint32_t getTicks() const { return timer_handle_->Instance->CNT; }
   float lowPass(float prev, float input) const {
     float filtered = cfg_.alpha * input + (1.0f - cfg_.alpha) * prev;
-    return fabs(filtered) > ZERO_THRESHOLD ? filtered : 0.0f;
+    return std::fabs(filtered) > ZERO_THRESHOLD ? filtered : 0.0f;
   }
-  static inline int32_t compute_delta(uint32_t cnt, uint32_t last_cnt);
 
   HardwareEncoderConfig cfg_ = {};
   TIM_HandleTypeDef* timer_handle_ = nullptr;
   TIM_Encoder_InitTypeDef encoder_cfg_ = {};
   uint32_t last_cnt_ = 0;
+  // Position is rebuilt from this each update: summing float increments
+  // loses ticks once the position grows past a few thousand rad.
+  int64_t total_ticks_ = 0;
   uint32_t last_time_us_ = 0;
   float last_velocity_ = 0.0f;
 
-  // Below value are true for 16-bit timers (TIM2/TIM5 (32-bit) not supported)
+  // ARR is set to CNT_MAX, so the 32-bit TIM2/TIM5 wrap like 16-bit timers.
   static constexpr uint32_t CNT_MAX = 0xFFFF;
-  static constexpr int32_t CNT_HALF = 0x8000;
   static constexpr uint32_t MIN_DT_US = 100;
   static constexpr float ZERO_THRESHOLD = 0.01f;  // rad/s
   static constexpr float US_TO_SEC = 1.0f / 1000000.0f;

@@ -33,8 +33,14 @@ ip_addr_t s_peer_addr;
 uint16_t s_peer_port = 0;
 
 void rxCallback(void* /*arg*/, struct udp_pcb* /*pcb*/, struct pbuf* p,
-                const ip_addr_t* /*addr*/, u16_t /*port*/) {
+                const ip_addr_t* addr, u16_t /*port*/) {
   if (p == nullptr) return;
+  // The LAN9303 bridges the external RJ45 jack onto this subnet, so only
+  // the SBC may drive the robot. Any source port, for diagnostic tools.
+  if (addr == nullptr || !ip_addr_cmp(addr, &s_peer_addr)) {
+    pbuf_free(p);
+    return;
+  }
   for (struct pbuf* q = p; q != nullptr; q = q->next) {
     // timeout=0 — drop on overflow rather than block LwIP.
     xStreamBufferSend(s_rx_stream, q->payload, q->len, 0);
@@ -79,23 +85,24 @@ void MavlinkUdpTransport::close() {
 size_t MavlinkUdpTransport::write(const uint8_t* buf, size_t len) {
   if (s_pcb == nullptr || buf == nullptr || len == 0) return 0;
 
-  // lwIP runs NO_SYS=1; the same raw API is also touched from the
-  // stm32_eth_scheduler TIM IRQ. taskENTER_CRITICAL masks that IRQ to keep
-  // the pbuf pool / pcb chain single-threaded for the call.
-  taskENTER_CRITICAL();
+  // lwIP runs NO_SYS=1 and is driven by STM32Ethernet's ethernet_scheduler
+  // task (priority 5); no ISR touches it (ETH_INPUT_USE_IT is off).
+  // Suspending the scheduler keeps that task out without masking IRQs.
+  // Only called from the link task, so the scheduler is always running.
+  vTaskSuspendAll();
   struct pbuf* p = pbuf_alloc(PBUF_TRANSPORT, len, PBUF_RAM);
   if (p == nullptr) {
-    taskEXIT_CRITICAL();
+    xTaskResumeAll();
     return 0;
   }
   if (pbuf_take(p, buf, len) != ERR_OK) {
     pbuf_free(p);
-    taskEXIT_CRITICAL();
+    xTaskResumeAll();
     return 0;
   }
   const err_t err = udp_sendto(s_pcb, p, &s_peer_addr, s_peer_port);
   pbuf_free(p);
-  taskEXIT_CRITICAL();
+  xTaskResumeAll();
   return (err == ERR_OK) ? len : 0;
 }
 

@@ -22,23 +22,16 @@
 
 #include "publishers/publisher_interface.hpp"
 #include "subscribers/subscriber_interface.hpp"
+#include "time_base.hpp"
 
 namespace {
 constexpr uint8_t kChannel = MAVLINK_COMM_0;
 constexpr size_t kMaxFrame = MAVLINK_MAX_PACKET_LEN;
 constexpr size_t kLogBufSize = 64;
+constexpr size_t kRxChunk = 64;
 }  // namespace
 
-// Folds the uint32 micros() delta into a uint64 accumulator so the value
-// stays monotonic across the ~71 min wrap. Single-writer (link task).
-uint64_t MavlinkNode::timeBootUs() {
-  static uint32_t s_last_us = 0;
-  static uint64_t s_accum_us = 0;
-  const uint32_t now = micros();
-  s_accum_us += static_cast<uint32_t>(now - s_last_us);
-  s_last_us = now;
-  return s_accum_us;
-}
+uint64_t MavlinkNode::timeBootUs() { return time_boot_us(); }
 
 bool MavlinkNode::begin() {
   if (transport_open_) return true;
@@ -69,7 +62,15 @@ void MavlinkNode::log(uint8_t severity, const char* fmt, ...) {
   va_end(args);
 
   if (diag_serial_ != nullptr) {
-    diag_serial_->println(buf);
+    // Never wait: the Monitor task holds the mutex for its whole report, and
+    // blocking the link task that long overflows the serial RX ring.
+    const bool running = xTaskGetSchedulerState() == taskSCHEDULER_RUNNING;
+    if (!running || diag_mutex_ == nullptr) {
+      diag_serial_->println(buf);
+    } else if (xSemaphoreTake(diag_mutex_, 0) == pdTRUE) {
+      diag_serial_->println(buf);
+      xSemaphoreGive(diag_mutex_);
+    }
   }
 
   if (!transport_open_) return;
@@ -89,20 +90,19 @@ void MavlinkNode::loop() {
   const uint32_t now = millis();
 
   emitHeartbeatIfDue(now);
-  emitBootBannerIfDue(now);
   drainRx();
 
   switch (state_) {
     case WAITING:
       if (peer_seen_) {
-        state_ = AWAIT_TIMESYNC;
+        state_ = CONNECTED;
         last_timesync_ms_ = 0;
+        // Once per connection: the peer is listening now, and a restarted
+        // bridge gets it again without an MCU reset.
+        log(MAV_SEVERITY_INFO, "%s", cfg_.boot_banner);
+        if (boot_notice_ != nullptr)
+          log(MAV_SEVERITY_ERROR, "%s", boot_notice_);
       }
-      break;
-
-    case AWAIT_TIMESYNC:
-      emitTimesyncIfDue(now);
-      state_ = CONNECTED;
       break;
 
     case CONNECTED:
@@ -118,8 +118,6 @@ void MavlinkNode::loop() {
 
     case DISCONNECTED:
       peer_seen_ = false;
-      boot_banner_sent_ = false;
-      boot_banner_attempts_ = 0;
       state_ = WAITING;
       break;
   }
@@ -132,36 +130,20 @@ void MavlinkNode::emitHeartbeatIfDue(uint32_t now_ms) {
   }
   last_heartbeat_ms_ = now_ms;
   mavlink_message_t m;
-  uint8_t system_status =
-      (state_ == CONNECTED) ? MAV_STATE_ACTIVE : MAV_STATE_STANDBY;
+  uint8_t system_status = critical_               ? MAV_STATE_CRITICAL
+                          : (state_ == CONNECTED) ? MAV_STATE_ACTIVE
+                                                  : MAV_STATE_STANDBY;
   mavlink_msg_heartbeat_pack(cfg_.sysid, cfg_.compid, &m, cfg_.mav_type,
                              cfg_.autopilot, /*base_mode=*/0,
                              /*custom_mode=*/0, system_status);
   sendMessage(m);
 }
 
-void MavlinkNode::emitBootBannerIfDue(uint32_t now_ms) {
-  constexpr uint8_t kBannerAttempts = 10;
-  if (boot_banner_sent_) return;
-  if (state_ == CONNECTED) {
-    boot_banner_sent_ = true;
-    return;
-  }
-  if (last_heartbeat_ms_ == 0) return;
-  if ((now_ms - last_boot_banner_ms_) < 1000 && last_boot_banner_ms_ != 0) {
-    return;
-  }
-  last_boot_banner_ms_ = now_ms;
-  log(MAV_SEVERITY_INFO, "%s", cfg_.boot_banner);
-  boot_banner_attempts_++;
-  if (boot_banner_attempts_ >= kBannerAttempts) boot_banner_sent_ = true;
-}
-
 void MavlinkNode::emitTimesyncIfDue(uint32_t now_ms) {
-  const uint32_t period = (state_ == CONNECTED)
-                              ? cfg_.timesync_period_ms
-                              : cfg_.timesync_active_period_ms;
-  if ((now_ms - last_timesync_ms_) < period && last_timesync_ms_ != 0) return;
+  if ((now_ms - last_timesync_ms_) < cfg_.timesync_period_ms &&
+      last_timesync_ms_ != 0) {
+    return;
+  }
   last_timesync_ms_ = now_ms;
 
   mavlink_message_t m;
@@ -172,10 +154,13 @@ void MavlinkNode::emitTimesyncIfDue(uint32_t now_ms) {
 }
 
 void MavlinkNode::drainRx() {
-  uint8_t byte;
-  while (transport_.read(&byte, 1, 0) == 1) {
-    if (mavlink_parse_char(kChannel, byte, &rx_msg_, &rx_status_)) {
-      dispatchMessage(rx_msg_);
+  uint8_t buf[kRxChunk];
+  size_t n;
+  while ((n = transport_.read(buf, sizeof(buf), 0)) > 0) {
+    for (size_t i = 0; i < n; ++i) {
+      if (mavlink_parse_char(kChannel, buf[i], &rx_msg_, &rx_status_)) {
+        dispatchMessage(rx_msg_);
+      }
     }
   }
 }

@@ -75,7 +75,6 @@ static MavlinkNodeConfig mavlink_cfg = {
     .boot_banner = "rosbot " FW_VERSION " mavlink",
     .heartbeat_period_ms = 1000,
     .timesync_period_ms = 2000,
-    .timesync_active_period_ms = 200,
     .peer_timeout_ms = 3000,
     .publishers = s_publishers,
     .pub_count = sizeof(s_publishers) / sizeof(s_publishers[0]),

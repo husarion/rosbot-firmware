@@ -26,6 +26,6 @@ bool SpiTransport::init() {
   return true;
 }
 
-void SpiTransport::transfer(uint8_t byte) {
-  spi_.transfer(CS_PIN_CONTROLLED_BY_USER, byte);
+void SpiTransport::transfer(uint8_t value) {
+  spi_.transfer(CS_PIN_CONTROLLED_BY_USER, value);
 }
