@@ -16,6 +16,7 @@
 
 #include <cstdint>
 
-// Monotonic microseconds since boot, safe from any task or ISR and before
-// the scheduler starts. Must be called at least every ~35 min.
+// Monotonic microseconds since boot, safe from any task, from ISRs at or
+// below configMAX_SYSCALL_INTERRUPT_PRIORITY, and before the scheduler
+// starts. Must be called at least every ~35 min.
 uint64_t time_boot_us();
