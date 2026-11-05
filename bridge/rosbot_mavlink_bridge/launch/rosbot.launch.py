@@ -47,5 +47,7 @@ def generate_launch_description():
             }],
             output='screen',
             emulate_tty=True,
+            respawn=True,
+            respawn_delay=5.0,
         ),
     ])
