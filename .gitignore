@@ -19,3 +19,7 @@ bridge/rosbot_mavlink_bridge/firmware/*.bin
 # Local scratch dir for screenshots, paste targets, ad-hoc files.
 # Never committed.
 temp/
+
+# Python bytecode
+__pycache__/
+*.pyc
