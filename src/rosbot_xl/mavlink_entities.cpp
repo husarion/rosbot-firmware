@@ -14,6 +14,7 @@
 
 #include "commands/imu_calibration_command.hpp"
 #include "commands/mcu_id_command.hpp"
+#include "commands/power_board_info_command.hpp"
 #include "config.hpp"
 #include "mavlink_node.hpp"
 #include "publishers/battery_publisher.hpp"
@@ -64,11 +65,27 @@ static PanelLedSubscriber leds_sub(s_panel_leds, sizeof(s_panel_leds) /
                                                      sizeof(s_panel_leds[0]));
 static LedStripSubscriber led_strip_sub(led_strip_queue);
 static McuIdCommand mcu_id_cmd;
+
+extern PowerBoard power_board;
+
+static PowerBoardVersions readPowerBoardVersions() {
+  PowerBoardVersions v;
+  const PowerBoard::BoardInfo& info = power_board.boardInfo();
+  v.valid = info.isValid();
+  if (!v.valid) return v;
+  sanitizeVersionText(info.firmware_version, sizeof(info.firmware_version),
+                      v.firmware_version, sizeof(v.firmware_version));
+  sanitizeVersionText(info.board_version, sizeof(info.board_version),
+                      v.board_version, sizeof(v.board_version));
+  return v;
+}
+static PowerBoardInfoCommand power_board_info_cmd(readPowerBoardVersions);
 static ImuCalibrationCommand imu_calibration_cmd;
 
 static MavlinkSubscriberInterface* s_subscribers[] = {
-    &wheel_cmd_sub, &leds_sub, &led_strip_sub, &mcu_id_cmd,
-    &imu_calibration_cmd};
+    &wheel_cmd_sub,       &leds_sub,
+    &led_strip_sub,       &mcu_id_cmd,
+    &imu_calibration_cmd, &power_board_info_cmd};
 
 static MavlinkNodeConfig mavlink_cfg = {
     .sysid = 1,

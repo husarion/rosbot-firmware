@@ -63,6 +63,7 @@ It is informational only: the firmware variant is already checked by the
 | `leds` | `std_msgs/UInt8` | best_effort, depth 1 |
 | `led_strip` (rosbot_xl only) | `sensor_msgs/Image` | best_effort, depth 1 |
 | `_mcu_id` (service) | `std_srvs/Trigger` | — |
+| `_power_board_info` (service, rosbot_xl only) | `std_srvs/Trigger` | — |
 | `_imu/calibration` | `std_msgs/UInt8MultiArray` | best_effort, depth 1 |
 | `_imu/start_calibration`, `_imu/stop_calibration`, `_imu/save_calibration` (services) | `std_srvs/Trigger` | — |
 

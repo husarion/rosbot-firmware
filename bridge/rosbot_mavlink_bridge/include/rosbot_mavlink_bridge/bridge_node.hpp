@@ -69,6 +69,7 @@ private:
   void onRosbotButtons(const mavlink_message_t & msg);
   void onDistanceSensor(const mavlink_message_t & msg);
   void onRosbotMcuId(const mavlink_message_t & msg);
+  void onRosbotPowerBoard(const mavlink_message_t & msg);
   void onRosbotImuCalibration(const mavlink_message_t & msg);
   void onCommandAck(const mavlink_message_t & msg);
 
@@ -77,6 +78,9 @@ private:
   void ledsCb(const std_msgs::msg::UInt8::SharedPtr msg);
   void ledStripCb(const sensor_msgs::msg::Image::SharedPtr msg);
   void mcuIdServiceCb(
+    const std::shared_ptr<std_srvs::srv::Trigger::Request> req,
+    std::shared_ptr<std_srvs::srv::Trigger::Response> res);
+  void powerBoardServiceCb(
     const std::shared_ptr<std_srvs::srv::Trigger::Request> req,
     std::shared_ptr<std_srvs::srv::Trigger::Response> res);
   void saveImuCalibrationCb(
@@ -132,6 +136,13 @@ private:
   bool mcu_id_pending_ = false;
   bool mcu_id_received_ = false;
 
+  // Same single-exchange scheme for COMMAND_LONG(MAV_CMD_USER_3) /
+  // ROSBOT_POWER_BOARD.
+  std::mutex power_board_mutex_;
+  std::condition_variable power_board_cv_;
+  mavlink_rosbot_power_board_t power_board_last_{};
+  bool power_board_received_ = false;
+
   // Save-calibration exchange: the ACK says whether the MCU took the
   // request, the next ROSBOT_IMU_CALIBRATION with a new save_seq carries the
   // outcome. -1 = no ACK yet.
@@ -153,6 +164,7 @@ private:
   rclcpp::Subscription<std_msgs::msg::UInt8>::SharedPtr leds_sub_;
   rclcpp::Subscription<sensor_msgs::msg::Image>::SharedPtr led_strip_sub_;
   rclcpp::Service<std_srvs::srv::Trigger>::SharedPtr mcu_id_service_;
+  rclcpp::Service<std_srvs::srv::Trigger>::SharedPtr power_board_service_;
   rclcpp::Publisher<std_msgs::msg::UInt8MultiArray>::SharedPtr calib_pub_;
   rclcpp::Service<std_srvs::srv::Trigger>::SharedPtr save_calib_service_;
   rclcpp::Service<std_srvs::srv::Trigger>::SharedPtr start_calib_service_;

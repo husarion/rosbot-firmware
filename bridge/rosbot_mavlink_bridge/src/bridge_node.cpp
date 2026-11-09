@@ -109,6 +109,12 @@ BridgeNode::BridgeNode(
     std::shared_ptr<std_srvs::srv::Trigger::Response> res) {
       mcuIdServiceCb(req, res);
       });
+  power_board_service_ = this->create_service<std_srvs::srv::Trigger>(
+      "_power_board_info",
+    [this](const std::shared_ptr<std_srvs::srv::Trigger::Request> req,
+    std::shared_ptr<std_srvs::srv::Trigger::Response> res) {
+      powerBoardServiceCb(req, res);
+      });
   calib_pub_ = this->create_publisher<std_msgs::msg::UInt8MultiArray>(
       "_imu/calibration", bestEffortDepth1());
   save_calib_service_ = this->create_service<std_srvs::srv::Trigger>(
@@ -283,6 +289,9 @@ void BridgeNode::onMavlinkMessage(const mavlink_message_t & msg)
       break;
     case MAVLINK_MSG_ID_ROSBOT_MCU_ID:
       onRosbotMcuId(msg);
+      break;
+    case MAVLINK_MSG_ID_ROSBOT_POWER_BOARD:
+      onRosbotPowerBoard(msg);
       break;
     case MAVLINK_MSG_ID_ROSBOT_IMU_CALIBRATION:
       onRosbotImuCalibration(msg);
@@ -533,6 +542,16 @@ void BridgeNode::onRosbotMcuId(const mavlink_message_t & msg)
   mcu_id_cv_.notify_all();
 }
 
+void BridgeNode::onRosbotPowerBoard(const mavlink_message_t & msg)
+{
+  {
+    std::lock_guard<std::mutex> lk(power_board_mutex_);
+    mavlink_msg_rosbot_power_board_decode(&msg, &power_board_last_);
+    power_board_received_ = true;
+  }
+  power_board_cv_.notify_all();
+}
+
 void BridgeNode::onCommandAck(const mavlink_message_t & msg)
 {
   // MCU_ID retries on timeout rather than tracking ACKs; only the
@@ -634,6 +653,46 @@ void BridgeNode::mcuIdServiceCb(
   res->message = "{\"mcu_id\": \"\"}";
   std::lock_guard<std::mutex> lk(mcu_id_mutex_);
   mcu_id_pending_ = false;
+}
+
+void BridgeNode::powerBoardServiceCb(
+  const std::shared_ptr<std_srvs::srv::Trigger::Request>/*req*/,
+  std::shared_ptr<std_srvs::srv::Trigger::Response> res)
+{
+  // success only when the MCU answered AND the power board has reported its
+  // versions; an old power board or a rosbot (no power board) yields false.
+  {
+    std::lock_guard<std::mutex> lk(power_board_mutex_);
+    power_board_received_ = false;
+  }
+
+  for (int attempt = 0; attempt < 3; ++attempt) {
+    mavlink_message_t cmd;
+    mavlink_msg_command_long_pack(bridge_sysid_, bridge_compid_, &cmd,
+                                  mcu_sysid_, mcu_compid_, MAV_CMD_USER_3,
+                                  /*confirmation=*/attempt, 0, 0, 0, 0, 0, 0,
+                                  0);
+    sendMavlink(cmd);
+
+    std::unique_lock<std::mutex> lk(power_board_mutex_);
+    if (power_board_cv_.wait_for(lk, std::chrono::milliseconds(500),
+      [this] {return power_board_received_;}))
+    {
+      char fw[13];
+      char board[13];
+      std::memcpy(fw, power_board_last_.firmware_version, 12);
+      std::memcpy(board, power_board_last_.board_version, 12);
+      fw[12] = '\0';
+      board[12] = '\0';
+      res->success = power_board_last_.valid != 0;
+      res->message = std::string("{\"firmware_version\": \"") + fw +
+        "\", \"board_version\": \"" + board + "\"}";
+      return;
+    }
+  }
+
+  res->success = false;
+  res->message = "{\"firmware_version\": \"\", \"board_version\": \"\"}";
 }
 
 void BridgeNode::saveImuCalibrationCb(

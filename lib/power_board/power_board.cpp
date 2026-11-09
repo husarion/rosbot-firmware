@@ -18,7 +18,10 @@
 //  Constructor — stores config, does NOT touch hardware
 // ═══════════════════════════════════════════════════════════════════
 
-PowerBoard::PowerBoard(const PowerBoardConfig& config) : cfg_(config) {}
+PowerBoard::PowerBoard(const PowerBoardConfig& config)
+    : cfg_(config),
+      soc_(SocEstimatorConfig{.num_cells = config.num_cells,
+                              .capacity_ah = config.capacity_ah}) {}
 
 // ═══════════════════════════════════════════════════════════════════
 //  init() — configures UART, call after HAL/clock init
@@ -241,10 +244,14 @@ void PowerBoard::handleBoardInfo(const Frame& frame) {
   if (frame.arg_size != BOARD_INFO_ARG_LEN) return;
 
   board_info_ = {};
-  memcpy(board_info_.firmware_version, &frame.args[FIRMWARE_VERSION_OFFSET],
-         FIRMWARE_VERSION_LEN);
-  memcpy(board_info_.board_version, &frame.args[BOARD_VERSION_OFFSET],
-         BOARD_VERSION_LEN);
+  sanitizeVersionText(
+      reinterpret_cast<const char*>(&frame.args[FIRMWARE_VERSION_OFFSET]),
+      FIRMWARE_VERSION_LEN, board_info_.firmware_version,
+      sizeof(board_info_.firmware_version));
+  sanitizeVersionText(
+      reinterpret_cast<const char*>(&frame.args[BOARD_VERSION_OFFSET]),
+      BOARD_VERSION_LEN, board_info_.board_version,
+      sizeof(board_info_.board_version));
 
   board_info_updated_ = true;
 }
@@ -282,13 +289,14 @@ void PowerBoard::handleBatteryState(const Frame& frame) {
   const float charge = readU16(&a[7]) * 0.001f;
   data_.current = charge - discharge;
 
-  // Percentage not provided by this protocol
-  if (cfg_.v_max > cfg_.v_min) {
-    const float pct = (data_.voltage - cfg_.v_min) / (cfg_.v_max - cfg_.v_min);
-    data_.percentage = fmaxf(0.0f, fminf(1.0f, pct));
-  } else {
-    data_.percentage = NAN;
-  }
+  // Percentage is not part of this protocol; estimate it from V and I.
+  const uint32_t now_ms = millis();
+  const float dt_s =
+      (last_battery_ms_ == 0)
+          ? 0.0f
+          : static_cast<float>(now_ms - last_battery_ms_) * 0.001f;
+  last_battery_ms_ = now_ms;
+  data_.percentage = soc_.update(data_.voltage, data_.current, dt_s);
 
   data_.status = a[14];
   data_.health = a[15];

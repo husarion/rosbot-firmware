@@ -60,5 +60,12 @@
       <description>Reply to MAV_CMD_USER_1 carrying the MCU unique identifier.</description>
       <field type="char[24]" name="uid">Hex-encoded 12-byte MCU UID.</field>
     </message>
+
+    <message id="11021" name="ROSBOT_POWER_BOARD">
+      <description>Reply to MAV_CMD_USER_3 carrying the version strings the ROSbot XL power board reported over its UART. valid is 0 until the board has answered, which is also the permanent state with a power board firmware that does not report it.</description>
+      <field type="uint8_t"  name="valid">1 when the power board has reported its versions.</field>
+      <field type="char[12]" name="firmware_version">Power board firmware version, e.g. v1.0.1.</field>
+      <field type="char[12]" name="board_version">Power board hardware revision, e.g. v1.4.</field>
+    </message>
   </messages>
 </mavlink>
