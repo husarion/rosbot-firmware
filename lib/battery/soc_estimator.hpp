@@ -27,6 +27,7 @@ struct SocEstimatorConfig {
   float r_internal_ohm = 0.10f;
   float correction_tau_s = 60.0f;
   float load_ref_a = 2.0f;
+  float voltage_only_tau_s = 30.0f;
 };
 
 class SocEstimator {
@@ -59,6 +60,25 @@ class SocEstimator {
     soc_ += (soc_ocv - soc_) * trust * dt_s / cfg_.correction_tau_s;
 
     soc_ = fminf(fmaxf(soc_, 0.0f), 1.0f);
+    return soc_;
+  }
+
+  // No current measurement (ROSbot 3): rest-voltage curve through a low-pass
+  // filter. Load sag still biases the result low while driving; the filter
+  // only keeps it from flickering around the low-battery threshold.
+  float updateVoltageOnly(float voltage_v, float dt_s) {
+    if (!std::isfinite(voltage_v) || cfg_.num_cells == 0) return soc_;
+
+    const float soc_ocv =
+        ocvToSoc(voltage_v / static_cast<float>(cfg_.num_cells));
+    if (!initialized_) {
+      soc_ = soc_ocv;
+      initialized_ = true;
+      return soc_;
+    }
+
+    if (!(dt_s > 0.0f) || dt_s > kMaxDtS) return soc_;
+    soc_ += (soc_ocv - soc_) * fminf(dt_s / cfg_.voltage_only_tau_s, 1.0f);
     return soc_;
   }
 

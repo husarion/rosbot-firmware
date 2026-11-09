@@ -15,12 +15,12 @@
 #pragma once
 
 #include "battery_interface.hpp"
+#include "soc_estimator.hpp"
 
 struct BatteryAdcConfig {
   uint8_t adc_pin;
   float v_ref;
-  float v_min;
-  float v_max;
+  uint8_t num_cells;
   float divider;
   float correction = 1.0f;
   float adc_resolution_scale;  // 1/ADC resolution (e.g. 1023 for 10-bit)
@@ -37,6 +37,7 @@ class BatteryAdc : public BatteryInterface {
  private:
   const BatteryAdcConfig cfg_;
   float voltage_factor_ = 1.0f;
-  float voltage_range_inv_ = 0.0f;
+  SocEstimator soc_;
+  uint32_t last_update_ms_ = 0;
   uint16_t adc_dma_buffer_[1] = {};
 };

@@ -124,6 +124,27 @@ void test_charging_raises_soc_and_clamps() {
   TEST_ASSERT_FLOAT_WITHIN(0.02f, 1.0f, s);
 }
 
+void test_voltage_only_smooths_a_sag() {
+  SocEstimatorConfig c;
+  SocEstimator e(c);
+  for (int i = 0; i < 600; ++i) e.updateVoltageOnly(3.84f * 3, 0.1f);
+  // A one-second 0.5 V sag must not move the output by more than a few points.
+  float s = 0.0f;
+  for (int i = 0; i < 10; ++i) s = e.updateVoltageOnly(3.84f * 3 - 0.5f, 0.1f);
+  TEST_ASSERT_FLOAT_WITHIN(0.03f, 0.50f, s);
+}
+
+void test_voltage_only_converges_and_ignores_bad_input() {
+  SocEstimatorConfig c;
+  SocEstimator e(c);
+  e.updateVoltageOnly(3.60f * 3, 0.1f);
+  float s = 0.0f;
+  for (int i = 0; i < 1200; ++i) s = e.updateVoltageOnly(3.84f * 3, 1.0f);
+  TEST_ASSERT_FLOAT_WITHIN(0.02f, 0.50f, s);
+  TEST_ASSERT_EQUAL_FLOAT(s, e.updateVoltageOnly(NAN, 1.0f));
+  TEST_ASSERT_EQUAL_FLOAT(s, e.updateVoltageOnly(11.5f, 0.0f));
+}
+
 int main() {
   UNITY_BEGIN();
   RUN_TEST(test_curve_endpoints_and_monotonic);
@@ -133,5 +154,7 @@ int main() {
   RUN_TEST(test_rest_converges_to_ocv);
   RUN_TEST(test_bad_input_is_ignored);
   RUN_TEST(test_charging_raises_soc_and_clamps);
+  RUN_TEST(test_voltage_only_smooths_a_sag);
+  RUN_TEST(test_voltage_only_converges_and_ignores_bad_input);
   return UNITY_END();
 }

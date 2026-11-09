@@ -16,13 +16,11 @@
 
 #include <Arduino.h>
 
-#include <cassert>
 #include <cmath>
 
-BatteryAdc::BatteryAdc(const BatteryAdcConfig config) : cfg_(config) {
+BatteryAdc::BatteryAdc(const BatteryAdcConfig config)
+    : cfg_(config), soc_(SocEstimatorConfig{.num_cells = config.num_cells}) {
   voltage_factor_ = cfg_.v_ref * cfg_.correction * cfg_.divider;
-  assert(cfg_.v_max > cfg_.v_min);
-  voltage_range_inv_ = 1.0f / (cfg_.v_max - cfg_.v_min);
 }
 
 void BatteryAdc::init() { pinMode(cfg_.adc_pin, INPUT); }
@@ -32,6 +30,11 @@ void BatteryAdc::update() {
 
   data_.voltage = raw * voltage_factor_;
 
-  float pct = (data_.voltage - cfg_.v_min) * voltage_range_inv_;
-  data_.percentage = fminf(fmaxf(pct, 0.0f), 1.0f);
+  const uint32_t now_ms = millis();
+  const float dt_s =
+      (last_update_ms_ == 0)
+          ? 0.0f
+          : static_cast<float>(now_ms - last_update_ms_) * 0.001f;
+  last_update_ms_ = now_ms;
+  data_.percentage = soc_.updateVoltageOnly(data_.voltage, dt_s);
 }

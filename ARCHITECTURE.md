@@ -166,7 +166,7 @@ upstream stack; it was removed after v2.1.0-jazzy (see git history).
 
 | dir | role |
 |---|---|
-| `battery/` | `BatteryInterface` + `BatteryAdc` (rosbot battery via ADC) + `SocEstimator` (rosbot_xl: coulomb counting corrected by load-compensated OCV, so percentage does not jump under load) |
+| `battery/` | `BatteryInterface` + `BatteryAdc` (rosbot battery via ADC) + `SocEstimator` (rosbot_xl: coulomb counting corrected by load-compensated OCV, so percentage does not jump under load; rosbot: rest-voltage curve through a low-pass filter, as there is no current measurement) |
 | `boot_option/` | `resolveBootAction()` — classifies the power-on button gesture (tap vs 3 s hold) into "change transport" / "calibrate IMU" / nothing, owns the confirmation LEDs — see "IMU calibration" under "Patterns" |
 | `comm_manager/` | `CommunicationManager` — chooses primary vs diagnostic transport at boot, driven by `boot_option`'s decision |
 | `eeprom/` | I2C EEPROM driver + `BoardRevision` (revision string read on rosbot_xl) |
