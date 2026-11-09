@@ -867,10 +867,17 @@ Facts marked *unverified* have not been checked on hardware or in a datasheet.
   BOOT0/NRST are not controllable until those two are rewritten to `GPIO` (the
   DB's FT230X already has `GPIO`; `rosbot-snap` `ftdi_eeprom_conf.py` does it).
   Both devices carry the same product string, `FT230X Basic UART`, so select by
-  serial, never by `ftdi://ftdi:ft-x:/1`. *Unverified:* that the L051 ROM
-  bootloader accepts USART2 (AN2606), and how the PB behaves when a USB host
-  supplies VBUS on the charging port. WebUSB cannot open an FT230X on Windows
-  while the FTDI driver is bound to it.
+  serial, never by `ftdi://ftdi:ft-x:/1`. **A PB update must therefore check the
+  FT230X EEPROM and, if CBUS0/1 are not `GPIO`, write them first** (same two
+  properties as the DB; keep a backup of the old EEPROM). Measured on the same
+  unit with CBUS0/1 set to `GPIO`: BOOT0 high + NRST pulse over CBUS enters the
+  ROM bootloader on USART2 at 57600 8E1; `stm32flash` reads
+  `Device ID 0x0417 (STM32L05xxx/06xxx)`, bootloader `0x31`, 64 KiB flash. That
+  reset powers the DB off (its USB device vanished, no ping), and the PB did not
+  power it back on after leaving the bootloader; a power-button press is
+  *probably* needed. *Unverified:* how the PB behaves when a USB host supplies
+  VBUS on the charging port. WebUSB cannot open an FT230X on Windows while the
+  FTDI driver is bound to it.
 - **Same trick on the DB.** The DB is flashed the same way: `rosbot_utils`
   `McuManagerFTDI` drives CBUS0 = BOOT0 and CBUS1 = RST through pyftdi, then runs
   `stm32flash`. It opens the FT-X by device, not by pyftdi URL, because the URL
