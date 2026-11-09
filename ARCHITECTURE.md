@@ -861,8 +861,14 @@ Facts marked *unverified* have not been checked on hardware or in a datasheet.
   it; keep the DB compatible with v1.2 firmware indefinitely.
 - **Updating the PB.** The PB powers the SBC and the DB, so resetting its MCU
   drops them; an update has to run from a separate computer plugged into the rear
-  USB-C. *Unverified:* that the L051 ROM bootloader accepts USART2 (AN2606), that
-  the FT230X EEPROM maps CBUS0/1 as I/O, and how the PB behaves when a USB host
+  USB-C. **The PB's FT230X ships with the FTDI default EEPROM** (measured on a
+  v1.3 unit, serial `DK0C4RU8`, 2026-11-09): `cbus_func_0 = TXDEN`,
+  `cbus_func_1 = TXLED`. CBUS bit-bang only drives pins configured as GPIO, so
+  BOOT0/NRST are not controllable until those two are rewritten to `GPIO` (the
+  DB's FT230X already has `GPIO`; `rosbot-snap` `ftdi_eeprom_conf.py` does it).
+  Both devices carry the same product string, `FT230X Basic UART`, so select by
+  serial, never by `ftdi://ftdi:ft-x:/1`. *Unverified:* that the L051 ROM
+  bootloader accepts USART2 (AN2606), and how the PB behaves when a USB host
   supplies VBUS on the charging port. WebUSB cannot open an FT230X on Windows
   while the FTDI driver is bound to it.
 - **Same trick on the DB.** The DB is flashed the same way: `rosbot_utils`
