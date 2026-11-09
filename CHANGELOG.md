@@ -17,6 +17,14 @@ MAVLink merged into `jazzy` in 2.0.0.
 
 Fixes from the 2026-10 static firmware audit. HW-tested 2026-10-26 on ROSbot 3 and ROSbot XL rev 1.2 (driving A/B vs 2.2.1, fault paths via test builds, UDP filter, shutdown).
 
+### Added
+
+- `_power_board_info` service (ROSbot XL): power board firmware and hardware version, new `ROSBOT_POWER_BOARD` (11021) message and `MAV_CMD_USER_3`. Needs the matching bridge; an older bridge simply does not expose the service.
+
+### Changed
+
+- ROSbot XL battery percentage comes from a load-compensated estimator (coulomb counting corrected by open-circuit voltage) instead of a linear voltage map, so it no longer jumps with load. ROSbot 3 has no current measurement, so it uses the same rest-voltage curve through a low-pass filter; load sag still biases it low while driving. Generic Li-ion curve and resistance, not validated on hardware. The low-battery indicator now trips at a true 20 %, which is earlier than before.
+
 ### Fixed
 - NaN/Inf wheel setpoints are rejected (watchdog not fed); PID and PWM guard against non-finite values.
 - ROSbot XL fan runs at 100 % when the NTC reads open or shorted, instead of switching off.

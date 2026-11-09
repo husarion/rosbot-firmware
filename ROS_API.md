@@ -44,6 +44,7 @@ wire side.
 | SERVICE                       | DESCRIPTION                                                                  |
 | ----------------------------- | ---------------------------------------------------------------------------- |
 | **`_mcu_id`**                 | Get MCU ID. <br /> _[std_srvs/Trigger]_                                      |
+| **`_power_board_info`**       | ROSbot XL only. Power board firmware and hardware version as JSON in `message`: `{"firmware_version": "v1.0.1", "board_version": "v1.4"}`. `success` is false (empty strings) when the power board has not reported yet or the robot has no power board, so a caller should retry for a few seconds after boot. <br /> _[std_srvs/Trigger]_ |
 | **`_imu/start_calibration`**  | Start a calibration session (red LED fast blink, 180 s). <br /> _[std_srvs/Trigger]_ |
 | **`_imu/stop_calibration`**   | End the session early. <br /> _[std_srvs/Trigger]_             |
 | **`_imu/save_calibration`**   | Persist the chip's current offsets to flash. <br /> _[std_srvs/Trigger]_ |

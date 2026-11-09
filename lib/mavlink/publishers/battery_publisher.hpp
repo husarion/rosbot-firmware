@@ -16,6 +16,7 @@
 
 #include <STM32FreeRTOS.h>
 
+#include <cmath>
 #include <limits>
 
 #include "mavlink.h"
@@ -58,7 +59,7 @@ class MavlinkBatteryPublisher : public MavlinkPublisherInterface {
             : -1;
     int8_t percent = -1;
     if (!isnan(data.data.percentage)) {
-      percent = static_cast<int8_t>(data.data.percentage * 100.0f);
+      percent = static_cast<int8_t>(lroundf(data.data.percentage * 100.0f));
     }
 
     uint16_t voltages_ext[4] = {0, 0, 0, 0};

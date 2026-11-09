@@ -31,11 +31,15 @@ inline constexpr uint32_t ADC_MAX_VALUE =
     1023;  // 10-bit ADC resolution (0-1023)
 
 // ───────── Battery ─────────
+inline constexpr uint8_t BATTERY_NUM_CELLS = 3;
+inline constexpr float BATTERY_CELL_CAPACITY = 2.6f;  // Ah
+inline constexpr float BATTERY_DESIGN_CAPACITY =
+    BATTERY_NUM_CELLS * BATTERY_CELL_CAPACITY;
+
 inline constexpr BatteryAdcConfig battery_adc_config = {
     .adc_pin = PA5,
     .v_ref = 3.3f,
-    .v_min = 9.6f,
-    .v_max = 12.6f,
+    .num_cells = BATTERY_NUM_CELLS,
     .divider = (5.6e4 + 1.0e4) / 1.0e4,
     .correction = 0.986f,
     .adc_resolution_scale = 1.0f / ADC_MAX_VALUE,
@@ -263,10 +267,6 @@ inline QueueHandle_t imu_queue;
 inline QueueHandle_t joint_state_queue;
 inline QueueHandle_t ranges_queue;
 
-inline constexpr uint8_t BATTERY_NUM_CELLS = 3;
-inline constexpr float BATTERY_CELL_CAPACITY = 2.6f;  // Ah
-inline constexpr float BATTERY_DESIGN_CAPACITY =
-    BATTERY_NUM_CELLS * BATTERY_CELL_CAPACITY;
 inline constexpr uint8_t buttons_pins[2] = {PUSH_BUTTON2, PUSH_BUTTON1};
 
 // Publisher configs live in src/rosbot/mavlink_entities.cpp.

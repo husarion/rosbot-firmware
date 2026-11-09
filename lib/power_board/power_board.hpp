@@ -20,14 +20,16 @@
 #include <cstring>
 
 #include "battery_interface.hpp"
+#include "soc_estimator.hpp"
+#include "version_text.hpp"
 
 // ── Configuration ───────────────────────────────────────────────────
 
 struct PowerBoardConfig {
   HardwareSerial& serial;
   uint32_t baudrate = 115200;
-  float v_min = 27.0f;  // minimum battery voltage [V]
-  float v_max = 42.0f;  // maximum battery voltage [V]
+  uint8_t num_cells = 3;
+  float capacity_ah = 7.8f;
 };
 
 // ── Class ───────────────────────────────────────────────────────────
@@ -123,6 +125,9 @@ class PowerBoard : public BatteryInterface {
   size_t rx_len_ = 0;
 
   BoardInfo board_info_;
+
+  SocEstimator soc_;
+  uint32_t last_battery_ms_ = 0;
 
   bool battery_updated_ = false;
   bool board_info_updated_ = false;

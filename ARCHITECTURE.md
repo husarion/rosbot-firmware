@@ -166,7 +166,7 @@ upstream stack; it was removed after v2.1.0-jazzy (see git history).
 
 | dir | role |
 |---|---|
-| `battery/` | `BatteryInterface` + `BatteryAdc` (rosbot battery via ADC) |
+| `battery/` | `BatteryInterface` + `BatteryAdc` (rosbot battery via ADC) + `SocEstimator` (rosbot_xl: coulomb counting corrected by load-compensated OCV, so percentage does not jump under load; rosbot: rest-voltage curve through a low-pass filter, as there is no current measurement) |
 | `boot_option/` | `resolveBootAction()` — classifies the power-on button gesture (tap vs 3 s hold) into "change transport" / "calibrate IMU" / nothing, owns the confirmation LEDs — see "IMU calibration" under "Patterns" |
 | `comm_manager/` | `CommunicationManager` — chooses primary vs diagnostic transport at boot, driven by `boot_option`'s decision |
 | `eeprom/` | I2C EEPROM driver + `BoardRevision` (revision string read on rosbot_xl) |
@@ -938,6 +938,7 @@ The bridge turns `time_boot_us` into ROS time with `wall = mcu + offset`
 | `leds` | `ROSBOT_PANEL_LEDS` (11011) | on-demand | — |
 | `led_strip` (rosbot_xl) | `ROSBOT_LED_STRIP` (11012) | on-demand | — |
 | `_mcu_id` (service) | `COMMAND_LONG(MAV_CMD_USER_1)` → `ROSBOT_MCU_ID` (11020) | — | — |
+| `_power_board_info` (service, rosbot_xl) | `COMMAND_LONG(MAV_CMD_USER_3)` → `ROSBOT_POWER_BOARD` (11021) | — | — |
 
 ### Bridge package
 
