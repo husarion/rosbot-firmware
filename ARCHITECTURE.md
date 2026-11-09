@@ -836,6 +836,40 @@ in regular SRAM.
 
 ---
 
+## Power board (ROSbot XL)
+
+What is known about the power board (PB) and how this firmware talks to it.
+Facts marked *unverified* have not been checked on hardware or in a datasheet.
+
+- **MCU and code.** STM32L051C8T6 (per the PB schematic). Firmware is
+  `husarion/rosbot_xl_pb_firmware` (private, C on STM32Cube LL; its
+  `platformio.ini` names board `rhf76_052`, which is an L052 definition).
+- **Link to the digital board (DB).** UART 38400 baud, DB PD5/PD6 to PB USART1
+  (PB6/PB7). Frames are ASCII hex with an XOR checksum: `<CC SS args CC>`. Two
+  commands: 1 = board info (firmware version `args[1..11]`, hardware revision
+  `args[13..24]`), 2 = battery state. The DB polls at 1 Hz; the PB never sends on
+  its own. The battery frame has a percentage byte (`args[13]`) that the PB never
+  sets, which is why the percentage is computed on the DB (`SocEstimator`).
+- **Versions in the field.** A PB v1.3 reported firmware `v1.0.0` (2026-11-09);
+  the PB repository says `v1.0.1`. Version strings are copied from fixed buffers
+  on the PB, so a short string is followed by stale bytes; the DB keeps only the
+  leading printable run (`lib/power_board/version_text.hpp`). Exposed as the
+  `_power_board_info` service (`MAV_CMD_USER_3` -> `ROSBOT_POWER_BOARD`).
+- **Hardware revisions.** v1.3 and v1.4 have an FT230X on the rear USB-C port,
+  wired to PB USART2 (PA2/PA3), with CBUS0 -> BOOT0 and CBUS1 -> NRST (through a
+  MOSFET). v1.2 has no FTDI, only an SWD header (CON12), so users cannot update
+  it; keep the DB compatible with v1.2 firmware indefinitely.
+- **Updating the PB.** The PB powers the SBC and the DB, so resetting its MCU
+  drops them; an update has to run from a separate computer plugged into the rear
+  USB-C. *Unverified:* that the L051 ROM bootloader accepts USART2 (AN2606), that
+  the FT230X EEPROM maps CBUS0/1 as I/O, and how the PB behaves when a USB host
+  supplies VBUS on the charging port. WebUSB cannot open an FT230X on Windows
+  while the FTDI driver is bound to it.
+- **Same trick on the DB.** The DB is flashed the same way: `rosbot_utils`
+  `McuManagerFTDI` drives CBUS0 = BOOT0 and CBUS1 = RST through pyftdi, then runs
+  `stm32flash`. It opens the FT-X by device, not by pyftdi URL, because the URL
+  lookup reads every FTDI device on the host and fails on an unreadable one.
+
 ## MAVLink link
 
 The MCU↔SBC link is **MAVLink v2** with a custom `rosbot` dialect; the
