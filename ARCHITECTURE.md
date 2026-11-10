@@ -847,8 +847,18 @@ Facts marked *unverified* have not been checked on hardware or in a datasheet.
 - **Link to the digital board (DB).** UART 38400 baud, DB PD5/PD6 to PB USART1
   (PB6/PB7). Frames are ASCII hex with an XOR checksum: `<CC SS args CC>`. Two
   commands: 1 = board info (firmware version `args[1..11]`, hardware revision
-  `args[13..24]`), 2 = battery state. The DB polls at 1 Hz; the PB never sends on
-  its own. The battery frame has a percentage byte (`args[13]`) that the PB never
+  `args[13..24]`), 2 = battery state. The PB never sends on its own. The DB polls
+  at 1 Hz, or at the HwMonitor task rate (10 Hz) when the PB reports firmware
+  >= v1.0.3 (`PowerBoard::supportsFastPolling()`).
+- **Why the old PB is polled slowly.** PB firmware <= v1.0.2 runs everything in one
+  loop with a blocking 750 ms delay: a request is parsed at the end of a pass and
+  answered in the next one (0.75-1.5 s), only one frame is handled per pass, and
+  the frame parser kept its state in a local variable, so a frame that arrived in
+  pieces was dropped. This probably explains the "two requests at once lost
+  replies" note in `hwMonitorTask` (the 500 ms spacing is kept for old PBs).
+  v1.0.3 services UART every millisecond (measured over SWD: reply in 2-4 ms) and
+  refreshes voltage and currents every 100 ms; its charger logic still runs every
+  750 ms. The battery frame has a percentage byte (`args[13]`) that the PB never
   sets, which is why the percentage is computed on the DB (`SocEstimator`).
 - **Versions in the field.** A PB v1.3 reported firmware `v1.0.0` (2026-11-09);
   the PB repository says `v1.0.1`. Version strings are copied from fixed buffers

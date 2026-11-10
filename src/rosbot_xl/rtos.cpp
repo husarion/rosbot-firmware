@@ -79,6 +79,7 @@ void hwMonitorTask(void* p) {
   TickType_t wake_time = xTaskGetTickCount();
   BatteryStamped data = {};
   TickType_t last_battery_update = 0;
+  TickType_t last_fan_update = 0;
   bool board_info_pending = false;
 
   while (true) {
@@ -103,11 +104,17 @@ void hwMonitorTask(void* p) {
     }
 
     const TickType_t now = xTaskGetTickCount();
-    if (now - last_battery_update > pdMS_TO_TICKS(1000)) {
-      // Fan
+    if (now - last_fan_update > pdMS_TO_TICKS(1000)) {
       float temp = ntc.readCelsius();
       g_fan.update(temp);
+      last_fan_update = now;
+    }
 
+    // Fast power board firmware is polled at the task rate, older ones once
+    // a second (see PowerBoard::supportsFastPolling()).
+    const TickType_t battery_period =
+        power_board.supportsFastPolling() ? 0 : pdMS_TO_TICKS(1000);
+    if (now - last_battery_update > battery_period) {
       power_board.requestBatteryState();
       last_battery_update = now;
       board_info_pending = !power_board.boardInfo().isValid();

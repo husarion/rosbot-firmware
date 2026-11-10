@@ -19,6 +19,7 @@ Fixes from the 2026-10 static firmware audit. HW-tested 2026-10-26 on ROSbot 3 a
 
 ### Added
 
+- Faster power board polling (ROSbot XL): with PB firmware >= v1.0.3 the battery state is requested at the HwMonitor rate (10 Hz) instead of 1 Hz, and the battery publisher no longer gates at 1 s (it publishes whatever the HwMonitor queue delivers, so a slower PB still gives 1 Hz). Older PB firmware is polled as before.
 - `_power_board_info` service (ROSbot XL): power board firmware and hardware version, new `ROSBOT_POWER_BOARD` (11021) message and `MAV_CMD_USER_3`. Needs the matching bridge; an older bridge simply does not expose the service.
 
 ### Changed

@@ -62,6 +62,14 @@ class PowerBoard : public BatteryInterface {
 
   const BoardInfo& boardInfo() const { return board_info_; }
 
+  // Power board firmware v1.0.3 serves UART between its slow passes and
+  // refreshes voltage and currents every 100 ms; older versions answer once
+  // per ~750 ms pass and drop a second request that arrives in the same pass.
+  bool supportsFastPolling() const {
+    return board_info_.isValid() &&
+           versionAtLeast(board_info_.firmware_version, 1, 0, 3);
+  }
+
   bool hasBoardInfoUpdate();
   bool hasBatteryUpdate();
 

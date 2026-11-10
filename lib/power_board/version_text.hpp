@@ -30,3 +30,28 @@ inline void sanitizeVersionText(const char* src, size_t src_len, char* dst,
   }
   dst[n] = '\0';
 }
+
+// True when `text` is "vMAJOR.MINOR.PATCH" (anything after PATCH is ignored)
+// and not older than the given version. Anything unparsable counts as older.
+inline bool versionAtLeast(const char* text, int major, int minor, int patch) {
+  if (text == nullptr || text[0] != 'v') return false;
+  const char* p = text + 1;
+  int parts[3] = {0, 0, 0};
+  for (int i = 0; i < 3; ++i) {
+    if (*p < '0' || *p > '9') return false;
+    int value = 0;
+    while (*p >= '0' && *p <= '9') {
+      value = value * 10 + (*p - '0');
+      if (value > 9999) return false;
+      ++p;
+    }
+    parts[i] = value;
+    if (i < 2) {
+      if (*p != '.') return false;
+      ++p;
+    }
+  }
+  if (parts[0] != major) return parts[0] > major;
+  if (parts[1] != minor) return parts[1] > minor;
+  return parts[2] >= patch;
+}
