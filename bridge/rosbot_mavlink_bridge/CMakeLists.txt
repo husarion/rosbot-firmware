@@ -42,13 +42,13 @@ target_include_directories(${PROJECT_NAME} PUBLIC
 target_include_directories(${PROJECT_NAME} SYSTEM PUBLIC
   ${MAVLINK_DIALECT_DIR}
 )
-ament_target_dependencies(${PROJECT_NAME}
-  rclcpp sensor_msgs std_msgs std_srvs
+target_link_libraries(${PROJECT_NAME}
+  rclcpp::rclcpp sensor_msgs::sensor_msgs std_msgs::std_msgs std_srvs::std_srvs
 )
 
 add_executable(bridge_node src/main.cpp)
 target_link_libraries(bridge_node ${PROJECT_NAME})
-ament_target_dependencies(bridge_node rclcpp)
+target_link_libraries(bridge_node rclcpp::rclcpp)
 
 install(TARGETS ${PROJECT_NAME}
   ARCHIVE DESTINATION lib
