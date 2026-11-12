@@ -37,7 +37,7 @@ static MavlinkUdpTransport udp_transport(udp_cfg);
 
 // Publishers (telemetry: MCU → bridge)
 static MavlinkBatteryPublisher battery_pub({.queue = battery_queue,
-                                            .num_cells = BATTERY_NUM_CELLS,
+                                            .num_cells = BATTERY_SERIES_CELLS,
                                             .period_ms = 0});
 // IMU and joint state: period_ms = 0, the producing task sets the
 // rate. A gate equal to the task period dropped samples: with a 5 ms link

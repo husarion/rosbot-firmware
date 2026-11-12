@@ -356,10 +356,12 @@ inline QueueHandle_t imu_queue;
 inline QueueHandle_t joint_state_queue;
 inline QueueHandle_t led_strip_queue;
 
-inline constexpr uint8_t BATTERY_NUM_CELLS = 3;
+// HCP18650ZC-3S3P: 3 series groups of 3 parallel cells, 3.7 V / 2.6 Ah each.
+inline constexpr uint8_t BATTERY_SERIES_CELLS = 3;
+inline constexpr uint8_t BATTERY_PARALLEL_CELLS = 3;
 inline constexpr float BATTERY_CELL_CAPACITY = 2.6f;  // Ah
 inline constexpr float BATTERY_DESIGN_CAPACITY =
-    BATTERY_NUM_CELLS * BATTERY_CELL_CAPACITY;
+    BATTERY_PARALLEL_CELLS * BATTERY_CELL_CAPACITY;
 inline constexpr uint8_t buttons_pins[] = {PUSH_BUTTON1};
 
 // Publisher configs live in src/rosbot_xl/mavlink_entities.cpp.
@@ -368,7 +370,7 @@ inline constexpr uint8_t buttons_pins[] = {PUSH_BUTTON1};
 inline constexpr PowerBoardConfig power_board_config = {
     .serial = pb_serial,
     .baudrate = 38400,
-    .num_cells = BATTERY_NUM_CELLS,
+    .num_cells = BATTERY_SERIES_CELLS,
     .capacity_ah = BATTERY_DESIGN_CAPACITY,
 };
 
