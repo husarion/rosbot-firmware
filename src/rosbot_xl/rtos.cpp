@@ -110,10 +110,8 @@ void hwMonitorTask(void* p) {
       last_fan_update = now;
     }
 
-    // Fast power board firmware is polled at the task rate, older ones once
-    // a second (see PowerBoard::supportsFastPolling()).
     const TickType_t battery_period =
-        power_board.supportsFastPolling() ? 0 : pdMS_TO_TICKS(1000);
+        pdMS_TO_TICKS(power_board.batteryPollPeriodMs());
     if (now - last_battery_update > battery_period) {
       power_board.requestBatteryState();
       last_battery_update = now;
