@@ -396,6 +396,30 @@ void BridgeNode::onStatustext(const mavlink_message_t & msg)
   }
 }
 
+// Inverse of battery_wire::healthToWire() in the firmware.
+static uint8_t healthFromMavlink(uint8_t charge_state, uint32_t faults)
+{
+  using BatteryState = sensor_msgs::msg::BatteryState;
+  if (faults & MAV_BATTERY_FAULT_UNDER_TEMPERATURE) {
+    return BatteryState::POWER_SUPPLY_HEALTH_COLD;
+  }
+  if (faults & MAV_BATTERY_FAULT_OVER_TEMPERATURE) {
+    return BatteryState::POWER_SUPPLY_HEALTH_OVERHEAT;
+  }
+  if (faults & MAV_BATTERY_FAULT_CELL_FAIL) {
+    return BatteryState::POWER_SUPPLY_HEALTH_DEAD;
+  }
+  if (faults != 0 || charge_state == MAV_BATTERY_CHARGE_STATE_FAILED ||
+    charge_state == MAV_BATTERY_CHARGE_STATE_UNHEALTHY)
+  {
+    return BatteryState::POWER_SUPPLY_HEALTH_UNSPEC_FAILURE;
+  }
+  if (charge_state == MAV_BATTERY_CHARGE_STATE_OK) {
+    return BatteryState::POWER_SUPPLY_HEALTH_GOOD;
+  }
+  return BatteryState::POWER_SUPPLY_HEALTH_UNKNOWN;
+}
+
 void BridgeNode::onBatteryStatus(const mavlink_message_t & msg)
 {
   if (!peer_alive_.load()) {return;}
@@ -422,14 +446,16 @@ void BridgeNode::onBatteryStatus(const mavlink_message_t & msg)
   out.percentage = (bs.battery_remaining < 0) ?
     std::numeric_limits<float>::quiet_NaN() :
     static_cast<float>(bs.battery_remaining) * 1e-2f;
-  out.temperature = std::numeric_limits<float>::quiet_NaN();
+  out.temperature = (bs.temperature == INT16_MAX) ?
+    std::numeric_limits<float>::quiet_NaN() :
+    static_cast<float>(bs.temperature) * 1e-2f;
   out.charge = std::numeric_limits<float>::quiet_NaN();
   out.capacity = std::numeric_limits<float>::quiet_NaN();
   out.design_capacity = 7.8f;  // BATTERY_DESIGN_CAPACITY, include/*/config.hpp
   out.power_supply_status =
     sensor_msgs::msg::BatteryState::POWER_SUPPLY_STATUS_UNKNOWN;
   out.power_supply_health =
-    sensor_msgs::msg::BatteryState::POWER_SUPPLY_HEALTH_UNKNOWN;
+    healthFromMavlink(bs.charge_state, bs.fault_bitmask);
   out.power_supply_technology =
     sensor_msgs::msg::BatteryState::POWER_SUPPLY_TECHNOLOGY_LION;
   out.present = true;

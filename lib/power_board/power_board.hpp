@@ -116,6 +116,7 @@ class PowerBoard : public BatteryInterface {
 
   void handleBoardInfo(const Frame& frame);
   void handleBatteryState(const Frame& frame);
+  uint8_t healthFromReply(uint8_t raw) const;
 
   // ── Byte-order helpers ──────────────────────────────────────────
 

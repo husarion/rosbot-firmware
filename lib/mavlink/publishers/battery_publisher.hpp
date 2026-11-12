@@ -19,9 +19,23 @@
 #include <cmath>
 #include <limits>
 
+#include "battery_wire.hpp"
 #include "mavlink.h"
 #include "mavlink_types.hpp"
 #include "publisher_interface.hpp"
+
+static_assert(battery_wire::kChargeStateUndefined ==
+              MAV_BATTERY_CHARGE_STATE_UNDEFINED);
+static_assert(battery_wire::kChargeStateOk == MAV_BATTERY_CHARGE_STATE_OK);
+static_assert(battery_wire::kChargeStateFailed ==
+              MAV_BATTERY_CHARGE_STATE_FAILED);
+static_assert(battery_wire::kChargeStateUnhealthy ==
+              MAV_BATTERY_CHARGE_STATE_UNHEALTHY);
+static_assert(battery_wire::kFaultCellFail == MAV_BATTERY_FAULT_CELL_FAIL);
+static_assert(battery_wire::kFaultOverTemperature ==
+              MAV_BATTERY_FAULT_OVER_TEMPERATURE);
+static_assert(battery_wire::kFaultUnderTemperature ==
+              MAV_BATTERY_FAULT_UNDER_TEMPERATURE);
 
 struct MavlinkBatteryPublisherConfig {
   QueueHandle_t& queue;
@@ -62,15 +76,18 @@ class MavlinkBatteryPublisher : public MavlinkPublisherInterface {
       percent = static_cast<int8_t>(lroundf(data.data.percentage * 100.0f));
     }
 
+    const battery_wire::Health health =
+        battery_wire::healthToWire(data.data.health);
     uint16_t voltages_ext[4] = {0, 0, 0, 0};
     mavlink_message_t m;
     mavlink_msg_battery_status_pack(
         node.sysid(), node.compid(), &m, /*id=*/0, MAV_BATTERY_FUNCTION_ALL,
         MAV_BATTERY_TYPE_LION,
-        /*temperature (cdegC)=*/INT16_MAX, voltages, current_cA,
-        /*current_consumed=*/-1, /*energy_consumed=*/-1, percent,
-        /*time_remaining=*/0, MAV_BATTERY_CHARGE_STATE_UNDEFINED, voltages_ext,
-        MAV_BATTERY_MODE_UNKNOWN, /*fault_bitmask=*/0);
+        battery_wire::temperatureToCentiDegrees(data.data.temperature),
+        voltages, current_cA, /*current_consumed=*/-1, /*energy_consumed=*/-1,
+        percent,
+        /*time_remaining=*/0, health.charge_state, voltages_ext,
+        MAV_BATTERY_MODE_UNKNOWN, health.fault_bitmask);
     node.sendMessage(m);
   }
 

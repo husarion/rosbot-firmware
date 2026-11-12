@@ -265,10 +265,19 @@ void PowerBoard::handleBoardInfo(const Frame& frame) {
 //  args[ 7.. 8] -> charge current   (uint16, x0.001 A)
 //  args[11..12] -> design capacity  (uint16, x0.001 Ah)
 //  args[14]     -> status
-//  args[15]     -> health
+//  args[15]     -> health (v1.0.3+: 0 ok, 1..8 = BATTERY_HEALTH_*)
 //  args[16]     -> technology
 //  args[17]     -> present
 // ═══════════════════════════════════════════════════════════════════
+
+uint8_t PowerBoard::healthFromReply(uint8_t raw) const {
+  // Older PBs always send 0 here, which cannot be told from "ok".
+  if (!supportsFastPolling()) return POWER_SUPPLY_HEALTH_UNKNOWN;
+  if (raw == 0) return POWER_SUPPLY_HEALTH_GOOD;
+  return raw <= POWER_SUPPLY_HEALTH_SAFETY_TIMER_EXPIRE
+             ? raw
+             : POWER_SUPPLY_HEALTH_UNKNOWN;
+}
 
 void PowerBoard::handleBatteryState(const Frame& frame) {
   if (frame.arg_size != BATTERY_STATE_ARG_LEN) return;
@@ -299,7 +308,7 @@ void PowerBoard::handleBatteryState(const Frame& frame) {
   data_.percentage = soc_.update(data_.voltage, data_.current, dt_s);
 
   data_.status = a[14];
-  data_.health = a[15];
+  data_.health = healthFromReply(a[15]);
   data_.present = static_cast<bool>(a[17]);
 
   battery_updated_ = true;

@@ -49,6 +49,20 @@ wire side.
 | **`_imu/stop_calibration`**   | End the session early. <br /> _[std_srvs/Trigger]_             |
 | **`_imu/save_calibration`**   | Persist the chip's current offsets to flash. <br /> _[std_srvs/Trigger]_ |
 
+## Battery
+
+`battery` fields that need a note (ROSbot XL; ROSbot 2/3 keep NaN / UNKNOWN):
+
+- `temperature` — pack temperature in Celsius from the power board NTC; NaN
+  when the power board reports nothing usable.
+- `power_supply_health` — `GOOD` with power board firmware >= v1.0.3 and no
+  fault; `COLD` when charging is inhibited below 0 C; `UNSPEC_FAILURE` after
+  charger I2C errors; `OVERHEAT`, `DEAD`; `UNKNOWN` with older power board
+  firmware, an older bridge, or an unrecognised value.
+
+On the wire this rides in `BATTERY_STATUS` `temperature` (cdegC) and
+`charge_state` / `fault_bitmask`; no message change.
+
 ## IMU calibration
 
 The BNO055 calibrates itself continuously; these entry points only show its
