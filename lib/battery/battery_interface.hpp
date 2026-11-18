@@ -22,7 +22,13 @@ inline constexpr uint8_t POWER_SUPPLY_HEALTH_UNKNOWN = 0;
 inline constexpr uint8_t POWER_SUPPLY_HEALTH_GOOD = 1;
 inline constexpr uint8_t POWER_SUPPLY_HEALTH_SAFETY_TIMER_EXPIRE = 8;
 
+inline constexpr uint8_t CHARGER_TYPE_NONE = 0;
+inline constexpr uint8_t CHARGER_TYPE_USB_C = 1;
+inline constexpr uint8_t CHARGER_TYPE_INDUCTIVE = 2;
+inline constexpr uint8_t CHARGER_TYPE_UNKNOWN = 255;
+
 struct BatteryData {
+  uint8_t charger_type = CHARGER_TYPE_UNKNOWN;
   float current = NAN;
   uint8_t health = POWER_SUPPLY_HEALTH_UNKNOWN;
   float percentage = NAN;

@@ -29,6 +29,7 @@ wire side.
 | Rb  | Rb XL | TOPIC                  | DESCRIPTION                                                 |
 | --- | ----- | ---------------------- | ----------------------------------------------------------- |
 | ✅  | ✅    | **`battery`**          | Battery status. <br /> _[sensor_msgs/BatteryState]_         |
+| ❌  | ✅    | **`battery/charger_type`** | Charger in use: 0 none, 1 USB-C, 2 inductive. <br /> _[std_msgs/UInt8]_ |
 | ✅  | ✅    | **`buttons`**          | Pressed buttons, bit 0 = button 1, bit 1 = button 2 (ROSbot; XL has only button 1). <br /> _[std_msgs/UInt8]_ |
 | ✅  | ✅    | **`diagnostics`**      | MCU and hardware health, 1 Hz — see below. <br /> _[diagnostic_msgs/DiagnosticArray]_ |
 | ❌  | ✅    | **`led_strip`**        | LED strip command. <br /> _[sensor_msgs/Image]_             |
@@ -75,6 +76,19 @@ are since the MCU booted; "recent" means the counter grew within the last
 
 `battery` fields that need a note (ROSbot XL; ROSbot 2/3 keep NaN / UNKNOWN):
 
+- `current` — signed, negative while discharging. The power board measures
+  discharge current in 256 mA steps and charge current in 64 mA steps.
+- `power_supply_status` — from the power board: `CHARGING`, `DISCHARGING`,
+  `NOT_CHARGING` (adapter present but charging inhibited or no current
+  flowing), `FULL`. Power board firmware before v1.0.4 reports `CHARGING`
+  whenever an adapter is attached and never `FULL`.
+- `present` — false when the power board sees no battery; `voltage`,
+  `current`, `percentage` and `temperature` are NaN then.
+- `percentage` and `charge` — estimated (no fuel gauge); `charge` is
+  `percentage × design_capacity`.
+- `cell_voltage` — one NaN per series cell: the pack has no per-cell
+  measurement.
+
 - `temperature` — pack temperature in Celsius from the power board NTC; NaN
   when the power board reports nothing usable.
 - `power_supply_health` — `GOOD` with power board firmware >= v1.0.3 and no
@@ -83,7 +97,10 @@ are since the MCU booted; "recent" means the counter grew within the last
   firmware, an older bridge, or an unrecognised value.
 
 On the wire this rides in `BATTERY_STATUS` `temperature` (cdegC) and
-`charge_state` / `fault_bitmask`; no message change.
+`charge_state` / `fault_bitmask`, plus `ROSBOT_POWER_SUPPLY` (11005) for
+status, presence, design capacity and charger type. `battery/charger_type`
+needs firmware and bridge from the same release; with an older firmware it is
+never published and `battery` keeps `UNKNOWN` status and `present = true`.
 
 ## IMU calibration
 

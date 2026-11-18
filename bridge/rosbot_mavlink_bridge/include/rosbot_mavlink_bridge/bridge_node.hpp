@@ -65,6 +65,7 @@ private:
   void onTimesync(const mavlink_message_t & msg);
   void onStatustext(const mavlink_message_t & msg);
   void onBatteryStatus(const mavlink_message_t & msg);
+  void onRosbotPowerSupply(const mavlink_message_t & msg);
   void onRosbotImu(const mavlink_message_t & msg);
   void onRosbotJointState(const mavlink_message_t & msg);
   void onRosbotButtons(const mavlink_message_t & msg);
@@ -159,6 +160,11 @@ private:
   rclcpp::Publisher<sensor_msgs::msg::BatteryState>::SharedPtr battery_pub_;
   rclcpp::Publisher<diagnostic_msgs::msg::DiagnosticArray>::SharedPtr diagnostics_pub_;
   std::unique_ptr<DiagnosticsMapper> diagnostics_mapper_;
+  rclcpp::Publisher<std_msgs::msg::UInt8>::SharedPtr charger_type_pub_;
+  // Both handlers run on the RX thread. The MCU sends ROSBOT_POWER_SUPPLY
+  // right after BATTERY_STATUS, so /battery carries the previous one.
+  mavlink_rosbot_power_supply_t power_supply_last_{};
+  bool power_supply_received_ = false;
   rclcpp::Publisher<sensor_msgs::msg::Imu>::SharedPtr imu_pub_;
   rclcpp::Publisher<sensor_msgs::msg::JointState>::SharedPtr joint_state_pub_;
   rclcpp::Publisher<std_msgs::msg::UInt8>::SharedPtr buttons_pub_;

@@ -63,6 +63,17 @@ void test_unknown_and_out_of_range_are_not_provided() {
   }
 }
 
+void test_current_keeps_sign_and_avoids_unknown_marker() {
+  TEST_ASSERT_EQUAL_INT16(-150, battery_wire::currentToCentiAmps(-1.5f));
+  TEST_ASSERT_EQUAL_INT16(256, battery_wire::currentToCentiAmps(2.56f));
+  TEST_ASSERT_EQUAL_INT16(-2, battery_wire::currentToCentiAmps(-0.01f));
+  TEST_ASSERT_EQUAL_INT16(0, battery_wire::currentToCentiAmps(0.0f));
+  TEST_ASSERT_EQUAL_INT16(-1, battery_wire::currentToCentiAmps(NAN));
+  TEST_ASSERT_EQUAL_INT16(INT16_MAX, battery_wire::currentToCentiAmps(1e6f));
+  TEST_ASSERT_EQUAL_INT16(INT16_MIN + 1,
+                          battery_wire::currentToCentiAmps(-1e6f));
+}
+
 int main() {
   UNITY_BEGIN();
   RUN_TEST(test_temperature_is_centidegrees);
@@ -71,5 +82,6 @@ int main() {
   RUN_TEST(test_cold_sets_under_temperature_fault);
   RUN_TEST(test_unspecified_failure_is_unhealthy_without_fault_bit);
   RUN_TEST(test_unknown_and_out_of_range_are_not_provided);
+  RUN_TEST(test_current_keeps_sign_and_avoids_unknown_marker);
   return UNITY_END();
 }

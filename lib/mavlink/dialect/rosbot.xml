@@ -39,6 +39,14 @@
       <field type="uint8_t" name="session">1 while a calibration session is running.</field>
     </message>
 
+    <message id="11005" name="ROSBOT_POWER_SUPPLY">
+      <description>ROSbot XL power board state that BATTERY_STATUS cannot carry. Sent right after each BATTERY_STATUS.</description>
+      <field type="uint8_t"  name="status">sensor_msgs/BatteryState POWER_SUPPLY_STATUS_* value reported by the power board.</field>
+      <field type="uint8_t"  name="charger_type">0 none, 1 USB-C, 2 inductive, 255 unknown (not reported yet).</field>
+      <field type="uint8_t"  name="present">1 when a battery is connected.</field>
+      <field type="uint16_t" name="design_capacity_mah" units="mAh">Pack design capacity.</field>
+    </message>
+
     <message id="11010" name="ROSBOT_WHEEL_SETPOINTS">
       <description>Wheel velocity setpoints, order: FL, FR, RL, RR.</description>
       <field type="uint64_t" name="time_boot_us">Bridge-side stamp for diagnostics [us].</field>
