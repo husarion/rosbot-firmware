@@ -72,6 +72,11 @@ void PowerBoard::requestBatteryState() {
   sendFrame(CMD_BATTERY_STATE, args, sizeof(args));
 }
 
+void PowerBoard::requestParamFlags() {
+  const uint8_t args[1] = {0};  // 0 = read
+  sendFrame(CMD_PARAM_FLAGS, args, sizeof(args));
+}
+
 // ═══════════════════════════════════════════════════════════════════
 //  One-shot update flags
 // ═══════════════════════════════════════════════════════════════════
@@ -228,6 +233,9 @@ void PowerBoard::dispatch(const Frame& frame) {
     case CMD_BATTERY_STATE:
       handleBatteryState(frame);
       break;
+    case CMD_PARAM_FLAGS:
+      handleParamFlags(frame);
+      break;
     default:
       break;
   }
@@ -284,6 +292,21 @@ void PowerBoard::handleBatteryState(const Frame& frame) {
 
   const uint8_t* a = frame.args;
 
+  if (!a[17]) {
+    // Running from the adapter alone. Keep the last voltage: the motor model
+    // reads it as supply voltage and the PB VBAT reading is meaningless now.
+    data_.present = false;
+    data_.current = NAN;
+    data_.percentage = NAN;
+    data_.temperature = NAN;
+    data_.status = a[14];
+    data_.health = healthFromReply(a[15]);
+    soc_.reset();
+    last_battery_ms_ = 0;
+    battery_updated_ = true;
+    return;
+  }
+
   // The power board sometimes reports ~3.39 V. Drop the whole frame before it
   // reaches data_, which the LED, critical-battery check and motor model read.
   const float voltage = readU16(&a[1]) * 0.001f;
@@ -309,7 +332,13 @@ void PowerBoard::handleBatteryState(const Frame& frame) {
 
   data_.status = a[14];
   data_.health = healthFromReply(a[15]);
-  data_.present = static_cast<bool>(a[17]);
+  data_.present = true;
 
   battery_updated_ = true;
+}
+
+void PowerBoard::handleParamFlags(const Frame& frame) {
+  if (frame.arg_size != PARAM_FLAGS_ARG_LEN) return;
+  data_.charger_type =
+      pbChargerTypeFromFlags(frame.args[PB_FLAGS_ADAPTER_BYTE]);
 }

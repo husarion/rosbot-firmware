@@ -60,6 +60,7 @@ class PowerBoard : public BatteryInterface {
 
   void requestBoardInfo();
   void requestBatteryState();
+  void requestParamFlags();
 
   const BoardInfo& boardInfo() const { return board_info_; }
 
@@ -86,10 +87,12 @@ class PowerBoard : public BatteryInterface {
   enum Cmd : uint8_t {
     CMD_BOARD_INFO = 1,
     CMD_BATTERY_STATE = 2,
+    CMD_PARAM_FLAGS = 20,
   };
 
   static constexpr uint8_t BOARD_INFO_ARG_LEN = 25;
   static constexpr uint8_t BATTERY_STATE_ARG_LEN = 18;
+  static constexpr uint8_t PARAM_FLAGS_ARG_LEN = 32;
   static constexpr uint8_t FIRMWARE_VERSION_LEN = 11;
   static constexpr uint8_t BOARD_VERSION_LEN = 12;
   static constexpr uint8_t FIRMWARE_VERSION_OFFSET = 1;
@@ -117,6 +120,7 @@ class PowerBoard : public BatteryInterface {
 
   void handleBoardInfo(const Frame& frame);
   void handleBatteryState(const Frame& frame);
+  void handleParamFlags(const Frame& frame);
   uint8_t healthFromReply(uint8_t raw) const;
 
   // ── Byte-order helpers ──────────────────────────────────────────

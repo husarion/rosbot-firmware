@@ -77,6 +77,8 @@ BridgeNode::BridgeNode(
   // Topics + QoS: see ROS_API.md.
   battery_pub_ = this->create_publisher<sensor_msgs::msg::BatteryState>(
       "battery", bestEffortDepth1());
+  charger_type_pub_ = this->create_publisher<std_msgs::msg::UInt8>(
+      "battery/charger_type", bestEffortDepth1());
   imu_pub_ = this->create_publisher<sensor_msgs::msg::Imu>("_imu/data",
                                                            bestEffortDepth1());
   joint_state_pub_ = this->create_publisher<sensor_msgs::msg::JointState>(
@@ -293,6 +295,9 @@ void BridgeNode::onMavlinkMessage(const mavlink_message_t & msg)
     case MAVLINK_MSG_ID_ROSBOT_POWER_BOARD:
       onRosbotPowerBoard(msg);
       break;
+    case MAVLINK_MSG_ID_ROSBOT_POWER_SUPPLY:
+      onRosbotPowerSupply(msg);
+      break;
     case MAVLINK_MSG_ID_ROSBOT_IMU_CALIBRATION:
       onRosbotImuCalibration(msg);
       break;
@@ -420,6 +425,20 @@ static uint8_t healthFromMavlink(uint8_t charge_state, uint32_t faults)
   return BatteryState::POWER_SUPPLY_HEALTH_UNKNOWN;
 }
 
+void BridgeNode::onRosbotPowerSupply(const mavlink_message_t & msg)
+{
+  if (!peer_alive_.load()) {return;}
+
+  mavlink_msg_rosbot_power_supply_decode(&msg, &power_supply_last_);
+  power_supply_received_ = true;
+
+  if (power_supply_last_.charger_type <= 2) {
+    std_msgs::msg::UInt8 out;
+    out.data = power_supply_last_.charger_type;
+    charger_type_pub_->publish(out);
+  }
+}
+
 void BridgeNode::onBatteryStatus(const mavlink_message_t & msg)
 {
   if (!peer_alive_.load()) {return;}
@@ -430,14 +449,14 @@ void BridgeNode::onBatteryStatus(const mavlink_message_t & msg)
   sensor_msgs::msg::BatteryState out;
   out.header.stamp = this->now();
   out.header.frame_id = "base_link";
-  // Voltages are per-cell mV; sum the valid slots for the pack total.
+  // The MCU splits the pack voltage evenly over the cells: it has no per-cell
+  // measurement, so the cells are NaN (BatteryState: count known, values not).
   float total_v = 0.0f;
   out.cell_voltage.clear();
   for (int i = 0; i < 10; ++i) {
     if (bs.voltages[i] == UINT16_MAX) {break;}
-    float v = static_cast<float>(bs.voltages[i]) * 1e-3f;
-    out.cell_voltage.push_back(v);
-    total_v += v;
+    out.cell_voltage.push_back(std::numeric_limits<float>::quiet_NaN());
+    total_v += static_cast<float>(bs.voltages[i]) * 1e-3f;
   }
   out.voltage = total_v;
   out.current = (bs.current_battery == -1) ?
@@ -449,7 +468,6 @@ void BridgeNode::onBatteryStatus(const mavlink_message_t & msg)
   out.temperature = (bs.temperature == INT16_MAX) ?
     std::numeric_limits<float>::quiet_NaN() :
     static_cast<float>(bs.temperature) * 1e-2f;
-  out.charge = std::numeric_limits<float>::quiet_NaN();
   out.capacity = std::numeric_limits<float>::quiet_NaN();
   out.design_capacity = 7.8f;  // BATTERY_DESIGN_CAPACITY, include/*/config.hpp
   out.power_supply_status =
@@ -459,6 +477,25 @@ void BridgeNode::onBatteryStatus(const mavlink_message_t & msg)
   out.power_supply_technology =
     sensor_msgs::msg::BatteryState::POWER_SUPPLY_TECHNOLOGY_LION;
   out.present = true;
+  if (power_supply_received_) {
+    const auto & ps = power_supply_last_;
+    if (ps.status <= sensor_msgs::msg::BatteryState::POWER_SUPPLY_STATUS_FULL) {
+      out.power_supply_status = ps.status;
+    }
+    if (ps.design_capacity_mah != 0) {
+      out.design_capacity = static_cast<float>(ps.design_capacity_mah) * 1e-3f;
+    }
+    out.present = ps.present != 0;
+  }
+  if (!out.present) {
+    const float nan = std::numeric_limits<float>::quiet_NaN();
+    out.voltage = nan;
+    out.current = nan;
+    out.percentage = nan;
+    out.temperature = nan;
+  }
+  // Estimated, like percentage: the pack has no fuel gauge.
+  out.charge = out.percentage * out.design_capacity;
   out.location = "internal";
   out.serial_number = "";
   battery_pub_->publish(out);
