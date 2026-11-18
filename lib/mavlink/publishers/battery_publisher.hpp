@@ -41,7 +41,7 @@ struct MavlinkBatteryPublisherConfig {
   QueueHandle_t& queue;
   uint8_t num_cells;
   uint32_t period_ms;
-  // Also send ROSBOT_POWER_SUPPLY (ROSbot XL power board); 0 disables it.
+  // Also send ROSBOT_POWER_SUPPLY; 0 disables it.
   uint16_t power_supply_design_capacity_mah = 0;
 };
 

@@ -479,7 +479,8 @@ void BridgeNode::onBatteryStatus(const mavlink_message_t & msg)
     std::numeric_limits<float>::quiet_NaN() :
     static_cast<float>(bs.temperature) * 1e-2f;
   out.capacity = std::numeric_limits<float>::quiet_NaN();
-  out.design_capacity = 7.8f;  // BATTERY_DESIGN_CAPACITY, include/*/config.hpp
+  // Firmware without ROSBOT_POWER_SUPPLY: the ROSbot XL pack (3S3P x 2.6 Ah).
+  out.design_capacity = 7.8f;
   out.power_supply_status =
     sensor_msgs::msg::BatteryState::POWER_SUPPLY_STATUS_UNKNOWN;
   out.power_supply_health =

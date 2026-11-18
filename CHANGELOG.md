@@ -40,6 +40,7 @@ Fixes from the 2026-10 static firmware audit. HW-tested 2026-10-26 on ROSbot 3 a
 - ROSbot range sensors whose re-initialisation fails are retried with backoff instead of staying dead until reboot.
 - I2C faults (bus lock, NACK storm, stale DMA callback) are recovered without resetting the MCU; IMU reads wait up to 25 ms for BNO055 clock stretching.
 - Boot IMU calibration starts from scratch instead of loading the saved offsets first.
+- ROSbot 3 `battery.design_capacity` is 3.5 Ah (3S1P, 3500 mAh cells) instead of the ROSbot XL value 7.8 Ah.
 - `battery.current` was NaN whenever the battery discharged: negative values were sent as "not measured". It is now signed (negative while discharging).
 - ROSbot XL: a frame from a power board with no battery is no longer dropped as a bad voltage reading, so `battery.present` goes false instead of the topic going stale.
 - `battery.cell_voltage` reports NaN per cell instead of an even split of the pack voltage presented as measured.

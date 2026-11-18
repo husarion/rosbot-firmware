@@ -86,6 +86,8 @@ are since the MCU booted; "recent" means the counter grew within the last
   `current`, `percentage` and `temperature` are NaN then.
 - `percentage` and `charge` — estimated (no fuel gauge); `charge` is
   `percentage × design_capacity`.
+- `design_capacity` — 7.8 Ah on ROSbot XL (3S3P × 2.6 Ah), 3.5 Ah on ROSbot 3
+  (3S1P × 3.5 Ah). Bridges paired with older firmware always report 7.8.
 - `cell_voltage` — one NaN per series cell: the pack has no per-cell
   measurement.
 
