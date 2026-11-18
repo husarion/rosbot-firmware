@@ -40,7 +40,7 @@
     </message>
 
     <message id="11005" name="ROSBOT_POWER_SUPPLY">
-      <description>ROSbot XL power board state that BATTERY_STATUS cannot carry. Sent right after each BATTERY_STATUS.</description>
+      <description>Battery state that BATTERY_STATUS cannot carry. Sent right after each BATTERY_STATUS. On ROSbot 3 only design_capacity_mah is meaningful (status 0, charger_type 255, present 1).</description>
       <field type="uint8_t"  name="status">sensor_msgs/BatteryState POWER_SUPPLY_STATUS_* value reported by the power board.</field>
       <field type="uint8_t"  name="charger_type">0 none, 1 USB-C, 2 inductive, 255 unknown (not reported yet).</field>
       <field type="uint8_t"  name="present">1 when a battery is connected.</field>

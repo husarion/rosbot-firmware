@@ -28,6 +28,7 @@ Fixes from the 2026-10 static firmware audit. HW-tested 2026-10-26 on ROSbot 3 a
 - ROSbot XL battery percentage comes from a load-compensated estimator (coulomb counting corrected by open-circuit voltage) instead of a linear voltage map, so it no longer jumps with load. ROSbot 3 has no current measurement, so it uses the same rest-voltage curve through a low-pass filter; load sag still biases it low while driving. Generic Li-ion curve and resistance, not validated on hardware. The low-battery indicator now trips at a true 20 %, which is earlier than before.
 
 ### Fixed
+- ROSbot 3 `battery.design_capacity` is 3.5 Ah (3S1P, 3500 mAh cells) instead of the ROSbot XL value 7.8 Ah.
 - `battery.current` was NaN whenever the battery discharged: negative values were sent as "not measured". It is now signed (negative while discharging).
 - ROSbot XL: a frame from a power board with no battery is no longer dropped as a bad voltage reading, so `battery.present` goes false instead of the topic going stale.
 - `battery.cell_voltage` reports NaN per cell instead of an even split of the pack voltage presented as measured.
