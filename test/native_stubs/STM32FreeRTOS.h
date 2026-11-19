@@ -17,7 +17,10 @@
 
 #pragma once
 
+#include <cassert>
 #include <cstdint>
+
+#define configASSERT(x) assert(x)
 
 typedef uint32_t UBaseType_t;
 

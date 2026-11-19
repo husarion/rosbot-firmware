@@ -104,8 +104,7 @@ void boardPeripheralsInit() {
   PUSH_BUTTON2.setAsInput(platform::Pull::kUp);
 
   // Fan
-  pinMode(FAN_PP_PIN, OUTPUT);
-  digitalWrite(FAN_PP_PIN, LOW);
+  FAN_PP_PIN.setAsOutput(false);
 
   // LEDs
   RED_LED.setAsOutput(true);
@@ -190,7 +189,7 @@ void setup() {
   board_revision.init();
   auto rev = board_revision.revision();
   setMaxMotorsCurrent(rev);
-  auto fan_config =
+  const FanConfig& fan_config =
       (rev == Revision::V1_1) ? rev1_1_fan_config : rev1_2_fan_config;
 
   Ethernet.begin(MAC, CLIENT_IP);

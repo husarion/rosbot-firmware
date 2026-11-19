@@ -83,8 +83,8 @@ inline constexpr float RAD_PER_TICK =
 inline constexpr float LOW_PASS_ALPHA = 0.25f;
 
 inline constexpr HardwareEncoderConfig enc_fl_config = {
-    .pin_a = PD12,
-    .pin_b = PD13,
+    .pin_a = Pin{Port::D, 12},
+    .pin_b = Pin{Port::D, 13},
     .timer = TIM4,
     .inv_dir = true,
     .rad_per_tick = RAD_PER_TICK,
@@ -93,8 +93,8 @@ inline constexpr HardwareEncoderConfig enc_fl_config = {
 };
 
 inline constexpr HardwareEncoderConfig enc_fr_config = {
-    .pin_a = PC6,
-    .pin_b = PC7,
+    .pin_a = Pin{Port::C, 6},
+    .pin_b = Pin{Port::C, 7},
     .timer = TIM3,
     .inv_dir = false,
     .rad_per_tick = RAD_PER_TICK,
@@ -103,8 +103,8 @@ inline constexpr HardwareEncoderConfig enc_fr_config = {
 };
 
 inline constexpr HardwareEncoderConfig enc_rl_config = {
-    .pin_a = PA15,
-    .pin_b = PB3,
+    .pin_a = Pin{Port::A, 15},
+    .pin_b = Pin{Port::B, 3},
     .timer = TIM2,
     .inv_dir = true,
     .rad_per_tick = RAD_PER_TICK,
@@ -113,8 +113,8 @@ inline constexpr HardwareEncoderConfig enc_rl_config = {
 };
 
 inline constexpr HardwareEncoderConfig enc_rr_config = {
-    .pin_a = PE9,
-    .pin_b = PE11,
+    .pin_a = Pin{Port::E, 9},
+    .pin_b = Pin{Port::E, 11},
     .timer = TIM1,
     .inv_dir = false,
     .rad_per_tick = RAD_PER_TICK,
@@ -161,8 +161,8 @@ inline constexpr NtcConfig ntc_cfg{
     .adc_max = 1023.0f};
 inline Ntc ntc(ntc_cfg);
 
-inline constexpr uint8_t FAN_PP_PIN = PC13;
-inline constexpr uint8_t FAN_PWM_PIN = PB0;
+inline constexpr Pin FAN_PP_PIN{Port::C, 13};
+inline constexpr Pin FAN_PWM_PIN{Port::B, 0};
 
 inline constexpr FanConfig rev1_2_fan_config{
     .pin = FAN_PWM_PIN,
@@ -267,7 +267,10 @@ inline constexpr float MOTOR_SUPPLY_VOLTAGE = 12.0f;   // [V] nominal
 // (GPIO_HUB_NRST).
 
 inline constexpr MotorHiZConfig motor_fl_config = {
-    .pwm_pin = PF9,
+    .pwm = {.pin = Pin{Port::F, 9},
+            .timer = TIM14,
+            .channel = 1,
+            .af = GPIO_AF9_TIM14},
     .in_a_pin = Pin{Port::D, 10},
     .in_b_pin = Pin{Port::D, 11},
     .inv_dir = true,
@@ -285,7 +288,10 @@ inline constexpr MotorHiZConfig motor_fl_config = {
 };
 
 inline constexpr MotorHiZConfig motor_fr_config = {
-    .pwm_pin = PF8,
+    .pwm = {.pin = Pin{Port::F, 8},
+            .timer = TIM13,
+            .channel = 1,
+            .af = GPIO_AF9_TIM13},
     .in_a_pin = Pin{Port::G, 5},
     .in_b_pin = Pin{Port::G, 6},
     .inv_dir = false,
@@ -303,7 +309,10 @@ inline constexpr MotorHiZConfig motor_fr_config = {
 };
 
 inline constexpr MotorHiZConfig motor_rl_config = {
-    .pwm_pin = PF7,
+    .pwm = {.pin = Pin{Port::F, 7},
+            .timer = TIM11,
+            .channel = 1,
+            .af = GPIO_AF3_TIM11},
     .in_a_pin = Pin{Port::G, 11},
     .in_b_pin = Pin{Port::G, 12},
     .inv_dir = true,
@@ -321,7 +330,10 @@ inline constexpr MotorHiZConfig motor_rl_config = {
 };
 
 inline constexpr MotorHiZConfig motor_rr_config = {
-    .pwm_pin = PF6,
+    .pwm = {.pin = Pin{Port::F, 6},
+            .timer = TIM10,
+            .channel = 1,
+            .af = GPIO_AF3_TIM10},
     .in_a_pin = Pin{Port::E, 12},
     .in_b_pin = Pin{Port::E, 13},
     .inv_dir = false,

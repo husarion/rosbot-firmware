@@ -19,10 +19,11 @@
 #include <cmath>
 
 #include "encoder_interface.hpp"
+#include "pin.hpp"
 
 struct HardwareEncoderConfig {
-  uint8_t pin_a;         // TIMx_CH1 pin
-  uint8_t pin_b;         // TIMx_CH2 pin
+  platform::Pin pin_a;   // TIMx_CH1 pin
+  platform::Pin pin_b;   // TIMx_CH2 pin
   TIM_TypeDef* timer;    // e.g. TIM1, TIM3, TIM8
   bool inv_dir;          // polarity
   float rad_per_tick;    // radians per encoder tick
@@ -46,7 +47,7 @@ class HardwareEncoder : public EncoderInterface {
     return std::fabs(filtered) > ZERO_THRESHOLD ? filtered : 0.0f;
   }
 
-  HardwareEncoderConfig cfg_ = {};
+  HardwareEncoderConfig cfg_;
   TIM_HandleTypeDef* timer_handle_ = nullptr;
   TIM_Encoder_InitTypeDef encoder_cfg_ = {};
   uint32_t last_cnt_ = 0;

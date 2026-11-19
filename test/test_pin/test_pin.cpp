@@ -113,6 +113,23 @@ void test_toggle_inverts_output_latch() {
   TEST_ASSERT_EQUAL_HEX32(1UL << 20, fakePort(1)->BSRR);
 }
 
+void test_alternate_sets_afr_speed_and_pull() {
+  const platform::Pin low(platform::Port::F, 6);
+  const platform::Pin high(platform::Port::F, 9);
+  GPIO_TypeDef* gpio = fakePort(5);
+  gpio->AFR[0] = 0xFFFFFFFF;
+  gpio->AFR[1] = 0xFFFFFFFF;
+
+  low.setAsAlternate(3, platform::Pull::kUp, platform::Speed::kHigh);
+  high.setAsAlternate(9);
+
+  TEST_ASSERT_EQUAL_HEX32(0xF3FFFFFF, gpio->AFR[0]);
+  TEST_ASSERT_EQUAL_HEX32(0xFFFFFF9F, gpio->AFR[1]);
+  TEST_ASSERT_EQUAL_HEX32((0b10UL << 12) | (0b10UL << 18), gpio->MODER);
+  TEST_ASSERT_EQUAL_HEX32(0b01UL << 12, gpio->PUPDR);
+  TEST_ASSERT_EQUAL_HEX32((0b10UL << 12) | (0b11UL << 18), gpio->OSPEEDR);
+}
+
 void test_equality() {
   constexpr platform::Pin a(0x40020000, 3);
   constexpr platform::Pin b(0x40020000, 3);
@@ -132,6 +149,7 @@ int main() {
   RUN_TEST(test_configure_masks_irqs_and_restores_primask);
   RUN_TEST(test_port_constructor_matches_base);
   RUN_TEST(test_toggle_inverts_output_latch);
+  RUN_TEST(test_alternate_sets_afr_speed_and_pull);
   RUN_TEST(test_equality);
   return UNITY_END();
 }

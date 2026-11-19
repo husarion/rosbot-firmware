@@ -16,18 +16,14 @@
 
 #include <STM32FreeRTOS.h>
 
-#include "stm32_def.h"
+#include "timer.hpp"
 
 namespace platform::clock {
 
 void init() {
-  __HAL_RCC_TIM5_CLK_ENABLE();
-  // APB1 timers run at 2x PCLK1 whenever the APB1 prescaler divides.
-  uint32_t timer_hz = HAL_RCC_GetPCLK1Freq();
-  if ((RCC->CFGR & RCC_CFGR_PPRE1) != RCC_CFGR_PPRE1_DIV1) timer_hz *= 2;
-
+  enableTimerClock(TIM5);
   TIM5->CR1 = 0;
-  TIM5->PSC = timer_hz / 1000000U - 1U;
+  TIM5->PSC = timerClockHz(TIM5) / 1000000U - 1U;
   TIM5->ARR = 0xFFFFFFFFU;
   TIM5->CNT = 0;
   TIM5->EGR = TIM_EGR_UG;  // load PSC now, not at the first overflow

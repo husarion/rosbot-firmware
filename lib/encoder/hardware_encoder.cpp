@@ -18,32 +18,12 @@
 
 #include "clock.hpp"
 #include "counter_delta.hpp"
+#include "timer.hpp"
 
 static TIM_HandleTypeDef s_htim_pool[4];
 static uint8_t s_htim_count = 0;
 
 // ---------- helpers ------------------------------------------------
-
-static void enableTimerClock(TIM_TypeDef* tim) {
-  if (tim == TIM1)
-    __HAL_RCC_TIM1_CLK_ENABLE();
-  else if (tim == TIM2)
-    __HAL_RCC_TIM2_CLK_ENABLE();
-  else if (tim == TIM3)
-    __HAL_RCC_TIM3_CLK_ENABLE();
-  else if (tim == TIM4)
-    __HAL_RCC_TIM4_CLK_ENABLE();
-  else if (tim == TIM5)
-    __HAL_RCC_TIM5_CLK_ENABLE();
-  else if (tim == TIM8)
-    __HAL_RCC_TIM8_CLK_ENABLE();
-  else
-    configASSERT(!"Invalid timer instance");
-}
-
-static GPIO_TypeDef* enableGpioClock(uint32_t pin) {
-  return set_GPIO_Port_Clock(STM_PORT(digitalPinToPinName(pin)));
-}
 
 static uint8_t timerAF(TIM_TypeDef* tim) {
   if (tim == TIM1 || tim == TIM2) return GPIO_AF1_TIM1;
@@ -64,23 +44,11 @@ void HardwareEncoder::init() {
   configASSERT(s_htim_count < sizeof(s_htim_pool) / sizeof(s_htim_pool[0]));
   timer_handle_ = &s_htim_pool[s_htim_count++];
 
-  enableTimerClock(cfg_.timer);
+  platform::enableTimerClock(cfg_.timer);
 
-  // GPIO setup
-  GPIO_TypeDef* port_a = enableGpioClock(cfg_.pin_a);
-  GPIO_TypeDef* port_b = enableGpioClock(cfg_.pin_b);
-
-  GPIO_InitTypeDef gpio = {};
-  gpio.Mode = GPIO_MODE_AF_PP;
-  gpio.Pull = GPIO_PULLUP;
-  gpio.Speed = GPIO_SPEED_FREQ_HIGH;
-  gpio.Alternate = timerAF(cfg_.timer);
-
-  gpio.Pin = digitalPinToBitMask(cfg_.pin_a);
-  HAL_GPIO_Init(port_a, &gpio);
-
-  gpio.Pin = digitalPinToBitMask(cfg_.pin_b);
-  HAL_GPIO_Init(port_b, &gpio);
+  const uint8_t af = timerAF(cfg_.timer);
+  cfg_.pin_a.setAsAlternate(af, platform::Pull::kUp, platform::Speed::kHigh);
+  cfg_.pin_b.setAsAlternate(af, platform::Pull::kUp, platform::Speed::kHigh);
 
   // Timer config
   timer_handle_->Instance = cfg_.timer;

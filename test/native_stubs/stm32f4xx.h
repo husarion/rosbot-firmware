@@ -12,8 +12,9 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-// Host-test stand-in for the CMSIS device header: the GPIO ports and RCC
-// live in plain memory the test can inspect, laid out at the F4 stride.
+// Host-test stand-in for the CMSIS device header (plus the few HAL RCC
+// helpers platform/ uses): GPIO ports, timers and RCC live in plain memory
+// the test can inspect; GPIO ports are laid out at the F4 stride.
 
 #pragma once
 
@@ -34,8 +35,33 @@ typedef struct {
 } GPIO_TypeDef;
 
 typedef struct {
+  __IO uint32_t CFGR;
   __IO uint32_t AHB1ENR;
 } RCC_TypeDef;
+
+typedef struct {
+  __IO uint32_t CR1;
+  __IO uint32_t CR2;
+  __IO uint32_t SMCR;
+  __IO uint32_t DIER;
+  __IO uint32_t SR;
+  __IO uint32_t EGR;
+  __IO uint32_t CCMR1;
+  __IO uint32_t CCMR2;
+  __IO uint32_t CCER;
+  __IO uint32_t CNT;
+  __IO uint32_t PSC;
+  __IO uint32_t ARR;
+  __IO uint32_t RCR;
+  __IO uint32_t CCR1;
+  __IO uint32_t CCR2;
+  __IO uint32_t CCR3;
+  __IO uint32_t CCR4;
+  __IO uint32_t BDTR;
+  __IO uint32_t DCR;
+  __IO uint32_t DMAR;
+  __IO uint32_t OR;
+} TIM_TypeDef;
 
 inline RCC_TypeDef fake_rcc;
 alignas(GPIO_TypeDef) inline uint8_t fake_gpio_memory[9 * 0x400];
@@ -43,6 +69,56 @@ inline uint32_t fake_primask = 0;
 inline int fake_irq_disable_count = 0;
 
 #define RCC (&fake_rcc)
+
+inline TIM_TypeDef fake_tims[15];
+inline bool fake_tim_clock_on[15];
+inline uint32_t fake_pclk1_hz = 42000000;
+inline uint32_t fake_pclk2_hz = 84000000;
+inline uint32_t HAL_RCC_GetPCLK1Freq() { return fake_pclk1_hz; }
+inline uint32_t HAL_RCC_GetPCLK2Freq() { return fake_pclk2_hz; }
+
+#define TIM1 (&fake_tims[1])
+#define TIM2 (&fake_tims[2])
+#define TIM3 (&fake_tims[3])
+#define TIM4 (&fake_tims[4])
+#define TIM5 (&fake_tims[5])
+#define TIM6 (&fake_tims[6])
+#define TIM7 (&fake_tims[7])
+#define TIM8 (&fake_tims[8])
+#define TIM9 (&fake_tims[9])
+#define TIM10 (&fake_tims[10])
+#define TIM11 (&fake_tims[11])
+#define TIM12 (&fake_tims[12])
+#define TIM13 (&fake_tims[13])
+#define TIM14 (&fake_tims[14])
+#define __HAL_RCC_TIM1_CLK_ENABLE() (fake_tim_clock_on[1] = true)
+#define __HAL_RCC_TIM2_CLK_ENABLE() (fake_tim_clock_on[2] = true)
+#define __HAL_RCC_TIM3_CLK_ENABLE() (fake_tim_clock_on[3] = true)
+#define __HAL_RCC_TIM4_CLK_ENABLE() (fake_tim_clock_on[4] = true)
+#define __HAL_RCC_TIM5_CLK_ENABLE() (fake_tim_clock_on[5] = true)
+#define __HAL_RCC_TIM6_CLK_ENABLE() (fake_tim_clock_on[6] = true)
+#define __HAL_RCC_TIM7_CLK_ENABLE() (fake_tim_clock_on[7] = true)
+#define __HAL_RCC_TIM8_CLK_ENABLE() (fake_tim_clock_on[8] = true)
+#define __HAL_RCC_TIM9_CLK_ENABLE() (fake_tim_clock_on[9] = true)
+#define __HAL_RCC_TIM10_CLK_ENABLE() (fake_tim_clock_on[10] = true)
+#define __HAL_RCC_TIM11_CLK_ENABLE() (fake_tim_clock_on[11] = true)
+#define __HAL_RCC_TIM12_CLK_ENABLE() (fake_tim_clock_on[12] = true)
+#define __HAL_RCC_TIM13_CLK_ENABLE() (fake_tim_clock_on[13] = true)
+#define __HAL_RCC_TIM14_CLK_ENABLE() (fake_tim_clock_on[14] = true)
+
+#define RCC_CFGR_PPRE1 (0x7UL << 10)
+#define RCC_CFGR_PPRE1_DIV1 0x00000000U
+#define RCC_CFGR_PPRE1_DIV4 0x00001400U
+#define RCC_CFGR_PPRE2 (0x7UL << 13)
+#define RCC_CFGR_PPRE2_DIV1 0x00000000U
+#define RCC_CFGR_PPRE2_DIV2 0x00008000U
+#define TIM_CR1_CEN (1UL << 0)
+#define TIM_CR1_ARPE (1UL << 7)
+#define TIM_EGR_UG (1UL << 0)
+#define TIM_CCMR1_OC1PE (1UL << 3)
+#define TIM_CCMR1_OC1M_1 (0x2UL << 4)
+#define TIM_CCMR1_OC1M_2 (0x4UL << 4)
+#define TIM_CCER_CC1E (1UL << 0)
 #define GPIOA_BASE (reinterpret_cast<uintptr_t>(fake_gpio_memory))
 #define RCC_AHB1ENR_GPIOAEN (1UL << 0)
 

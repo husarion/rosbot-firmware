@@ -29,13 +29,7 @@ void MotorHiZ::init() {
   // doesn't need to coordinate a separate g_encoders.init() pass.
   if (encoder_) encoder_->init();
 
-  PinName pwm_pn = digitalPinToPinName(cfg_.pwm_pin);
-  TIM_TypeDef* tim = (TIM_TypeDef*)pinmap_peripheral(pwm_pn, PinMap_PWM);
-  pwm_channel_ = STM_PIN_CHANNEL(pinmap_function(pwm_pn, PinMap_PWM));
-
-  pwm_timer_ = new HardwareTimer(tim);
-  pwm_timer_->setPWM(pwm_channel_, pwm_pn, cfg_.pwm_freq, 0);
-  pwm_arr_ = pwm_timer_->getOverflow(TICK_FORMAT);
+  pwm_.init(cfg_.pwm_freq);
 
   if (cfg_.current_sense_pin != 0xFF) {
     pinMode(cfg_.current_sense_pin, INPUT_ANALOG);
@@ -75,14 +69,14 @@ void MotorHiZ::setMode(Mode movement) {
     case Mode::Brake:
       cfg_.in_a_pin.setAsOutput(true);
       cfg_.in_b_pin.setAsOutput(true);
-      pwm_timer_->setCaptureCompare(pwm_channel_, pwm_arr_);
+      pwm_.setCompare(pwm_.period());
       break;
 
     case Mode::Neutral:
     default:
       cfg_.in_a_pin.setAsOutput(false);
       cfg_.in_b_pin.setAsOutput(false);
-      pwm_timer_->setCaptureCompare(pwm_channel_, 0);
+      pwm_.setCompare(0);
       break;
   }
 }
@@ -102,8 +96,7 @@ void MotorHiZ::applyPWM(float duty) {
 
   setMode(duty > 0 ? Mode::Forward : Mode::Reverse);
 
-  uint16_t pwm_value = static_cast<uint16_t>(std::fabs(duty) * pwm_arr_);
-  pwm_timer_->setCaptureCompare(pwm_channel_, pwm_value);
+  pwm_.setCompare(static_cast<uint32_t>(std::fabs(duty) * pwm_.period()));
 
   const bool has_sensor = !current_sense_disabled_ &&
                           cfg_.current_sense_pin != 0xFF &&

@@ -30,6 +30,8 @@ enum class Port : uint8_t { A, B, C, D, E, F, G, H, I };
 
 enum class Pull : uint8_t { kNone = 0b00, kUp = 0b01, kDown = 0b10 };
 
+enum class Speed : uint8_t { kLow, kMedium, kHigh, kVeryHigh };
+
 // One GPIO line, constexpr so it can live in a board config: Pin{Port::E, 2}.
 class Pin {
  public:
@@ -51,6 +53,12 @@ class Pin {
 
   void setAsAnalog() const { configure(kModeAnalog, Pull::kNone); }
 
+  // Push-pull alternate function; af is the GPIO_AFx_* number.
+  void setAsAlternate(uint8_t af, Pull pull = Pull::kNone,
+                      Speed speed = Speed::kVeryHigh) const {
+    configure(kModeAlternate, pull, speed, af);
+  }
+
   void write(bool high) const { port()->BSRR = high ? mask() : (mask() << 16); }
   void set() const { write(true); }
   void reset() const { write(false); }
@@ -71,6 +79,7 @@ class Pin {
  private:
   static constexpr uint32_t kModeInput = 0b00;
   static constexpr uint32_t kModeOutput = 0b01;
+  static constexpr uint32_t kModeAlternate = 0b10;
   static constexpr uint32_t kModeAnalog = 0b11;
   static constexpr uintptr_t kPortStride = 0x400;
 
@@ -82,19 +91,26 @@ class Pin {
   // MODER/PUPDR/OSPEEDR/OTYPER and RCC are shared read-modify-write
   // registers; MotorHiZ reconfigures pins at runtime from the control task,
   // so every update runs with interrupts masked (a few cycles).
-  void configure(uint32_t mode, Pull pull) const {
+  void configure(uint32_t mode, Pull pull, Speed speed = Speed::kVeryHigh,
+                 uint8_t af = 0) const {
     const uint32_t shift2 = 2U * index_;
     const uint32_t clear2 = ~(0b11UL << shift2);
     const uint32_t primask = __get_PRIMASK();
     __disable_irq();
     enableClock();
     GPIO_TypeDef* gpio = port();
-    // Very high speed and push-pull match what the Arduino core's pinMode()
-    // set, so replacing it does not change edge rates.
-    gpio->OSPEEDR = (gpio->OSPEEDR & clear2) | (0b11UL << shift2);
+    // Very high speed (the default) and push-pull match what the Arduino
+    // core's pinMode() set, so replacing it does not change edge rates.
+    gpio->OSPEEDR =
+        (gpio->OSPEEDR & clear2) | (static_cast<uint32_t>(speed) << shift2);
     gpio->OTYPER &= ~mask();
     gpio->PUPDR =
         (gpio->PUPDR & clear2) | (static_cast<uint32_t>(pull) << shift2);
+    if (mode == kModeAlternate) {
+      const uint32_t shift4 = 4U * (index_ & 7U);
+      volatile uint32_t& afr = gpio->AFR[index_ >> 3];
+      afr = (afr & ~(0xFUL << shift4)) | (static_cast<uint32_t>(af) << shift4);
+    }
     gpio->MODER = (gpio->MODER & clear2) | (mode << shift2);
     __set_PRIMASK(primask);
   }
