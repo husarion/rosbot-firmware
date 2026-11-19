@@ -74,6 +74,7 @@ class I2c {
   void setIrqsEnabled(bool on);
   void recover();
   bool finish(HAL_StatusTypeDef status);
+  bool awaitTransfer(uint32_t timeout_ms);
 
   I2cConfig cfg_;
   const I2cDmaStream* dma_ = nullptr;
@@ -82,6 +83,7 @@ class I2c {
   SemaphoreHandle_t mutex_ = nullptr;
   SemaphoreHandle_t done_ = nullptr;
   volatile bool xfer_ok_ = false;
+  uint8_t reg_ = 0;  // register byte the IT transmit reads after return
   uint32_t last_error_ = 0;
 };
 

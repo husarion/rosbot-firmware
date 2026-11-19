@@ -231,19 +231,32 @@ bool I2c::probe(uint8_t addr) {
       HAL_I2C_IsDeviceReady(&handle_, addr << 1, 1, kBlockingTimeoutMs));
 }
 
+// Register write (IT) then repeated start and read (DMA): the same bus
+// sequence as HAL_I2C_Mem_Read_DMA, but that one runs its address phase as a
+// busy-wait in the caller, and the BNO055 stretches the clock there, which
+// cost 230-450 us of CPU per IMU read (HW-measured with DWT).
 bool I2c::readRegDma(uint8_t addr, uint8_t reg, uint8_t* data, size_t len,
                      uint32_t timeout_ms) {
   if (!schedulerRunning()) return readReg(addr, reg, data, len);
   Lock lock(mutex_);
   xSemaphoreTake(done_, 0);  // drop a completion left by an earlier timeout
-  xfer_ok_ = false;
-  if (!finish(HAL_I2C_Mem_Read_DMA(&handle_, addr << 1, reg,
-                                   I2C_MEMADD_SIZE_8BIT, data, len))) {
+  reg_ = reg;
+  xfer_ok_ = false;  // before the start: the ISR may finish first
+  if (!finish(HAL_I2C_Master_Seq_Transmit_IT(&handle_, addr << 1, &reg_, 1,
+                                             I2C_FIRST_FRAME)) ||
+      !awaitTransfer(timeout_ms)) {
     return false;
   }
+  xfer_ok_ = false;
+  return finish(HAL_I2C_Master_Seq_Receive_DMA(&handle_, addr << 1, data, len,
+                                               I2C_LAST_FRAME)) &&
+         awaitTransfer(timeout_ms);
+}
+
+bool I2c::awaitTransfer(uint32_t timeout_ms) {
   if (xSemaphoreTake(done_, pdMS_TO_TICKS(timeout_ms)) != pdTRUE) {
-    // HAL_I2C_Master_Abort_IT ignores a Mem_Read (MODE_MEM in HAL 1.8.1),
-    // which used to leave DMA armed and the handle BUSY_RX.
+    // HAL's abort calls are no use here (Master_Abort_IT only acts in
+    // MODE_MASTER); a full reset leaves no DMA armed and the handle READY.
     last_error_ = HAL_I2C_ERROR_TIMEOUT;
     recover();
     return false;
@@ -269,7 +282,10 @@ void I2c::onTransferDone(bool ok) {
 }  // namespace platform
 
 // HAL's completion callbacks are weak; these are the only definitions.
-extern "C" void HAL_I2C_MemRxCpltCallback(I2C_HandleTypeDef* h) {
+extern "C" void HAL_I2C_MasterTxCpltCallback(I2C_HandleTypeDef* h) {
+  if (auto* bus = platform::ownerOf(h)) bus->onTransferDone(true);
+}
+extern "C" void HAL_I2C_MasterRxCpltCallback(I2C_HandleTypeDef* h) {
   if (auto* bus = platform::ownerOf(h)) bus->onTransferDone(true);
 }
 extern "C" void HAL_I2C_ErrorCallback(I2C_HandleTypeDef* h) {
