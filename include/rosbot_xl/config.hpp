@@ -50,9 +50,11 @@ inline constexpr uint8_t I2C_SDA = PF0;
 inline constexpr uint8_t I2C_SCL = PF1;
 inline TwoWire i2c(I2C_SDA, I2C_SCL);
 
-inline constexpr uint8_t PB_SERIAL_RX = PD6;
-inline constexpr uint8_t PB_SERIAL_TX = PD5;
-inline HardwareSerial pb_serial(PB_SERIAL_RX, PB_SERIAL_TX);
+inline platform::Uart pb_uart({.usart = USART2,
+                               .tx = Pin{Port::D, 5},
+                               .rx = Pin{Port::D, 6},
+                               .af = GPIO_AF7_USART2,
+                               .tx_queue_bytes = 256});
 
 // ───────── Buttons ─────────
 inline constexpr Pin PUSH_BUTTON1{Port::F, 11};
@@ -385,7 +387,7 @@ inline constexpr Pin buttons_pins[] = {PUSH_BUTTON1};
 
 // ───────── Power Board - Battery ─────────
 inline constexpr PowerBoardConfig power_board_config = {
-    .serial = pb_serial,
+    .uart = pb_uart,
     .baudrate = 38400,
     .num_cells = BATTERY_SERIES_CELLS,
     .capacity_ah = BATTERY_DESIGN_CAPACITY,
@@ -400,10 +402,11 @@ inline constexpr Pin PB_SHD_CONFIRM{Port::D, 7};
 // ───────── SBC Interface ─────────
 // SBC has few seconds to shutdown after receiving shutdown command
 inline constexpr uint16_t SHUTDOWN_WAIT_MS = 10000;
+// Debug text only: rosbot_xl's MAVLink link is Ethernet.
+inline platform::Uart ftdi_uart({.usart = USART1,
+                                 .tx = Pin{Port::A, 9},
+                                 .rx = Pin{Port::A, 10},
+                                 .af = GPIO_AF7_USART1,
+                                 .tx_queue_bytes = 1024});
 inline constexpr SerialConfig DIAGNOSTIC_SERIAL_CONFIG = {
-    .serial = &Serial1,
-    .baudrate = 921600,
-    .rxPin = PA10,
-    .txPin = PA9,
-    .timeout_ms = 1,
-    .name = "FTDI_SERIAL"};
+    .uart = &ftdi_uart, .baudrate = 921600, .name = "FTDI_SERIAL"};

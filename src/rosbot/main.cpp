@@ -160,8 +160,8 @@ void setup() {
   // The debug UART is a rear-panel header with no SBC wiring, so calibration
   // progress is mirrored onto the SBC link as well — see
   // imu_calibration_boot.hpp. Skipped when the FTDI itself is the link.
-  HardwareSerial* link_serial =
-      (transport != nullptr && g_comm_mgr.hasDebugSerial()) ? transport->serial
+  platform::Uart* link_serial =
+      (transport != nullptr && g_comm_mgr.hasDebugSerial()) ? transport->uart
                                                             : nullptr;
 
   battery_adc.init();

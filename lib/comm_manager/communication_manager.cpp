@@ -14,8 +14,6 @@
 
 #include "communication_manager.hpp"
 
-#include <Arduino.h>
-
 #include <cstring>
 
 #include "clock.hpp"
@@ -31,16 +29,16 @@ const char* fwVersion() {
 #endif
 }
 
-void sendVersionPrompt(HardwareSerial& s) {
+void sendVersionPrompt(platform::Uart& s) {
   s.printf("FW: %s\r\n", fwVersion());
   s.flush();
 }
 
 // Returns true after consuming a newline; *idx then holds the line length.
-bool consumeAvailable(HardwareSerial& s, char* buf, size_t* idx,
+bool consumeAvailable(platform::Uart& s, char* buf, size_t* idx,
                       size_t max_len) {
-  while (s.available()) {
-    const char c = s.read();
+  while (s.available() > 0) {
+    const char c = static_cast<char>(s.read());
     if (c == '\n') return true;
     if (c != '\r' && *idx < max_len - 1) {
       buf[(*idx)++] = c;
@@ -88,12 +86,12 @@ const SerialConfig* CommunicationManager::selectTransport(uint32_t timeout_ms) {
 }
 
 void CommunicationManager::configureNamespace(uint16_t timeout_ms) {
-  HardwareSerial* config_serial = nullptr;
+  platform::Uart* config_serial = nullptr;
 
   if (selected_type_ == TransportType::kEthernet) {
-    config_serial = cfg_.diagnostic_serial.serial;
+    config_serial = cfg_.diagnostic_serial.uart;
   } else if (selected_serial_ != nullptr) {
-    config_serial = selected_serial_->serial;
+    config_serial = selected_serial_->uart;
   }
 
   if (config_serial != nullptr &&
@@ -105,8 +103,8 @@ void CommunicationManager::configureNamespace(uint16_t timeout_ms) {
   namespace_[NS_MAX_LENGTH - 1] = '\0';
 }
 
-HardwareSerial* CommunicationManager::debugSerial() {
-  return debug_available_ ? cfg_.diagnostic_serial.serial : nullptr;
+platform::Uart* CommunicationManager::debugSerial() {
+  return debug_available_ ? cfg_.diagnostic_serial.uart : nullptr;
 }
 
 SemaphoreHandle_t CommunicationManager::debugMutex() {
@@ -115,13 +113,10 @@ SemaphoreHandle_t CommunicationManager::debugMutex() {
 }
 
 void CommunicationManager::initSerial(const SerialConfig& cfg) {
-  cfg.serial->setRx(cfg.rxPin);
-  cfg.serial->setTx(cfg.txPin);
-  cfg.serial->begin(cfg.baudrate);
-  cfg.serial->setTimeout(cfg.timeout_ms);
+  cfg.uart->open(cfg.baudrate);
 }
 
-bool CommunicationManager::waitForHostConfig(HardwareSerial& serial,
+bool CommunicationManager::waitForHostConfig(platform::Uart& serial,
                                              uint32_t timeout_ms) {
   std::array<char, NS_MAX_LENGTH> buffer{};
   size_t idx = 0;
@@ -160,7 +155,7 @@ bool CommunicationManager::waitForHostConfig(HardwareSerial& serial,
   return received_ns;
 }
 
-bool CommunicationManager::parseAndStoreNamespace(HardwareSerial& serial,
+bool CommunicationManager::parseAndStoreNamespace(platform::Uart& serial,
                                                   const char* buf, size_t len) {
   constexpr const char* kPrefix = "NS:";
   constexpr size_t kPrefixLen = 3;
@@ -177,7 +172,7 @@ bool CommunicationManager::parseAndStoreNamespace(HardwareSerial& serial,
   return true;
 }
 
-bool CommunicationManager::parseEnd(HardwareSerial& serial, const char* buf,
+bool CommunicationManager::parseEnd(platform::Uart& serial, const char* buf,
                                     size_t len) {
   constexpr const char* kEnd = "END";
   constexpr size_t kEndLen = 3;
@@ -192,7 +187,7 @@ bool CommunicationManager::parseEnd(HardwareSerial& serial, const char* buf,
 // Hosts still send BACKEND:, and MAVLink is the only backend left. NAK
 // anything else so a host asking for another backend fails its handshake
 // instead of waiting on a link that never comes up.
-bool CommunicationManager::parseBackend(HardwareSerial& serial, const char* buf,
+bool CommunicationManager::parseBackend(platform::Uart& serial, const char* buf,
                                         size_t len) {
   constexpr const char* kPrefix = "BACKEND:";
   constexpr size_t kPrefixLen = 8;

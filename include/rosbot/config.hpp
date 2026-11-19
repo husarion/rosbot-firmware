@@ -299,18 +299,20 @@ inline constexpr Pin RPI_CONSOLE{Port::G, 5};
 inline constexpr Pin RPI_BTN{Port::G, 7};
 
 // Primary: SBC Serial (SBC connection)
-inline constexpr SerialConfig SBC_SERIAL_CONFIG = {.serial = &Serial1,
-                                                   .baudrate = 921600,
-                                                   .rxPin = PA10,
-                                                   .txPin = PA9,
-                                                   .timeout_ms = 1,
-                                                   .name = "SBC_SERIAL"};
+inline platform::Uart sbc_uart({.usart = USART1,
+                                .tx = Pin{Port::A, 9},
+                                .rx = Pin{Port::A, 10},
+                                .af = GPIO_AF7_USART1,
+                                .tx_queue_bytes = 2048});
+inline constexpr SerialConfig SBC_SERIAL_CONFIG = {
+    .uart = &sbc_uart, .baudrate = 921600, .name = "SBC_SERIAL"};
 
-// Secondary: FTDI Serial (Rear panel USB connection)
+// Secondary: FTDI Serial (Rear panel USB connection). Can carry MAVLink, so
+// it gets the same TX queue as the SBC link.
+inline platform::Uart ftdi_uart({.usart = USART3,
+                                 .tx = Pin{Port::B, 10},
+                                 .rx = Pin{Port::B, 11},
+                                 .af = GPIO_AF7_USART3,
+                                 .tx_queue_bytes = 2048});
 inline constexpr SerialConfig DIAGNOSTIC_SERIAL_CONFIG = {
-    .serial = &Serial3,
-    .baudrate = 921600,
-    .rxPin = PB11,
-    .txPin = PB10,
-    .timeout_ms = 1,
-    .name = "FTDI_SERIAL"};
+    .uart = &ftdi_uart, .baudrate = 921600, .name = "FTDI_SERIAL"};

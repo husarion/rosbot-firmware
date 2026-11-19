@@ -27,7 +27,7 @@ namespace imu_calibration_boot {
 namespace {
 constexpr uint32_t kLogIntervalMs = 1000;
 
-void logLine(HardwareSerial* a, HardwareSerial* b, const char* fmt, ...) {
+void logLine(platform::Uart* a, platform::Uart* b, const char* fmt, ...) {
   if (a == nullptr && b == nullptr) return;
   char line[200];
   va_list args;
@@ -41,7 +41,7 @@ void logLine(HardwareSerial* a, HardwareSerial* b, const char* fmt, ...) {
 
 bool run(ImuBno055& imu, platform::Pin red_led,
          etl::span<const platform::Pin> green_leds, ImuCalibrationOffsets& out,
-         HardwareSerial* debug_serial, HardwareSerial* link_serial,
+         platform::Uart* debug_serial, platform::Uart* link_serial,
          uint32_t timeout_ms, uint32_t blink_ms) {
   const uint32_t start = time_boot_ms();
   uint32_t last_toggle = start;

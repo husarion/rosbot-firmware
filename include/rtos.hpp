@@ -78,7 +78,8 @@ struct TaskHandleWrapper {
     if (g_comm_mgr.hasDebugSerial()) {
       if (result != pdPASS) {
         g_comm_mgr.debugSerial()->printf(
-            "Failed to create task %s, error code: %d\r\n", cfg.name, result);
+            "Failed to create task %s, error code: %ld\r\n", cfg.name,
+            static_cast<long>(result));
       } else {
         g_comm_mgr.debugSerial()->printf("Created %s task\r\n", cfg.name);
       }

@@ -29,7 +29,7 @@ PowerBoard::PowerBoard(const PowerBoardConfig& config)
 //  init() — configures UART, call after HAL/clock init
 // ═══════════════════════════════════════════════════════════════════
 
-void PowerBoard::init() { cfg_.serial.begin(cfg_.baudrate); }
+void PowerBoard::init() { cfg_.uart.open(cfg_.baudrate); }
 
 // ═══════════════════════════════════════════════════════════════════
 //  update() — read incoming data and parse frames
@@ -40,8 +40,8 @@ void PowerBoard::init() { cfg_.serial.begin(cfg_.baudrate); }
 // stream timeout after every reply (HW-measured: hwMonitorTask ran 119 ms
 // once a second on ROSbot XL).
 void PowerBoard::update() {
-  while (rx_len_ < RX_BUF_SIZE && cfg_.serial.available() > 0) {
-    rx_buf_[rx_len_++] = static_cast<uint8_t>(cfg_.serial.read());
+  while (rx_len_ < RX_BUF_SIZE && cfg_.uart.available() > 0) {
+    rx_buf_[rx_len_++] = static_cast<uint8_t>(cfg_.uart.read());
   }
   if (rx_len_ == 0) return;
 
@@ -142,7 +142,7 @@ void PowerBoard::sendFrame(uint8_t cmd, const uint8_t* args,
   p += 2;
   *p++ = FRAME_END;
 
-  cfg_.serial.write(tx, static_cast<size_t>(p - tx));
+  cfg_.uart.write(tx, static_cast<size_t>(p - tx));
 }
 
 // ═══════════════════════════════════════════════════════════════════

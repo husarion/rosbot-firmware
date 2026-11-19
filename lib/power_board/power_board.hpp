@@ -22,12 +22,13 @@
 #include "battery_interface.hpp"
 #include "pb_polling.hpp"
 #include "soc_estimator.hpp"
+#include "uart.hpp"
 #include "version_text.hpp"
 
 // ── Configuration ───────────────────────────────────────────────────
 
 struct PowerBoardConfig {
-  HardwareSerial& serial;
+  platform::Uart& uart;
   uint32_t baudrate = 115200;
   uint8_t num_cells = 3;
   float capacity_ah = 7.8f;

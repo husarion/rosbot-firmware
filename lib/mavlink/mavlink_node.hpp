@@ -14,7 +14,6 @@
 
 #pragma once
 
-#include <HardwareSerial.h>
 #include <STM32FreeRTOS.h>
 
 #include <cstddef>
@@ -22,6 +21,7 @@
 
 #include "mavlink.h"
 #include "transport/mavlink_transport_interface.hpp"
+#include "uart.hpp"
 
 class MavlinkPublisherInterface;
 class MavlinkSubscriberInterface;
@@ -55,7 +55,7 @@ class MavlinkNode {
   bool isConnected() const { return state_ == CONNECTED; }
   void setNamespace(const char* ns) { ns_ = ns; }
   // `mutex` is shared with every other writer of `serial` (may be null).
-  void setDiagnosticSerial(HardwareSerial* serial, SemaphoreHandle_t mutex) {
+  void setDiagnosticSerial(platform::Uart* serial, SemaphoreHandle_t mutex) {
     diag_serial_ = serial;
     diag_mutex_ = mutex;
   }
@@ -81,7 +81,7 @@ class MavlinkNode {
 
   MavlinkTransport& transport_;
   MavlinkNodeConfig cfg_;
-  HardwareSerial* diag_serial_ = nullptr;
+  platform::Uart* diag_serial_ = nullptr;
   SemaphoreHandle_t diag_mutex_ = nullptr;
   const char* ns_ = "";
   const char* boot_notice_ = nullptr;

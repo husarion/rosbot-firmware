@@ -14,13 +14,13 @@
 
 #pragma once
 
-#include <HardwareSerial.h>
 #include <etl/span.h>
 
 #include <cstdint>
 
 #include "imu_bno055.hpp"
 #include "pin.hpp"
+#include "uart.hpp"
 
 // Boot-time (pre-scheduler) IMU calibration UI, shared by both variants'
 // setup(). Persisting a calibration must happen before
@@ -48,8 +48,8 @@ namespace imu_calibration_boot {
 // stay plain ASCII.
 bool run(ImuBno055& imu, platform::Pin red_led,
          etl::span<const platform::Pin> green_leds, ImuCalibrationOffsets& out,
-         HardwareSerial* debug_serial = nullptr,
-         HardwareSerial* link_serial = nullptr, uint32_t timeout_ms = 120000,
+         platform::Uart* debug_serial = nullptr,
+         platform::Uart* link_serial = nullptr, uint32_t timeout_ms = 120000,
          uint32_t blink_ms = 150);
 
 }  // namespace imu_calibration_boot
