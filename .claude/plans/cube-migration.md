@@ -67,14 +67,12 @@ To fix during the migration:
     SBC link, power board UART) and timer inherits that tolerance. Check
     the schematics for an HSE crystal before writing the CubeMX clock tree
     in step 9; if one is fitted, use it.
-15. **BNO055 gyro scale is unverified.** Adafruit_BNO055 sets UNIT_SEL
-    to rad/s (bit 1), while `ImuBno055::update()` converts as if the
-    register were 1/16 deg/s. If the rad/s scale is 900 LSB per rad/s,
-    `/imu` angular velocity reads ~1.8 % low; Bosch also acknowledges a
-    firmware scaling bug in this chip. Step 7 keeps both as they were.
-    Settle it on HW: spin the robot a known angle and integrate
-    `/imu` angular_velocity.z, then fix UNIT_SEL or the factor in its own
-    commit.
+15. ~~BNO055 gyro scale.~~ Not an issue: Adafruit_BNO055 1.6.4 has its
+    UNIT_SEL write commented out, so the chip always ran at the reset
+    value 0x80 (gyro 1/16 deg/s), which is what `ImuBno055::update()`
+    converts. The step-7 driver briefly wrote UNIT_SEL = rad/s (found in
+    review before any HW test; it would have read `/imu` angular velocity
+    ~1.8 % low and scaled saved gyro offsets); the write is gone again.
 
 ## Variant model without `#ifdef`
 

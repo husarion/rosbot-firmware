@@ -35,7 +35,6 @@ constexpr uint32_t kReadTimeoutMs = 8;
 constexpr uint8_t kChipIdReg = 0x00;
 constexpr uint8_t kChipId = 0xA0;
 constexpr uint8_t kPageIdReg = 0x07;
-constexpr uint8_t kUnitSelReg = 0x3B;
 constexpr uint8_t kOprModeReg = 0x3D;
 constexpr uint8_t kPwrModeReg = 0x3E;
 constexpr uint8_t kSysTriggerReg = 0x3F;
@@ -51,9 +50,6 @@ constexpr uint8_t kSysTriggerReset = 0x20;
 // Internal oscillator: neither board fits the XIN32/XOUT32 crystal
 // (datasheet 5.5); asking for it only costs ~600 ms before the fallback.
 constexpr uint8_t kSysTriggerInternalClock = 0x00;
-// The UNIT_SEL Adafruit_BNO055 wrote (gyro bit = rad/s); update() keeps the
-// conversion it had then. Open question: see migration plan, finding 15.
-constexpr uint8_t kUnitSel = 0x02;
 
 // Settling times as Adafruit_BNO055 1.6.4 used them (datasheet table 3-6:
 // any mode -> CONFIG 19 ms, CONFIG -> any 7 ms).
@@ -142,7 +138,6 @@ bool ImuBno055::init() {
   bool ok = writeByte(kPwrModeReg, kPowerNormal);
   platform::clock::delayMs(10);
   ok = ok && writeByte(kPageIdReg, 0);
-  ok = ok && writeByte(kUnitSelReg, kUnitSel);
   ok = ok && writeByte(kAxisMapConfigReg, cfg_.axis_config);
   platform::clock::delayMs(10);
   ok = ok && writeByte(kAxisMapSignReg, cfg_.axis_sign);
@@ -168,7 +163,8 @@ bool ImuBno055::update() {
   data_.acceleration[1] = le16(&s_buf[2]) / 100.0f;
   data_.acceleration[2] = le16(&s_buf[4]) / 100.0f;
 
-  // Gyroscope, treated as 1 LSB = 1/16 deg/s → rad/s  (offsets 12..17)
+  // Gyroscope, 1 LSB = 1/16 deg/s: UNIT_SEL stays at its reset value 0x80,
+  // as under Adafruit_BNO055 1.6.4 (its UNIT_SEL write is commented out).
   constexpr float kGyroToRad = static_cast<float>(kDegToRad / 16.0);
   data_.angular_velocity[0] = le16(&s_buf[12]) * kGyroToRad;
   data_.angular_velocity[1] = le16(&s_buf[14]) * kGyroToRad;
