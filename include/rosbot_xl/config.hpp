@@ -210,13 +210,14 @@ inline constexpr uint16_t IDLE_ANIMATION_CHANGE_MS = 3000;
 inline constexpr uint16_t IDLE_ANIMATION_INTERVAL_MS = 35;
 inline constexpr uint16_t LED_STRIP_TIMEOUT_MS = 1000;
 
-inline constexpr SpiTransportConfig spi_config = {
-    .mosi_pin = PB15,
-    .miso_pin = PB14,
-    .sck_pin = PB10,
-    .spi_speed = 4000000,
-    .bit_order = MSBFIRST,
-    .spi_mode = SPI_MODE3,
+inline constexpr platform::SpiConfig spi_config = {
+    .instance = SPI2,
+    .mosi = Pin{Port::B, 15},
+    .miso = Pin{Port::B, 14},
+    .sck = Pin{Port::B, 10},
+    .af = GPIO_AF5_SPI2,
+    .max_hz = 4000000,  // SPI2 on 42 MHz APB1: runs at 2.625 MHz
+    .mode = 3,
 };
 
 inline constexpr SwapPair swaps[] = {

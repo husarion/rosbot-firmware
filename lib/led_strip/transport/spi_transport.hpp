@@ -1,4 +1,4 @@
-// Copyright 2022 Husarion sp. z o.o.
+// Copyright 2026 Husarion sp. z o.o.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -14,28 +14,17 @@
 
 #pragma once
 
-#include <SPI.h>
-
+#include "spi.hpp"
 #include "transport.hpp"
 
-struct SpiTransportConfig {
-  uint32_t mosi_pin;
-  uint32_t miso_pin;
-  uint32_t sck_pin;
-  uint32_t spi_speed;
-  BitOrder bit_order;
-  uint8_t spi_mode;
-};
-
-/// SPI transport implementation using STM32 HW SPI.
+/// LED strip over a hardware SPI master.
 class SpiTransport : public Transport {
  public:
-  explicit SpiTransport(const SpiTransportConfig& cfg);
+  explicit SpiTransport(const platform::SpiConfig& cfg) : spi_(cfg) {}
 
-  bool init() override;
-  void transfer(uint8_t value) override;
+  bool init() override { return spi_.init(); }
+  void transfer(uint8_t value) override { spi_.transfer(value); }
 
  private:
-  SpiTransportConfig cfg_;
-  SPIClass spi_;
+  platform::Spi spi_;
 };
