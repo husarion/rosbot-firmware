@@ -80,4 +80,8 @@ class ImuBno055 : public ImuInterface {
 
   ImuBno055Config cfg_;
   bool initialized_ = false;
+  static constexpr uint8_t kFailStreakBackoff = 10;
+  static constexpr uint8_t kBackoffSkips = 100;  // updates, ~1 s at 100 Hz
+  uint8_t fail_streak_ = 0;
+  uint8_t backoff_skips_ = 0;
 };

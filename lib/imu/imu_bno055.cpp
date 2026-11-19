@@ -153,10 +153,20 @@ bool ImuBno055::init() {
 
 bool ImuBno055::update() {
   if (!initialized_) return false;
-  if (!cfg_.bus->readRegDma(cfg_.i2c_addr, kStartReg, s_buf, kBlockLen,
-                            kReadTimeoutMs)) {
+  // A chip that stopped answering costs a bus reset per read; after a
+  // streak of failures try once a second instead of every update.
+  if (fail_streak_ >= kFailStreakBackoff && ++backoff_skips_ < kBackoffSkips) {
     return false;
   }
+  backoff_skips_ = 0;
+  const bool ok = cfg_.bus->readRegDma(cfg_.i2c_addr, kStartReg, s_buf,
+                                       kBlockLen, kReadTimeoutMs);
+  recordRead(ok);
+  if (!ok) {
+    if (fail_streak_ < kFailStreakBackoff) ++fail_streak_;
+    return false;
+  }
+  fail_streak_ = 0;
 
   // Acceleration: 1 LSB = 0.01 m/s²  (offsets 0..5)
   data_.acceleration[0] = le16(&s_buf[0]) / 100.0f;

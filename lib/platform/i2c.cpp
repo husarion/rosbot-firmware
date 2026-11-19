@@ -116,7 +116,8 @@ bool I2c::init() {
   HAL_NVIC_SetPriority(dma_->stream_irq, kIrqPriority, 0);
   HAL_NVIC_SetPriority(dma_->ev_irq, kIrqPriority, 0);
   HAL_NVIC_SetPriority(dma_->er_irq, kIrqPriority, 0);
-  setIrqsEnabled(true);
+  // Enabled only around IT/DMA transfers (armTransfer/awaitTransfer).
+  setIrqsEnabled(false);
   return true;
 }
 
@@ -178,7 +179,6 @@ void I2c::recover() {
   clearI2cBus(cfg_.scl, cfg_.sda, [] { clock::delayUs(5); });  // 100 kHz
   configureHardware();
   xSemaphoreTake(done_, 0);
-  setIrqsEnabled(true);
   ++recoveries_;
 }
 
@@ -210,8 +210,8 @@ bool I2c::writeReg(uint8_t addr, uint8_t reg, const uint8_t* data, size_t len) {
                                     kBlockingTimeoutMs));
   }
   armTransfer();
-  return finish(HAL_I2C_Mem_Write_IT(&handle_, addr << 1, reg,
-                                     I2C_MEMADD_SIZE_8BIT, buf, len)) &&
+  return started(HAL_I2C_Mem_Write_IT(&handle_, addr << 1, reg,
+                                      I2C_MEMADD_SIZE_8BIT, buf, len)) &&
          awaitTransfer(kBlockingTimeoutMs);
 }
 
@@ -223,8 +223,8 @@ bool I2c::readReg(uint8_t addr, uint8_t reg, uint8_t* data, size_t len) {
                                    kBlockingTimeoutMs));
   }
   armTransfer();
-  return finish(HAL_I2C_Mem_Read_IT(&handle_, addr << 1, reg,
-                                    I2C_MEMADD_SIZE_8BIT, data, len)) &&
+  return started(HAL_I2C_Mem_Read_IT(&handle_, addr << 1, reg,
+                                     I2C_MEMADD_SIZE_8BIT, data, len)) &&
          awaitTransfer(kBlockingTimeoutMs);
 }
 
@@ -246,7 +246,7 @@ bool I2c::transmit(uint8_t addr, const uint8_t* data, size_t len) {
                                           kBlockingTimeoutMs));
   }
   armTransfer();
-  return finish(HAL_I2C_Master_Transmit_IT(&handle_, addr << 1, buf, len)) &&
+  return started(HAL_I2C_Master_Transmit_IT(&handle_, addr << 1, buf, len)) &&
          awaitTransfer(kBlockingTimeoutMs);
 }
 
@@ -256,14 +256,22 @@ bool I2c::receive(uint8_t addr, uint8_t* data, size_t len) {
                                          kBlockingTimeoutMs));
   }
   armTransfer();
-  return finish(HAL_I2C_Master_Receive_IT(&handle_, addr << 1, data, len)) &&
+  return started(HAL_I2C_Master_Receive_IT(&handle_, addr << 1, data, len)) &&
          awaitTransfer(kBlockingTimeoutMs);
 }
 
 // Before every IT/DMA start: the ISR may complete before the caller waits.
+// The bus IRQs stay off between transfers: with a device unpowered (BNO055
+// on ROSbot 3 with IMU_POWER_ON low) the idle peripheral kept raising error
+// interrupts and starved every task (HW-seen: the link went silent).
 void I2c::armTransfer() {
   xSemaphoreTake(done_, 0);  // drop a completion left by an earlier timeout
   xfer_ok_ = false;
+  irq_count_ = 0;
+  storm_ = false;
+  __HAL_I2C_CLEAR_FLAG(
+      &handle_, I2C_FLAG_BERR | I2C_FLAG_ARLO | I2C_FLAG_AF | I2C_FLAG_OVR);
+  setIrqsEnabled(true);
 }
 
 bool I2c::probe(uint8_t addr) {
@@ -282,19 +290,29 @@ bool I2c::readRegDma(uint8_t addr, uint8_t reg, uint8_t* data, size_t len,
   Lock lock(mutex_);
   reg_ = reg;
   armTransfer();
-  if (!finish(HAL_I2C_Master_Seq_Transmit_IT(&handle_, addr << 1, &reg_, 1,
-                                             I2C_FIRST_FRAME)) ||
+  if (!started(HAL_I2C_Master_Seq_Transmit_IT(&handle_, addr << 1, &reg_, 1,
+                                              I2C_FIRST_FRAME)) ||
       !awaitTransfer(timeout_ms)) {
     return false;
   }
   armTransfer();
-  return finish(HAL_I2C_Master_Seq_Receive_DMA(&handle_, addr << 1, data, len,
-                                               I2C_LAST_FRAME)) &&
+  return started(HAL_I2C_Master_Seq_Receive_DMA(&handle_, addr << 1, data, len,
+                                                I2C_LAST_FRAME)) &&
          awaitTransfer(timeout_ms);
 }
 
+// Result of an IT/DMA start call; on failure the IRQs go off again.
+bool I2c::started(HAL_StatusTypeDef status) {
+  if (status == HAL_OK) return true;
+  setIrqsEnabled(false);
+  return finish(status);
+}
+
 bool I2c::awaitTransfer(uint32_t timeout_ms) {
-  if (xSemaphoreTake(done_, pdMS_TO_TICKS(timeout_ms)) != pdTRUE) {
+  const bool completed =
+      xSemaphoreTake(done_, pdMS_TO_TICKS(timeout_ms)) == pdTRUE;
+  setIrqsEnabled(false);
+  if (!completed) {
     // HAL's abort calls are no use here (Master_Abort_IT only acts in
     // MODE_MASTER); a full reset leaves no DMA armed and the handle READY.
     last_error_ = HAL_I2C_ERROR_TIMEOUT;
@@ -303,13 +321,30 @@ bool I2c::awaitTransfer(uint32_t timeout_ms) {
   }
   if (!xfer_ok_) {
     last_error_ = HAL_I2C_GetError(&handle_);
+    if (storm_) last_error_ |= HAL_I2C_ERROR_TIMEOUT;
     if ((last_error_ & kBusFaultErrors) != 0) recover();
   }
   return xfer_ok_;
 }
 
-void I2c::onIrqEvent() { HAL_I2C_EV_IRQHandler(&handle_); }
-void I2c::onIrqError() { HAL_I2C_ER_IRQHandler(&handle_); }
+// A transfer raises a handful of IRQs per byte at most. A device in a bad
+// state can leave a flag HAL never clears, and the IRQ then re-enters
+// forever, starving every task; past the budget the transfer is failed
+// from here and the task resets the bus.
+bool I2c::irqBudgetSpent() {
+  if (++irq_count_ <= kIrqBudget) return false;
+  setIrqsEnabled(false);
+  storm_ = true;
+  onTransferDone(false);
+  return true;
+}
+
+void I2c::onIrqEvent() {
+  if (!irqBudgetSpent()) HAL_I2C_EV_IRQHandler(&handle_);
+}
+void I2c::onIrqError() {
+  if (!irqBudgetSpent()) HAL_I2C_ER_IRQHandler(&handle_);
+}
 void I2c::onDmaRx() { HAL_DMA_IRQHandler(&dma_rx_); }
 
 void I2c::onTransferDone(bool ok) {

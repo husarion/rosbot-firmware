@@ -78,6 +78,9 @@ class I2c {
   void recover();
   bool finish(HAL_StatusTypeDef status);
   bool awaitTransfer(uint32_t timeout_ms);
+  bool started(HAL_StatusTypeDef status);
+  bool irqBudgetSpent();
+  static constexpr uint32_t kIrqBudget = 200;
   void armTransfer();
   bool transmit(uint8_t addr, const uint8_t* data, size_t len);
   bool receive(uint8_t addr, uint8_t* data, size_t len);
@@ -89,6 +92,8 @@ class I2c {
   SemaphoreHandle_t mutex_ = nullptr;
   SemaphoreHandle_t done_ = nullptr;
   volatile bool xfer_ok_ = false;
+  volatile uint32_t irq_count_ = 0;
+  volatile bool storm_ = false;
   uint8_t reg_ = 0;  // register byte the IT transmit reads after return
   uint32_t last_error_ = 0;
   uint32_t recoveries_ = 0;

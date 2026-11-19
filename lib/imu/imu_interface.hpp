@@ -75,8 +75,21 @@ class ImuInterface {
     return false;
   }
 
+  // Failed reads since boot; healthy() is true while the last read worked.
+  uint32_t readErrors() const { return read_errors_; }
+  bool healthy() const { return healthy_; }
+
  protected:
+  void recordRead(bool ok) {
+    healthy_ = ok;
+    if (!ok) ++read_errors_;
+  }
+
   ImuData data_ = {};
+
+ private:
+  uint32_t read_errors_ = 0;
+  bool healthy_ = false;
 };
 
 extern ImuInterface* g_imu;
