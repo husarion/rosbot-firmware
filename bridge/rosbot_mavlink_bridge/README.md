@@ -11,7 +11,7 @@ The bridge is a regular `ament_cmake` package and is **self-contained** —
 the MAVLink dialect headers it needs are the canonical
 [`mavlink_dialect/`](./mavlink_dialect/) tree shipped inside the package.
 `just mavgen` (from the repo root) regenerates them in place; the
-firmware build (PlatformIO) reads from the same directory via its
+firmware build (CMake) reads from the same directory via its
 include path. Single source of truth, no duplication.
 
 ```bash

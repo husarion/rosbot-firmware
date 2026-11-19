@@ -5,10 +5,12 @@ reference lives in [ARCHITECTURE.md](ARCHITECTURE.md).
 
 ## What this repo is, in one line
 
-STM32F407 firmware (Arduino + STM32FreeRTOS + MAVLink) supporting two
-variants — **rosbot** and **rosbot_xl**. Shared libraries in `lib/`,
-variant-specific entry/RTOS in `src/{rosbot,rosbot_xl}/`, variant-specific
-configuration in `include/{rosbot,rosbot_xl}/`. Working branch: **jazzy**.
+STM32F407 firmware (STM32CubeF4 HAL + FreeRTOS + MAVLink, CMake) supporting
+two variants — **rosbot** and **rosbot_xl**. Shared libraries in `lib/`,
+board support (startup, linker script, HAL/FreeRTOS config) in
+`boards/stm32f407/`, variant-specific entry/RTOS in `src/{rosbot,rosbot_xl}/`,
+variant-specific configuration in `include/{rosbot,rosbot_xl}/`. Working
+branch: **devel** (commit directly); `jazzy` is the release branch.
 
 ## Workflow — spec first, code second
 
@@ -36,21 +38,16 @@ specialists (e.g. independent code review).
 ## Build
 
 ```bash
-# debug builds (default)
-platformio run -e rosbot
-platformio run -e rosbot_xl
-
-# release (debug stripped; effectively -Os, see ARCHITECTURE.md "Optimisation level")
-platformio run -e rosbot_release
-platformio run -e rosbot_xl_release
-
-# host unit tests (hardware-free libs, test/)
-platformio test -e native
+just build rosbot             # debug, build/debug/rosbot.bin
+just build rosbot_xl_release  # release, build/release/rosbot_xl.bin
+just build-all                # both boards, both presets
+just test                     # host unit tests (CTest, test/)
 ```
 
-**After any change in `lib/` or `platformio.ini`
-build BOTH variants.** CI does it, you should too. Variant-only changes
-(`src/<variant>/`, `include/<variant>/`) only need the matching env.
+Needs `cmake ninja-build gcc-arm-none-eabi`. The CMake project is in
+`cmake/` (a root `CMakeLists.txt` would hide `bridge/` from colcon), see
+ARCHITECTURE.md "Build". **After any change in `lib/`, `boards/` or
+`cmake/` build BOTH boards** (`just build-all`). CI does it, you should too.
 
 ## Pre-commit and commit hygiene
 
@@ -65,17 +62,17 @@ the modified files and commit again. **Never bypass with `--no-verify`** —
 fix the underlying issue (or accept the formatter's choice).
 
 Commit rules:
-- **Branch `jazzy`** is the working branch. **Do not commit to `main`.**
+- **Branch `devel`** is the working branch (direct commits OK). `jazzy`
+  and `main` change only through a PR.
 - **Do not stage `.vscode/launch.json`** — it is local IDE state, not
   repo state.
-- Title under ~70 chars, present tense ("Add X", "Fix Y"). Body explains
-  *why*, not just *what*.
-- Co-author trailer on Claude-authored commits:
-  `Co-Authored-By: Claude Opus 4.7 <noreply@anthropic.com>`
+- Title under ~60 chars, present tense ("Add X", "Fix Y"). Body only when
+  the *why* is not obvious from the diff.
+- No co-author trailer or "Generated with" footer in commits or PRs.
 
 ## Communication style with the user
 
-- The user converses in **English**. Reply in English.
+- Reply in the language the user writes in (Rafał: Polish).
 - **Code and commit messages stay in English.** Comments too — match
   surrounding style. The existing repo is mostly English with rare Polish
   comments; do not introduce more Polish into source.
@@ -96,7 +93,7 @@ The user has asked specifically: **when a new feature lands, update
 - New RTOS task or changed priorities → "RTOS tasks" section.
 - New architectural pattern (transport, DMA driver, discovery, ...) →
   "Patterns" section.
-- Build system changes (new envs, new build flags) → "Build" section.
+- Build system changes (presets, flags, pinned dependencies) → "Build" section.
 - New ROS interface (topic, service, message type) → also update
   [ROS_API.md](ROS_API.md), which is the user-facing contract.
 
@@ -113,8 +110,11 @@ do not change the conceptual shape.
   used on the SBC.
 - [scripts/flash.sh](scripts/flash.sh) — thin wrapper around
   `ros2 run rosbot_utils flash_firmware` that picks the right model / port for
-  a PlatformIO env and points at the freshly-built `.pio/build/<env>/firmware.bin`.
-- [platformio.ini](platformio.ini) — build configuration.
+  a target (`rosbot[_xl][_release]`) and flashes the `.bin` that
+  [scripts/build.sh](scripts/build.sh) just built.
+- [cmake/CMakeLists.txt](cmake/CMakeLists.txt),
+  [cmake/dependencies.cmake](cmake/dependencies.cmake) — build configuration
+  and pinned third-party sources.
 - [.pre-commit-config.yaml](.pre-commit-config.yaml) — hook definitions.
 
 Project memory lives at

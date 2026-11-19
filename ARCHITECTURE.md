@@ -118,12 +118,11 @@ as-is given the trade-off above.
 
 ## Variant model — how the dispatcher works
 
-`platformio.ini` defines four envs: `rosbot`, `rosbot_release`, `rosbot_xl`,
-`rosbot_xl_release`. Each variant's env sets:
-
-- `build_src_filter` to include only `src/<variant>/*.cpp`
-- `-D LAN9303` on rosbot_xl (selects the LAN9303 PHY constants in the
-  core's hal_conf)
+`cmake/CMakeLists.txt` builds one executable per board, `rosbot` and
+`rosbot_xl`, from the same compiled `lib/` objects (`fw_common`); each adds
+its `src/<variant>/*.cpp`, and `rosbot_xl` also links `lib/ethernet`
+(`fw_ethernet`). Debug and Release are CMake presets, not separate
+variants.
 
 There is no variant macro (`ROSBOT` / `ROSBOT_XL` were removed): the variant
 is chosen by which `src/<variant>/` is compiled, and those files include
@@ -131,7 +130,7 @@ is chosen by which `src/<variant>/` is compiled, and those files include
 config and has no variant `#ifdef`; a type only one variant uses lives next
 to its only user (e.g. `RangesStamped` in `publishers/range_publisher.hpp`).
 
-Why this matters: **anything in `lib/` or `platformio.ini` affects both
+Why this matters: **anything in `lib/`, `boards/` or `cmake/` affects both
 variants.** Anything in `src/<variant>/` or `include/<variant>/` is
 variant-only.
 
@@ -147,19 +146,23 @@ enable, fan mode) is applied at runtime in `setMaxMotorsCurrent(rev)` and
 
 Layers, bottom-up:
 
-1. **STM32 HAL + LL** (vendor) — peripheral drivers. Used directly when we
-   need DMA / interrupt control beyond what the framework exposes.
-2. **stm32duino Arduino core** — `framework-arduinoststm32` (Husarion
-   fork), pinned via `platformio.ini`. Since migration step 8 it only
-   provides startup (`main()` calling `setup()`), clock and HAL init, the
-   SysTick handler and the HAL config; no Arduino API is used. lwIP comes
-   from the `STM32duino LwIP` library (plain lwIP 2.2.1).
-3. **STM32FreeRTOS 10.3.3** — single-core preemptive scheduler.
+1. **STM32CubeF4 HAL 1.8.1 + CMSIS device 2.6.8** (vendor, fetched by
+   `cmake/dependencies.cmake`) — HAL for I2C, timers, ETH (the Legacy
+   driver), flash and RCC; everything else in `lib/platform/` is on
+   registers. CMSIS core headers are vendored in `third_party/cmsis_core/`.
+2. **Board support** in `boards/stm32f407/` (shared by both boards):
+   startup from the CMSIS template, linker script, `stm32f4xx_hal_conf.h`,
+   `FreeRTOSConfig.h`, clock tree / SysTick / fault vectors / `main()` in
+   `system.cpp`, the newlib heap (`heap_newlib.c`) and syscalls. No CubeMX
+   project: the clock tree and every peripheral are configured in code.
+3. **FreeRTOS kernel 10.3.1** — single-core preemptive scheduler, ARM_CM4F
+   port, used directly (no CMSIS-RTOS). **lwIP 2.2.1** (`NO_SYS`) on
+   rosbot_xl.
 4. **Vendor / device libraries** — Pololu VL53L0X, vendored in
    `lib/vl53l0x/` (MIT) and moved onto `platform::I2c`; the BNO055 driver
-   is our own. Plus **ETL** (Embedded Template Library, pinned
-   tag in `lib_deps`) for fixed-capacity containers and `etl::span`
-   (we build as C++17, so no `std::span`).
+   is our own. Plus **ETL** (Embedded Template Library, pinned tag) for
+   fixed-capacity containers and `etl::span` (we build as C++17, so no
+   `std::span`).
 5. **Project libraries** in `lib/`, including the MAVLink stack
    (`lib/mavlink/`).
 6. **Variant entry** in `src/<variant>/`.
@@ -187,7 +190,7 @@ upstream stack; it was removed after v2.1.0-jazzy (see git history).
 | `vl53l0x/` | Vendored Pololu VL53L0X driver (MIT, `LICENSE.txt`), bus calls on `platform::I2c`; excluded from pre-commit |
 | `motor/` | `MotorInterface`, `MotorHiZ`, `MotorArray` (Hi-Z PWM control) |
 | `persistent_config/` | Namespace + BNO055 calibration offsets, stored as one record appended to a log in flash sector 11. Appending is safe at runtime; only the 1-3 s sector erase (sector full) is deferred to a pre-scheduler `save()` — see "IMU calibration" |
-| `platform/` | Hardware access written on CMSIS registers / HAL, replacing the Arduino API piece by piece (see `.claude/plans/cube-migration.md`). `i2c`: HAL I2C master at 400 kHz with a per-bus mutex, blocking transfers and a DMA register read; owns the I2C IRQs and HAL I2C callbacks. `spi`: blocking SPI master. `device.hpp`: the one place that picks the device header while the Arduino core is linked. `uart`: USART1/2/3 with DMA TX/RX, see "UART driver and DMA stream map". `analog_in`: ADC1 single-shot 10-bit reads (battery, NTC, motor current), serialized with masked IRQs. `timer`: timer clock enable / kernel clock for any TIM, and `PwmOutput` (motor PWM). `clock`: TIM5 free-running at 1 MHz (also the FreeRTOS run-time stats source, see `time_base.cpp`) (`init()` is the first line of `setup()`), `delayUs()`, `delayMs()` (blocks the task once the scheduler runs). `Pin`: constexpr GPIO (`Pin{Port::E, 2}`) with output/input/analog setup under masked IRQs, used for every pure-GPIO pin in both board configs (timer and ADC pins too, via `setAsAlternate` / `AnalogIn`); host-tested against a fake register block in `test/native_stubs/stm32f4xx.h` |
+| `platform/` | Hardware access on CMSIS registers / HAL (it replaced the Arduino API, see `.claude/plans/cube-migration.md`). `freertos.hpp`: the kernel headers the code uses. `i2c`: HAL I2C master at 400 kHz with a per-bus mutex, blocking transfers and a DMA register read; owns the I2C IRQs and HAL I2C callbacks. `spi`: blocking SPI master. `device.hpp`: CMSIS device header + HAL. `uart`: USART1/2/3 with DMA TX/RX, see "UART driver and DMA stream map". `analog_in`: ADC1 single-shot 10-bit reads (battery, NTC, motor current), serialized with masked IRQs. `timer`: timer clock enable / kernel clock for any TIM, and `PwmOutput` (motor PWM). `clock`: TIM5 free-running at 1 MHz (also the FreeRTOS run-time stats source, see `time_base.cpp`) (`init()` is the first line of `setup()`), `delayUs()`, `delayMs()` (blocks the task once the scheduler runs). `Pin`: constexpr GPIO (`Pin{Port::E, 2}`) with output/input/analog setup under masked IRQs, used for every pure-GPIO pin in both board configs (timer and ADC pins too, via `setAsAlternate` / `AnalogIn`); host-tested against a fake register block in `test/native_stubs/stm32f4xx.h` |
 | `pid/` | PID controller with feedforward, anti-windup, dead-zone boost |
 | `power_board/` | UART protocol to rosbot_xl power board MCU (battery state) |
 | `range/` | `RangeInterface` + `RangeVl53l0x` + `RangeArray` (rosbot only) |
@@ -491,9 +494,9 @@ co-managed.
 
 ### Serial / UDP transport (event-driven)
 
-The default Arduino paths (`EthernetUDP`, `Stream::readBytes`) busy-poll,
-keeping the link task in the Running state and burning CPU. The transports
-in `lib/mavlink/transport/` replace both with blocking primitives:
+The Arduino paths these replaced (`EthernetUDP`, `Stream::readBytes`)
+busy-polled, keeping the link task in the Running state and burning CPU.
+The transports in `lib/mavlink/transport/`:
 
 - **`mavlink_udp_transport`** (rosbot_xl) — uses the lwIP raw API. The
   `udp_recv()` callback (`ethernet_scheduler` task)
@@ -504,10 +507,9 @@ in `lib/mavlink/transport/` replace both with blocking primitives:
   `platform::Uart` (see "UART driver and DMA stream map" below):
   - **RX**: bytes land in the UART's circular DMA buffer; `read()` drains
     it and, when empty, waits with `vTaskDelay(1)` (tick-wrap-safe via
-    `vTaskSetTimeOutState` / `xTaskCheckForTimeOut`). Still a 1-tick poll,
-    but of a DMA counter instead of a per-byte-IRQ ring: an IDLE-line wakeup
-    needs `USARTx_IRQHandler`, which the Arduino core owns until migration
-    step 9.
+    `vTaskSetTimeOutState` / `xTaskCheckForTimeOut`). `MavlinkNode` only
+    reads with a zero timeout from the periodic link task, so no USART
+    interrupt is needed.
   - **TX**: `Uart::writeFrame()` queues the whole frame in the UART's stream
     buffer or drops it (never split, never blocks); DMA drains the queue in
     256 B chunks.
@@ -522,10 +524,8 @@ after halting on a breakpoint if a debugger is attached. Spinning in place,
 which is what the old `configASSERT` and STM32FreeRTOS's fault handlers did,
 leaves the timers generating the last PWM duty with no watchdog running.
 
-STM32FreeRTOS defines the fault handlers as strong symbols, so they cannot
-be overridden at link time; `installFaultHandlers()` (first call in
-`setup()`) copies the vector table to RAM and repoints `VTOR`. Before
-resetting, `fatalError()` leaves a marker at the top of CCM RAM, which the
+The fault vectors point at `fatalError()` directly
+(`boards/stm32f407/system.cpp`). Before resetting, `fatalError()` leaves a marker at the top of CCM RAM, which the
 linker script never uses and the startup code never clears. On the next
 boot `consumeFaultResetFlag()` sees it and the MAVLink node reports
 "MCU reset after a firmware fault" after the boot banner on every
@@ -549,9 +549,10 @@ callbacks.
 Until migration step 8 this was STM32Ethernet's job; its `ethernetif.cpp`
 (ST, with Husarion's LAN9303 support) is vendored in `lib/ethernet/` and
 the rest (static IP with a /24 netmask and `.1` gateway, one
-`dhcp_inform`) lives in `ethernet.cpp`. HAL ETH (the pre-1.27 API) and the
-LAN9303 PHY register constants still come from the Arduino core fork's
-`hal_conf_custom.h`, selected by `-D LAN9303`.
+`dhcp_inform`) lives in `ethernet.cpp`. HAL ETH is the Legacy (pre-1.27
+API) driver; the LAN9303 PHY register remaps it uses live in
+`boards/stm32f407/stm32f4xx_hal_conf.h`, copied from the Husarion fork of
+the Arduino core.
 
 ### FreeRTOS-safe IRQ priorities
 
@@ -559,12 +560,10 @@ LAN9303 PHY register constants still come from the Arduino core fork's
 convention: lower number = higher priority. Any IRQ that calls
 `*FromISR()` API must run at priority **≥ 5** numerically.
 
-The framework defaults I2C IRQs to priority 2 (above
-`configMAX_SYSCALL_INTERRUPT_PRIORITY`), which would crash if our
-override of `HAL_I2C_MemRxCpltCallback` ran a `*FromISR` call. The IMU
-DMA path lowers the EV/ER + DMA stream IRQ priority to 5 — canonical
-pattern in `lib/imu/imu_bno055.cpp`. Replicate this if you add another
-HAL-callback-driven path on top of a framework-managed peripheral.
+NVIC priorities reset to 0 (the highest), above
+`configMAX_SYSCALL_INTERRUPT_PRIORITY`: an IRQ enabled without an explicit
+priority would crash the kernel on its first `*FromISR` call. Set the
+priority before `NVIC_EnableIRQ`, as `lib/platform/` does.
 
 The I2C, UART TX and IMU DMA IRQs in `lib/platform/` are all set to 5.
 Before migration step 7 the I2C IRQs belonged to Arduino Wire (priority 2),
@@ -586,8 +585,8 @@ Standard HAL pattern (`platform::I2c` uses it; `platform::Uart` does the same on
 7. In task: call `HAL_..._DMA(...)` then
    `xSemaphoreTake(timeout)`.
 8. Define `extern "C" void DMAx_StreamY_IRQHandler() {
-     HAL_DMA_IRQHandler(&our_hdma); }` (the framework leaves DMA stream
-   IRQ vectors weak by default).
+     HAL_DMA_IRQHandler(&our_hdma); }` (the CMSIS startup file declares
+   every IRQ vector weak).
 9. Override `HAL_..._CpltCallback` (peripheral-specific) to do
    `xSemaphoreGiveFromISR + portYIELD_FROM_ISR`.
 
@@ -671,9 +670,7 @@ the margin would have been ~40 B. Free heap: 89 KB (ROSbot 3), 44 KB (XL).
 registers: 8N1, BRR computed exactly like HAL's `UART_BRR_SAMPLING16`
 (`uart_math.hpp`, host-tested), TX through a FreeRTOS stream buffer drained
 by DMA, RX by circular DMA into a 512 B buffer read by polling its counter.
-No USART interrupt is enabled: `USARTx_IRQHandler` is a strong symbol in
-the Arduino core's `uart.o`, which `Print.cpp` always pulls into the
-link. Text writes (`print`/`printf`, 256 B per call)
+No USART interrupt is enabled: every reader is a periodic task. Text writes (`print`/`printf`, 256 B per call)
 block until queued; before the scheduler runs (and while `createTasks()`
 has interrupts masked) every write is polled byte by byte.
 
@@ -721,77 +718,97 @@ help:
 
 ## Build
 
-`platformio.ini` defines a base `[stm32]` section with shared
-`framework-arduinoststm32` (Husarion fork), STM32duino LwIP,
-STM32FreeRTOS, ETL. Then four
-concrete envs select variant + debug/release:
+CMake + Ninja + `arm-none-eabi-gcc` (Ubuntu: `apt install cmake
+ninja-build gcc-arm-none-eabi`; CI uses that package, GCC 13.2). The
+project is `cmake/CMakeLists.txt`, not a root `CMakeLists.txt`: colcon
+would take the whole repo for one package and stop before
+`bridge/rosbot_mavlink_bridge`. `cmake/COLCON_IGNORE` and a
+`COLCON_IGNORE` written into every build dir keep colcon out.
 
-`board = rosbot_stm32f407` is a repo-local definition in `boards/`
-(STM32F407ZGT6, generic `variant_generic.h` exposing all GPIO). It is the
-honestly-named successor to the misleading `rosbot_xl_digital_board` — both
-resolve to the identical generic F407ZG build (`ARDUINO_GENERIC_F407ZGTX`),
-shared by **both** variants. The Husarion `framework-arduinoststm32` fork is
-still required: it bumps the serial RX/TX buffers (64→512) and splits the
-Ethernet pin map into `PinMap_Ethernet_MII/RMII` so RMII mode only claims its
-9 pins (upstream's single `PinMap_Ethernet[]` would grab MII-only GPIO used
-elsewhere on rosbot_xl).
+```bash
+just build rosbot_xl          # or: scripts/build.sh rosbot_xl_release
+cmake -S cmake --preset release && cmake --build build/release
+just test                     # host unit tests (CTest)
+```
 
-- `[env:rosbot]` — debug, `build_src_filter = +<rosbot/*> -<rosbot_xl/*>`.
-- `[env:rosbot_release]` — same + `[release_flags]` (`-O2 -D RELEASE`,
-  cortex-m4 / fpv4 flags). Strips `-g`. The `-O2` is not what the compiler
-  ends up using — see "Optimisation level" below.
-- `[env:rosbot_xl]` — debug, `-D LAN9303` (PHY constants in the core's
-  hal_conf),
-  `build_src_filter = -<rosbot/*> +<rosbot_xl/*>`.
-- `[env:rosbot_xl_release]` — release variant of the above.
-- `[env:native]` — host unit tests (`pio test -e native`, `just test`, CI
-  job `test-native`) for hardware-free code: PID, `time_base`, encoder
-  counter delta, NTC conversion, and `lib/platform` drivers against fake
-  register blocks. `test/native_stubs/` stands in for the CMSIS device
-  header and `STM32FreeRTOS.h`; its critical-section hook lets a test
-  simulate preemption. Code that touches HAL, FreeRTOS or a peripheral
-  needs a seam before it can be tested here (PowerBoard parser,
+- Presets (`cmake/CMakePresets.json`): `debug` → `build/debug/`,
+  `release` → `build/release/`. Each builds `rosbot.{elf,bin,map}` and
+  `rosbot_xl.{elf,bin,map}`. Release adds `-D RELEASE` (drops the Monitor
+  task) and `-funroll-loops`.
+- `scripts/build.sh <rosbot|rosbot_xl>[_release]` is the one place that maps
+  the target names `just`, `flash.sh` and the VS Code tasks use onto a
+  preset and a board, and prints the `.bin` path.
+- Third-party sources are pinned in `cmake/dependencies.cmake` and fetched
+  at configure time (network needed once per build dir): STM32CubeF4 HAL
+  `v1.8.1`, CMSIS device F4 `v2.6.8`, FreeRTOS-Kernel `V10.3.1`, lwIP
+  `2.2.1` (stm32duino packaging), ETL `20.49.0`. These are the versions the
+  PlatformIO build linked, so the switch changed the build, not the
+  drivers. The FetchContent projects are only downloaded, never added, so
+  their own CMake files do not matter.
+- Our code builds with `-Wall -Wextra -Wfatal-errors -Wdouble-promotion
+  -Wshadow` and is warning-free; vendor code is compiled with `-w`.
+- `lib/` is compiled once as OBJECT libraries, not archives: an archive
+  member is only linked when referenced, and IRQ handlers are referenced
+  by nothing but the weak vector table.
+- `set(FW_VERSION "vX.Y.Z-jazzy")` in `cmake/CMakeLists.txt` carries the
+  firmware version. The release workflow (`.github/workflows/release.yaml`)
+  bumps it before tagging and publishes `rosbot-<tag>.bin` /
+  `rosbot_xl-<tag>.bin` from `build/release/`.
+- Host unit tests: `test/CMakeLists.txt` (CTest + Unity 2.6.1, host
+  compiler; `just test`, CI job `test-native`) for hardware-free code: PID,
+  `time_base`, encoder counter delta, NTC conversion, and `lib/platform`
+  drivers against fake register blocks. `test/native_stubs/` stands in for
+  the CMSIS device header and the FreeRTOS headers; its critical-section
+  hook lets a test simulate preemption. Code that touches HAL, FreeRTOS or a
+  peripheral needs a seam before it can be tested here (PowerBoard parser,
   `persistent_config`, `MavlinkNode`).
 
-The release envs list `${stm32.build_unflags}` before `-g`: overriding
-`build_unflags` alone dropped the base `-std=gnu++14` unflag and compiled
-parts of the tree as C++14. All firmware envs build with
-`-Wdouble-promotion -Wshadow`; our code is warning-free with them (the
-third-party libraries are not).
+### Startup and memory
 
-`-D FW_VERSION=\"vX.Y.Z-jazzy\"` carries the firmware version. The release
-workflow (`.github/workflows/release.yaml`) bumps it before tagging.
+`Reset_Handler` (CMSIS template) copies `.data`, clears `.bss`, calls
+`SystemInit` (FPU, `VTOR` = flash) and the static constructors. The first
+constructor (`boardInit`, priority 101) sets NVIC priority grouping 4, runs
+`HAL_Init()` and the clock tree, so every other constructor already sees
+HAL and 168 MHz, the order the Arduino core used. `main()` calls `setup()`
+(`src/<variant>/main.cpp`), which ends in `vTaskStartScheduler()`.
 
-### Optimisation level (measured 2026-10, not yet changed)
+Clock: internal 16 MHz RC → PLL → SYSCLK 168 MHz, APB1 42 MHz, APB2 84 MHz.
+`SysTick_Handler` increments `HAL_GetTick()` and, once the scheduler runs,
+calls the FreeRTOS tick.
 
-The stm32duino platform puts its own `-Os` after the env's `build_flags`,
-so every release object is compiled with `-O2 … -Os` and the **effective
-level is `-Os`** (check with `pio run -e rosbot_release -v`). Release text
-size per option (`arm-none-eabi-size`, bytes):
+Flash: the image may use sectors 0–10 (896 KB); sector 11 belongs to
+`lib/persistent_config`, and the linker script fails the link if the image
+grows into it. RAM: one heap for libc and FreeRTOS (`pvPortMalloc()` is
+newlib `malloc()`), from the end of `.bss` up to a 1 KB main stack at the top
+of RAM; the main stack serves `setup()` and, after the scheduler starts,
+every ISR. Nothing is placed in CCM RAM, which is what lets `lib/fault` keep
+its reset marker there; DMA buffers are declared with `alignas(4)` at file
+scope and land in regular SRAM.
+
+### Optimisation level
+
+Both presets compile with `-Os`, which is what the PlatformIO build ended
+up with (its platform appended `-Os` after the env's `-O2`). Text size per
+option, measured 2026-10 on the PlatformIO build (`arm-none-eabi-size`,
+bytes):
 
 | option | rosbot_release | rosbot_xl_release |
 |---|---:|---:|
 | `-Os` (what ships) | 87 328 | 120 496 |
 | `-Os -flto` | 70 208 | 101 504 |
-| real `-O2` (`-Os` unflagged; with `-funroll-loops`) | 184 128 | 221 536 |
+| real `-O2` (with `-funroll-loops`) | 184 128 | 221 536 |
 | real `-O2 -flto` | 150 788 | 195 856 |
 
-All four fit the 896 KB application area and build cleanly, LTO included.
-Which is faster, and whether LTO is safe at runtime (the comment in
-`platformio.ini` mentions FreeRTOS issues), needs a HW comparison of task
-timing and idle time — idle is already ~90 % at `-Os`.
+All four fit the 896 KB application area. Which is faster, and whether LTO
+is safe at runtime, needs a HW comparison of task timing and idle time —
+idle is already ~90 % at `-Os`.
 
-Build output sizes (release, after micro-ROS was removed):
-- rosbot ~88 KB Flash (10 %), ~11 KB static RAM (8 %)
-- rosbot_xl ~125 KB Flash (14 %), ~54 KB static RAM (41 %)
+Build output sizes (release, CMake, GCC 13.2, 2026-11):
+- rosbot ~63 KB Flash (7 %), ~9 KB static RAM (7 %)
+- rosbot_xl ~101 KB Flash (11 %), ~52 KB static RAM (40 %)
 
-With micro-ROS still linked (v2.1.0-jazzy) the same builds were 207 KB /
-53 KB and 244 KB / 95 KB.
-
-Nothing is placed in CCM RAM: the linker script defines the region but
-no section uses it, which is what lets `lib/fault` keep its reset marker
-there. DMA buffers are declared with `alignas(4)` at file scope and land
-in regular SRAM.
+With micro-ROS still linked (v2.1.0-jazzy) the PlatformIO builds were
+207 KB / 53 KB and 244 KB / 95 KB.
 
 ---
 
@@ -885,7 +902,7 @@ comes up.
     lives inside the bridge package at
     `bridge/rosbot_mavlink_bridge/mavlink_dialect/` (single canonical
     location); the firmware reaches it via the include path in
-    `platformio.ini`.
+    `cmake/CMakeLists.txt`.
 - `src/<variant>/main.cpp` — variant entry point.
 - `src/<variant>/mavlink_entities.cpp` — MAVLink publisher/subscriber
   registration + the `g_mavlink_node` definition.
@@ -964,8 +981,7 @@ tree. The dialect headers live inside the package at
 [`bridge/rosbot_mavlink_bridge/mavlink_dialect/`](./bridge/rosbot_mavlink_bridge/mavlink_dialect/)
 — this is the **canonical** mavgen output location, not a mirror. The
 firmware build reads from the same directory via its include path
-(`-I bridge/rosbot_mavlink_bridge/mavlink_dialect/rosbot` in
-`platformio.ini`), so there is no duplication. Keeping the headers
+(`cmake/CMakeLists.txt`), so there is no duplication. Keeping the headers
 inside the package makes the bridge self-contained for bloom releases
 to rosdistro (the source tarball archives only the package subtree).
 Launch files take a `namespace` arg and set `--ros-args -r __ns:=<value>`
@@ -978,10 +994,12 @@ namespace the host also sends the MCU in the `NS:` handshake line.
 
 These are documented to avoid re-discovery:
 
-- **Link RX on rosbot is still a 1-tick poll.** RX runs on circular DMA
-  (no per-byte IRQ any more), but waking the link task on IDLE line needs
-  `USARTx_IRQHandler`, a strong symbol in the Arduino core until migration
-  step 9 removes the core.
+- **Link RX on rosbot is polled by a periodic task.** RX runs on circular
+  DMA into a 512 B ring and the link task drains it every period; at
+  921600 baud a 5 ms period fills ~460 B, so a longer stall in that task
+  can overrun the ring. An IDLE-line IRQ waking the link task would remove
+  both the poll and the limit, but changes the task's timing: measure on
+  HW first.
 - **No SBC IP auto-discovery.** `SBC_IP` and `CLIENT_IP` are hardcoded in
   `include/rosbot_xl/config.hpp`. True auto-discovery options were
   considered (DHCP server on MCU, broadcast announcement protocol, mDNS)

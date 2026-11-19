@@ -1,6 +1,6 @@
 # Plan: Arduino → STM32Cube HAL + FreeRTOS + ETL
 
-Status: steps 0–7 on local `devel`, step 8 on local `cube-switchover`; none HW-tested yet, 2026-11-19.
+Status: steps 0–7 on local `devel`, steps 8–10 on local `cube-switchover`; none HW-tested yet, 2026-11-19.
 
 Decisions (Rafał, 2026-11-19): CMake + CubeMX after step 9; steps 8–9 on
 a short-lived branch merged into `devel` after HW test on both robots;
@@ -108,8 +108,8 @@ the next step lands.
 | 6 | `platform::Uart`: registers + DMA TX queue + circular DMA RX for the link, debug and power board UARTs; `HardwareSerial` and `-D ENABLE_HWSERIALx` gone. Finding 1 half closed: no per-byte RX IRQ, but the IDLE-line wakeup waits for step 9 (`USARTx_IRQHandler` is strong in the core's `uart.o`, which `Print.cpp` and Adafruit always link) | high (link) | yes |
 | 7 | `platform::I2c` (HAL, bus mutex, DMA read, own IRQs/callbacks), own BNO055 driver, vendored Pololu VL53L0X on it, EEPROM; `platform::Spi` for the LED strip; no source includes `Arduino.h` any more. Wire, Adafruit (BNO055/BusIO/Sensor) and Pololu are out of the link. Closes findings 2, 3, 11 | high (IMU) | yes |
 | 8 | `lib/ethernet`: vendored `ethernetif` (ST + Husarion LAN9303) + our bring-up (static IP, DHCP inform, lwIP task, link checks) replace STM32Ethernet; `include/lwipopts.h` keeps the same option values. HAL ETH stays the core's pre-1.27 API; moving to the new F4 ETH API is a separate change after step 9 | high | yes |
-| 9 | Switch-over: CMake + CubeMX `.ioc` per board, FreeRTOS kernel from CubeF4 middleware, linker script (sector 11 reserved, CCM fault marker), static allocation; drop `framework = arduino` | high | yes |
-| 10 | Tooling: CI, `justfile`, `scripts/flash.sh`, `release.yaml` (keep artifact names `rosbot-<tag>.bin`), host tests → CMake/CTest + Unity; ARCHITECTURE rewrite | med | no |
+| 9 | Switch-over: CMake (`cmake/`), CubeF4 HAL 1.8.1 + CMSIS device 2.6.8 + FreeRTOS-Kernel 10.3.1 + lwIP 2.2.1 pinned by FetchContent (the versions the Arduino build linked), `boards/stm32f407/` (startup, linker script with sector 11 reserved and CCM untouched, hal_conf with the LAN9303 ETH section, FreeRTOSConfig, clock/SysTick/main, newlib heap, syscalls); `framework = arduino` gone. No `.ioc` and no static allocation, see notes | high | yes |
+| 10 | Tooling: CI, `justfile`, `scripts/build.sh` + `flash.sh`, `release.yaml` (artifact names kept), VS Code tasks, host tests → CTest + Unity 2.6.1, `platformio.ini` gone; ARCHITECTURE "Build" rewritten | med | no |
 
 Steps 2–8 run inside the Arduino build, using HAL that the core already
 links. That is the point: each driver is replaced and HW-tested alone,
@@ -183,9 +183,44 @@ only become fully interrupt-driven at step 9.
   ~1.2 us); reads are now serialized, where XL's motor and fan tasks could
   previously interleave ADC1 re-inits.
 
-## HW smoke test for steps 1–8
+- Step 9 decisions:
+  - **No CubeMX `.ioc`.** STM32CubeIDE 2.0 no longer embeds CubeMX and
+    no standalone CubeMX is installed here; besides, every peripheral is
+    already configured in `lib/platform/`, so generated init code would
+    duplicate it. The clock tree is code in `boards/stm32f407/system.cpp`.
+    An `.ioc` can still be added later as documentation of the pinout.
+  - **Heap kept, static allocation deferred (finding 7 stays open).**
+    `pvPortMalloc()` is newlib `malloc()` over all free RAM, the layout
+    STM32FreeRTOS's `heap_useNewlib_ST` gave, so the switch does not
+    change the RAM budget. Moving to `xTaskCreateStatic` is its own change.
+  - **No USART IRQ (finding 1 not pursued).** The link task is periodic
+    and reads with a zero timeout; an IDLE-line wakeup only pays off if
+    that task is redesigned to block on RX, which needs HW timing.
+  - **CMake project in `cmake/`** with COLCON_IGNORE: a root
+    `CMakeLists.txt` made colcon see `rosbot_firmware (cmake)` and lose
+    `bridge/rosbot_mavlink_bridge` (checked with `colcon list`).
+  - `-Os` kept in both presets (finding 5 measured, not changed).
+- Step 9 behaviour differences to watch on HW:
+  - Compiler: CI and `apt` give GCC 13.2.1; PlatformIO used 9.2.1. Both
+    build warning-free (checked locally with PlatformIO's 9.2.1 too).
+  - Startup is the CMSIS template + our `boardInit` constructor: same
+    clock tree (internal RC, 168 MHz), NVIC grouping 4, HAL init before other
+    constructors, `VTOR` = flash. SystemInit no longer re-resets RCC
+    (it is at reset values anyway after a reset).
+  - Fault vectors are `fatalError()` directly; the RAM vector copy is gone.
+  - Idle and tick hooks are off (both were empty).
+  - `xPortGetFreeHeapSize()` (Monitor) = free malloc blocks + never-used
+    heap; STM32FreeRTOS reported only the never-used part, so the number
+    may read higher.
+  - USART1/2/3 IRQ vectors are `Default_Handler`; nothing enables them.
+- Left open after step 10: `.vscode/launch.json` is still the
+  PlatformIO debugger config (local IDE state, not touched); ST-Link
+  flashing has no recipe (flash goes through the bootloader).
 
-Both robots, same firmware build as the commit:
+## HW smoke test for steps 1–10
+
+Both robots, firmware from `just build rosbot[_xl][_release]` on the
+commit under test:
 
 - Boot: red LED on, then status LED behaviour as before (solid until the
   bridge connects, off when OK).
@@ -217,6 +252,12 @@ Both robots, same firmware build as the commit:
   Ethernet cable re-plug (link check); ping 192.168.77.3 from the SBC;
   power-board shutdown button sends the HTTP shutdown request to the SBC;
   LAN9303 ports still forward (SBC <-> rear port).
+- Switch-over (step 9): boots on both boards with debug and release
+  builds; IMU calibration and namespace saved before the switch are still
+  read back (flash sector 11 untouched); a forced fault (e.g. debugger
+  `configASSERT(0)`) resets and reports "MCU reset after a firmware fault";
+  Monitor (debug build) shows stack high-water marks and idle % close to
+  the step-8 numbers; `just flash` works on the SBC.
 - Timing (step 3): bridge TIMESYNC converges and stays (no clock jumps in
   `/imu` / `/joint_states` stamps over 10+ min); wheel watchdog stops the
   robot ~0.5 s after commands stop; runtime IMU calibration
@@ -225,7 +266,8 @@ Both robots, same firmware build as the commit:
 
 ## Test strategy
 
-- Per step: build 4 envs, `pio test -e native`, pre-commit.
+- Per step: build 4 envs (now `just build-all`), host tests (`pio test -e
+  native`, now `just test`), pre-commit.
 - Pure refactors: compare release binaries (or normalized disassembly)
   against the parent commit.
 - HW steps: smoke on both robots: boot handshake with the bridge,
