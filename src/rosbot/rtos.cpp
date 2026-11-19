@@ -52,7 +52,7 @@ inline TaskConfig tasks[] = {
 #endif
     {"MotorControl", Priority::CONTROL, Stack::M, 200, motorControlTask},
     {"Range", Priority::SENSORS, Stack::M, 10, rangeTask},
-    {"Link", Priority::COMMUNICATION, Stack::XXL, 200, linkTask},
+    {"Link", Priority::COMMUNICATION, Stack::XXL, 1000, linkTask},
 };
 
 inline TaskHandleWrapper taskHandles[sizeof(tasks) / sizeof(tasks[0])];

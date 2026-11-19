@@ -190,7 +190,7 @@ upstream stack; it was removed after v2.1.0-jazzy (see git history).
 | `vl53l0x/` | Vendored Pololu VL53L0X driver (MIT, `LICENSE.txt`), bus calls on `platform::I2c`; excluded from pre-commit |
 | `motor/` | `MotorInterface`, `MotorHiZ`, `MotorArray` (Hi-Z PWM control) |
 | `persistent_config/` | Namespace + BNO055 calibration offsets, stored as one record appended to a log in flash sector 11. Appending is safe at runtime; only the 1-3 s sector erase (sector full) is deferred to a pre-scheduler `save()` — see "IMU calibration" |
-| `platform/` | Hardware access on CMSIS registers / HAL (it replaced the Arduino API, see `.claude/plans/cube-migration.md`). `freertos.hpp`: the kernel headers the code uses. `i2c`: HAL I2C master at 400 kHz with a per-bus mutex, blocking transfers and a DMA register read; owns the I2C IRQs and HAL I2C callbacks. `spi`: blocking SPI master. `device.hpp`: CMSIS device header + HAL. `uart`: USART1/2/3 with DMA TX/RX, see "UART driver and DMA stream map". `analog_in`: ADC1 single-shot 10-bit reads (battery, NTC, motor current), serialized with masked IRQs. `timer`: timer clock enable / kernel clock for any TIM, and `PwmOutput` (motor PWM). `clock`: TIM5 free-running at 1 MHz (also the FreeRTOS run-time stats source, see `time_base.cpp`) (`init()` is the first line of `setup()`), `delayUs()`, `delayMs()` (blocks the task once the scheduler runs). `Pin`: constexpr GPIO (`Pin{Port::E, 2}`) with output/input/analog setup under masked IRQs, used for every pure-GPIO pin in both board configs (timer and ADC pins too, via `setAsAlternate` / `AnalogIn`); host-tested against a fake register block in `test/native_stubs/stm32f4xx.h` |
+| `platform/` | Hardware access on CMSIS registers / HAL (it replaced the Arduino API, see `.claude/plans/cube-migration.md`). `freertos.hpp`: the kernel headers the code uses. `i2c`: HAL I2C master at 400 kHz with a per-bus mutex; once the scheduler runs every transfer uses HAL's IT API (DMA for the IMU block read) and the task sleeps until it ends; bus recovery after faults; owns the I2C IRQs and HAL I2C callbacks. `spi`: blocking SPI master. `device.hpp`: CMSIS device header + HAL. `uart`: USART1/2/3 with DMA TX/RX, see "UART driver and DMA stream map". `analog_in`: ADC1 single-shot 10-bit reads (battery, NTC, motor current), serialized with masked IRQs. `timer`: timer clock enable / kernel clock for any TIM, and `PwmOutput` (motor PWM). `clock`: TIM5 free-running at 1 MHz (also the FreeRTOS run-time stats source, see `time_base.cpp`) (`init()` is the first line of `setup()`), `delayUs()`, `delayMs()` (blocks the task once the scheduler runs). `Pin`: constexpr GPIO (`Pin{Port::E, 2}`) with output/input/analog setup under masked IRQs, used for every pure-GPIO pin in both board configs (timer and ADC pins too, via `setAsAlternate` / `AnalogIn`); host-tested against a fake register block in `test/native_stubs/stm32f4xx.h` |
 | `pid/` | PID controller with feedforward, anti-windup, dead-zone boost |
 | `power_board/` | UART protocol to rosbot_xl power board MCU (battery state) |
 | `range/` | `RangeInterface` + `RangeVl53l0x` + `RangeArray` (rosbot only) |
@@ -569,8 +569,30 @@ The I2C, UART TX and IMU DMA IRQs in `lib/platform/` are all set to 5.
 Before migration step 7 the I2C IRQs belonged to Arduino Wire (priority 2),
 and lowering them for the BNO055 DMA path broke Wire's own IT transfers
 (HW-verified 2026-08-26), which forced a separate `enableDmaReads()` after
-boot calibration. `platform::I2c` does blocking transfers by polling and
-only the DMA read uses interrupts, so that ordering constraint is gone.
+boot calibration. `platform::I2c` uses its IRQs for every transfer at
+priority 5 from the start, so that ordering constraint is gone.
+
+### I2C transfers: IT mode, never polled under the scheduler
+
+Before the scheduler starts (boot, sensor init) transfers are HAL's polled
+calls. After that every transfer is HAL IT (`Mem_Write_IT`,
+`Mem_Read_IT`, `Master_Transmit_IT`/`Receive_IT`) or, for the 32-byte IMU
+block, a sequential IT register write + DMA read, and the calling task
+sleeps on a semaphore. Measured on ROSbot 3 (2026-11-19):
+
+- The polled calls busy-wait the whole transfer, and the BNO055 stretches
+  the clock: `HAL_I2C_Mem_Read_DMA`'s polled address phase alone cost
+  230-450 us per IMU read (DWT), the Imu task 3.75 % CPU. Now 0.43 %.
+  The Range task (VL53L0X polling) dropped from 1.25 % to 0.32 %.
+- The polled calls have steps that must follow within a byte time (for a
+  1-byte read, STOP right after ADDR is cleared; HAL 1.8.1 does not mask
+  IRQs there). In IT mode the ISR does them.
+
+Event-driven waking of the link task (producers notifying it after each
+`xQueueOverwrite`) was tried and dropped: in 4 of 4 sessions a front
+VL53L0X stopped answering (NACK at its address, no bus fault) after
+motor tests, never with the fixed-rate link loop (12 clean runs). The
+cause is not understood; do not reintroduce it without finding it.
 
 ### DMA + FreeRTOS handshake
 
