@@ -41,7 +41,7 @@ Two independent paths reach the switch fabric's CSRs, both confirmed wired
 on the schematic:
 - **MDIO/SMI** — pins 21/20 (`MDIO`/`MDC`) land on nets `ETH_MDIO`/`ETH_MDC`,
   same prefix as the RMII bus to the MCU, i.e. the same pins
-  `STM32Ethernet`'s `ethernetif.cpp` already uses for ordinary PHY register
+  `lib/ethernet/ethernetif.cpp` already uses for ordinary PHY register
   reads (`PHY_BSR`/`PHY_BCR` via `LAN9303_To_SMI_Address_Conv`). SMI reuses
   the MDIO/MDC pins with **extended addressing** (PHY address 16–31, vs.
   plain MIIM 0–15) to reach *all* internal registers, not just the Port 1/2
@@ -122,8 +122,8 @@ as-is given the trade-off above.
 `rosbot_xl_release`. Each variant's env sets:
 
 - `build_src_filter` to include only `src/<variant>/*.cpp`
-- Variant-specific transport flags (`-D ETHERNET_USE_FREERTOS`,
-  `-D LAN9303`)
+- `-D LAN9303` on rosbot_xl (selects the LAN9303 PHY constants in the
+  core's hal_conf)
 
 There is no variant macro (`ROSBOT` / `ROSBOT_XL` were removed): the variant
 is chosen by which `src/<variant>/` is compiled, and those files include
@@ -150,8 +150,10 @@ Layers, bottom-up:
 1. **STM32 HAL + LL** (vendor) — peripheral drivers. Used directly when we
    need DMA / interrupt control beyond what the framework exposes.
 2. **stm32duino Arduino core** — `framework-arduinoststm32` (Husarion
-   fork). Provides `Arduino.h`, `Wire`, `HardwareSerial`, `HardwareTimer`,
-   `STM32Ethernet`, `LwIP`. Pinned via `platformio.ini`.
+   fork), pinned via `platformio.ini`. Since migration step 8 it only
+   provides startup (`main()` calling `setup()`), clock and HAL init, the
+   SysTick handler and the HAL config; no Arduino API is used. lwIP comes
+   from the `STM32duino LwIP` library (plain lwIP 2.2.1).
 3. **STM32FreeRTOS 10.3.3** — single-core preemptive scheduler.
 4. **Vendor / device libraries** — Pololu VL53L0X, vendored in
    `lib/vl53l0x/` (MIT) and moved onto `platform::I2c`; the BNO055 driver
@@ -174,6 +176,7 @@ upstream stack; it was removed after v2.1.0-jazzy (see git history).
 | `battery/` | `BatteryInterface` + `BatteryAdc` (rosbot battery via ADC) + `SocEstimator` (rosbot_xl: coulomb counting corrected by load-compensated OCV, so percentage does not jump under load; rosbot: rest-voltage curve through a low-pass filter, as there is no current measurement) |
 | `boot_option/` | `resolveBootAction()` — classifies the power-on button gesture (tap vs 3 s hold) into "change transport" / "calibrate IMU" / nothing, owns the confirmation LEDs — see "IMU calibration" under "Patterns" |
 | `comm_manager/` | `CommunicationManager` — chooses primary vs diagnostic transport at boot, driven by `boot_option`'s decision |
+| `ethernet/` | rosbot_xl network bring-up: `ethernet::begin()` (static IP, lwIP task, link checks) + vendored `ethernetif` (ST/Husarion, LAN9303); `include/lwipopts.h` holds the lwIP options |
 | `eeprom/` | I2C EEPROM driver + `BoardRevision` (revision string read on rosbot_xl) |
 | `encoder/` | `EncoderInterface` + `HardwareEncoder` (STM32 timer in encoder mode, x4) |
 | `fan/` | Fan + NTC thermistor (rosbot_xl only) |
@@ -492,8 +495,8 @@ The default Arduino paths (`EthernetUDP`, `Stream::readBytes`) busy-poll,
 keeping the link task in the Running state and burning CPU. The transports
 in `lib/mavlink/transport/` replace both with blocking primitives:
 
-- **`mavlink_udp_transport`** (rosbot_xl) — bypasses Arduino `EthernetUDP`,
-  uses the LwIP raw API directly. The `udp_recv()` callback (LwIP thread)
+- **`mavlink_udp_transport`** (rosbot_xl) — uses the lwIP raw API. The
+  `udp_recv()` callback (`ethernet_scheduler` task)
   pushes the payload into a FreeRTOS stream buffer; `read()` blocks on
   `xStreamBufferReceive(timeout)`; `write()` calls `udp_sendto()` (LwIP TX
   is already DMA-driven).
@@ -530,22 +533,25 @@ connection.
 
 ### lwIP ownership (rosbot_xl)
 
-lwIP is built with `NO_SYS=1`, so it is not thread-safe. With
-`ETHERNET_USE_FREERTOS`, STM32Ethernet drives it from its own
-`ethernet_scheduler` task (priority 5, every tick): RX, timers and every raw
-API callback run there; no ISR touches lwIP (`ETH_INPUT_USE_IT` is off).
-Any other task that calls lwIP must keep `ethernet_scheduler` out — inside
-`taskENTER_CRITICAL()` or with the scheduler suspended (`vTaskSuspendAll()`,
-which leaves IRQs enabled) — and must not wait for lwIP to make progress
-meanwhile: `MavlinkUdpTransport::write()` suspends the scheduler,
-`sendShutdownRequest()` in `src/rosbot_xl/rtos.cpp` uses a critical
-section. Follow-up work (send, close) belongs in the lwIP callbacks.
+lwIP is built with `NO_SYS=1` (`include/lwipopts.h`), so it is not
+thread-safe. `ethernet::begin()` (`lib/ethernet/ethernet.cpp`) starts the
+`ethernet_scheduler` task (priority 5, every tick) that owns it: RX
+(`ethernetif_input`), timers, a LAN9303 link check every 500 ms, and every
+raw-API callback run there; no ISR touches lwIP (`ETH_INPUT_USE_IT` is
+off). Any other task that calls lwIP must keep `ethernet_scheduler` out —
+inside `taskENTER_CRITICAL()` or with the scheduler suspended
+(`vTaskSuspendAll()`, which leaves IRQs enabled) — and must not wait for
+lwIP to make progress meanwhile: `MavlinkUdpTransport::write()` suspends
+the scheduler, `sendShutdownRequest()` in `src/rosbot_xl/rtos.cpp` uses a
+critical section. Follow-up work (send, close) belongs in the lwIP
+callbacks.
 
-Do not use `EthernetClient` from a task: its `connect()` calls lwIP
-unprotected, and the `stm32_eth_scheduler()` it spins on is a no-op under
-FreeRTOS (core ≥ 1.6.1), so it only works because `ethernet_scheduler`
-preempts it. For the same reason it never connects with the scheduler
-suspended.
+Until migration step 8 this was STM32Ethernet's job; its `ethernetif.cpp`
+(ST, with Husarion's LAN9303 support) is vendored in `lib/ethernet/` and
+the rest (static IP with a /24 netmask and `.1` gateway, one
+`dhcp_inform`) lives in `ethernet.cpp`. HAL ETH (the pre-1.27 API) and the
+LAN9303 PHY register constants still come from the Arduino core fork's
+`hal_conf_custom.h`, selected by `-D LAN9303`.
 
 ### FreeRTOS-safe IRQ priorities
 
@@ -716,7 +722,7 @@ help:
 ## Build
 
 `platformio.ini` defines a base `[stm32]` section with shared
-`framework-arduinoststm32` (Husarion fork), STM32Ethernet, LwIP,
+`framework-arduinoststm32` (Husarion fork), STM32duino LwIP,
 STM32FreeRTOS, ETL. Then four
 concrete envs select variant + debug/release:
 
@@ -734,7 +740,8 @@ elsewhere on rosbot_xl).
 - `[env:rosbot_release]` — same + `[release_flags]` (`-O2 -D RELEASE`,
   cortex-m4 / fpv4 flags). Strips `-g`. The `-O2` is not what the compiler
   ends up using — see "Optimisation level" below.
-- `[env:rosbot_xl]` — debug, `-D ETHERNET_USE_FREERTOS`, `-D LAN9303`,
+- `[env:rosbot_xl]` — debug, `-D LAN9303` (PHY constants in the core's
+  hal_conf),
   `build_src_filter = -<rosbot/*> +<rosbot_xl/*>`.
 - `[env:rosbot_xl_release]` — release variant of the above.
 - `[env:native]` — host unit tests (`pio test -e native`, `just test`, CI
@@ -872,8 +879,8 @@ comes up.
     forward via `MavlinkNode::sendMessage()`.
   - `subscribers/{wheel_cmd,led,led_strip}_subscriber.hpp` and
     `commands/mcu_id_command.hpp` — dispatched by msgid from the rx loop.
-  - `transport/mavlink_{serial,udp}_transport.{hpp,cpp}` — DMA-TX +
-    yielding-poll RX (serial) / LwIP raw API (UDP), see "Patterns".
+  - `transport/mavlink_{serial,udp}_transport.{hpp,cpp}` — `platform::Uart`
+    (serial) / lwIP raw API (UDP), see "Patterns".
   - `dialect/rosbot.xml` — dialect source of truth. The mavgen C output
     lives inside the bridge package at
     `bridge/rosbot_mavlink_bridge/mavlink_dialect/` (single canonical

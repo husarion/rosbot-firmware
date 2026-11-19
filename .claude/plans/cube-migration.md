@@ -1,6 +1,6 @@
 # Plan: Arduino → STM32Cube HAL + FreeRTOS + ETL
 
-Status: steps 0–7 done (local `devel`, not HW-tested), 2026-11-19.
+Status: steps 0–7 on local `devel`, step 8 on local `cube-switchover`; none HW-tested yet, 2026-11-19.
 
 Decisions (Rafał, 2026-11-19): CMake + CubeMX after step 9; steps 8–9 on
 a short-lived branch merged into `devel` after HW test on both robots;
@@ -107,7 +107,7 @@ the next step lands.
 | 5 | `platform::AnalogIn`: ADC1 single-shot on registers with the same setup as `analogRead()` (10-bit, 15 cycles, PCLK2/4), conversion under masked IRQs (XL motor and fan tasks share ADC1). DMA left out: nothing needs it at the current rates | low | yes |
 | 6 | `platform::Uart`: registers + DMA TX queue + circular DMA RX for the link, debug and power board UARTs; `HardwareSerial` and `-D ENABLE_HWSERIALx` gone. Finding 1 half closed: no per-byte RX IRQ, but the IDLE-line wakeup waits for step 9 (`USARTx_IRQHandler` is strong in the core's `uart.o`, which `Print.cpp` and Adafruit always link) | high (link) | yes |
 | 7 | `platform::I2c` (HAL, bus mutex, DMA read, own IRQs/callbacks), own BNO055 driver, vendored Pololu VL53L0X on it, EEPROM; `platform::Spi` for the LED strip; no source includes `Arduino.h` any more. Wire, Adafruit (BNO055/BusIO/Sensor) and Pololu are out of the link. Closes findings 2, 3, 11 | high (IMU) | yes |
-| 8 | Ethernet: STM32Ethernet/LwIP Arduino → HAL ETH (new F4 ETH API) + Cube LwIP + LAN9303 init (XL) | high | yes |
+| 8 | `lib/ethernet`: vendored `ethernetif` (ST + Husarion LAN9303) + our bring-up (static IP, DHCP inform, lwIP task, link checks) replace STM32Ethernet; `include/lwipopts.h` keeps the same option values. HAL ETH stays the core's pre-1.27 API; moving to the new F4 ETH API is a separate change after step 9 | high | yes |
 | 9 | Switch-over: CMake + CubeMX `.ioc` per board, FreeRTOS kernel from CubeF4 middleware, linker script (sector 11 reserved, CCM fault marker), static allocation; drop `framework = arduino` | high | yes |
 | 10 | Tooling: CI, `justfile`, `scripts/flash.sh`, `release.yaml` (keep artifact names `rosbot-<tag>.bin`), host tests → CMake/CTest + Unity; ARCHITECTURE rewrite | med | no |
 
@@ -152,6 +152,17 @@ only become fully interrupt-driven at step 9.
   Arduino: `HardwareSerial` (link, debug, power board), `Wire`/`SPI`,
   Adafruit BNO055, Pololu VL53L0X, STM32Ethernet/LwIP, `setup()`/`loop()`
   entry, and the core's clock/HAL init.
+- Step 8 behaviour differences: HAL_GetTick() on rosbot_xl is HAL's own
+  (core SysTick increments it before and after the scheduler starts), no
+  longer STM32Ethernet's override that returned the FreeRTOS tick; same
+  1 ms rate. The ethernet task, its priority/stack, the 500 ms link check
+  and lwIP options are unchanged.
+- Step 9 must bring along, from the Husarion core fork: the ETH section of
+  `hal_conf_custom.h` (MAC_ADDR*, ETH_RX/TX_BUF_SIZE/NB, the LAN9303
+  `PHY_*` remaps that `HAL_ETH_Init` itself uses), and the pre-1.27 HAL ETH
+  driver (CubeF4 ships it as `Legacy/stm32f4xx_hal_eth_legacy.c` with
+  `HAL_ETH_LEGACY_MODULE_ENABLED`); lwIP 2.2.1 sources (STM32duino LwIP or
+  upstream at the same tag).
 - Step 7 behaviour differences: BNO055 init writes the axis remap and clock
   source in the one CONFIG window instead of three more mode switches (same
   final registers, shorter boot); `enableDmaReads()` is gone (DMA works
@@ -172,7 +183,7 @@ only become fully interrupt-driven at step 9.
   ~1.2 us); reads are now serialized, where XL's motor and fan tasks could
   previously interleave ADC1 re-inits.
 
-## HW smoke test for steps 1–7
+## HW smoke test for steps 1–8
 
 Both robots, same firmware build as the commit:
 
@@ -202,6 +213,10 @@ Both robots, same firmware build as the commit:
   on the next boot; runtime calibration save; ROSbot 4 range sensors with
   correct frame per sensor; XL board revision read from EEPROM (ILIM / fan
   path picked accordingly); XL LED strip animations.
+- Ethernet (step 8, XL): bridge connects over UDP at boot and after an
+  Ethernet cable re-plug (link check); ping 192.168.77.3 from the SBC;
+  power-board shutdown button sends the HTTP shutdown request to the SBC;
+  LAN9303 ports still forward (SBC <-> rear port).
 - Timing (step 3): bridge TIMESYNC converges and stays (no clock jumps in
   `/imu` / `/joint_states` stamps over 10+ min); wheel watchdog stops the
   robot ~0.5 s after commands stop; runtime IMU calibration
