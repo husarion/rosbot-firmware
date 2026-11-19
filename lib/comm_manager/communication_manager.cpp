@@ -99,7 +99,7 @@ void CommunicationManager::configureNamespace(uint16_t timeout_ms) {
     return;
   }
 
-  std::strncpy(namespace_.data(), cfg_.ns_default, NS_MAX_LENGTH);
+  std::strncpy(namespace_.data(), cfg_.ns_default, NS_MAX_LENGTH - 1);
   namespace_[NS_MAX_LENGTH - 1] = '\0';
 }
 
@@ -164,7 +164,7 @@ bool CommunicationManager::parseAndStoreNamespace(platform::Uart& serial,
     return false;
   }
 
-  std::strncpy(namespace_.data(), buf + kPrefixLen, NS_MAX_LENGTH);
+  std::strncpy(namespace_.data(), buf + kPrefixLen, NS_MAX_LENGTH - 1);
   namespace_[NS_MAX_LENGTH - 1] = '\0';
 
   serial.println("ACK");

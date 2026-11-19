@@ -245,7 +245,7 @@ CONTROL = 5    (highest)
 | Monitor | BLOCKING | 1 | `vTaskGetRunTimeStats` to debug serial (debug builds only) |
 | MotorControl | CONTROL | 200 | Encoder + PID + PWM + current/back-EMF estimation |
 | Range | SENSORS | 10 | Read 4× VL53L0X |
-| Link | COMMUNICATION | 200 | `g_mavlink_node.loop()` — MAVLink RX/TX, heartbeat, publishers |
+| Link | COMMUNICATION | 1000 | `g_mavlink_node.loop()` — MAVLink RX/TX, heartbeat, publishers |
 
 ### rosbot_xl tasks
 
@@ -837,25 +837,23 @@ scope and land in regular SRAM.
 
 ### Optimisation level
 
-Both presets compile with `-Os`, which is what the PlatformIO build ended
-up with (its platform appended `-Os` after the env's `-O2`). Text size per
-option, measured 2026-10 on the PlatformIO build (`arm-none-eabi-size`,
-bytes):
+`-O2` in both presets (`FW_OPT_LEVEL` cache variable, `-DFW_OPT_LEVEL=s`
+for size). The PlatformIO build ended up at `-Os` (its platform appended
+`-Os` after the env's `-O2`). Measured on ROSbot 3, release, link task at
+1 kHz (2026-11-19):
 
-| option | rosbot_release | rosbot_xl_release |
-|---|---:|---:|
-| `-Os` (what ships) | 87 328 | 120 496 |
-| `-Os -flto` | 70 208 | 101 504 |
-| real `-O2` (with `-funroll-loops`) | 184 128 | 221 536 |
-| real `-O2 -flto` | 150 788 | 195 856 |
+| option | image | idle | Link task CPU |
+|---|---:|---:|---:|
+| `-Os` | 72 KB | 94.9 % | 3.3 % |
+| `-O2` | 100 KB | 96.1 % | 2.4 % |
 
-All four fit the 896 KB application area. Which is faster, and whether LTO
-is safe at runtime, needs a HW comparison of task timing and idle time —
-idle is already ~90 % at `-Os`.
+Stack high-water marks shrink a little at `-O2` (Imu 524 → 468 B free,
+Link 2744 → 2584 B free), still far from the limit. LTO was not tried
+again after the switch.
 
-Build output sizes (release, CMake, GCC 13.2, 2026-11):
-- rosbot ~63 KB Flash (7 %), ~9 KB static RAM (7 %)
-- rosbot_xl ~101 KB Flash (11 %), ~52 KB static RAM (40 %)
+Build output sizes (release, CMake, GCC 13.2, `-O2`, 2026-11):
+- rosbot ~100 KB Flash (11 %), ~9 KB static RAM (7 %)
+- rosbot_xl ~146 KB Flash (16 %), ~52 KB static RAM (40 %)
 
 With micro-ROS still linked (v2.1.0-jazzy) the PlatformIO builds were
 207 KB / 53 KB and 244 KB / 95 KB.

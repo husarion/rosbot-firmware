@@ -42,9 +42,9 @@ set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
 set(MCU_FLAGS -mcpu=cortex-m4 -mthumb -mfpu=fpv4-sp-d16 -mfloat-abi=hard)
 
-# -Os in both build types: what the PlatformIO build effectively used
-# (finding 5 in .claude/plans/cube-migration.md). Changing it is a separate,
-# measured step.
+# -O2 in both build types. Against -Os on ROSbot 3 (2026-11-19): idle 96.1 %
+# vs 94.9 %, link task 2.4 % vs 3.3 % CPU, image 108 KB vs 72 KB of 896 KB.
+set(FW_OPT_LEVEL "2" CACHE STRING "GCC optimisation level for firmware code (s, 2, ...)")
 set(CMAKE_C_FLAGS_DEBUG "")
 set(CMAKE_CXX_FLAGS_DEBUG "")
 set(CMAKE_C_FLAGS_RELEASE "")
@@ -53,7 +53,7 @@ set(CMAKE_ASM_FLAGS_DEBUG "")
 set(CMAKE_ASM_FLAGS_RELEASE "")
 add_compile_options(
   ${MCU_FLAGS}
-  -Os
+  -O${FW_OPT_LEVEL}
   -g
   -ffunction-sections
   -fdata-sections
@@ -79,7 +79,10 @@ set(WARNINGS
   -Wfatal-errors
   -Wmissing-field-initializers
   -Wdouble-promotion
-  -Wshadow)
+  -Wshadow
+  # MAVLink char[N] fields need no NUL by spec; the generated strncpy into
+  # them truncates on purpose, and -O2 inlining reports it in our files.
+  -Wno-stringop-truncation)
 
 file(GLOB _lib_dirs LIST_DIRECTORIES true ${REPO_ROOT}/lib/*)
 file(GLOB_RECURSE _common_src CONFIGURE_DEPENDS

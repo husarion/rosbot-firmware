@@ -72,8 +72,8 @@ void MavlinkNode::log(uint8_t severity, const char* fmt, ...) {
   }
 
   if (!transport_open_) return;
-  // kLogBufSize stays ≤ 50 so the firmware string survives MAVLink's
-  // STATUSTEXT truncation intact.
+  // STATUSTEXT carries 50 chars: longer text is cut on the link, while the
+  // diagnostic serial above gets it whole.
   mavlink_message_t m;
   mavlink_msg_statustext_pack(cfg_.sysid, cfg_.compid, &m, severity, buf,
                               /*id=*/0, /*chunk_seq=*/0);
