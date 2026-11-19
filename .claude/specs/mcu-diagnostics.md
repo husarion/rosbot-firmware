@@ -1,6 +1,11 @@
 # Spec: diagnostyka MCU 1 Hz zamiast buildu debug
 
-Status: szkic do akceptacji, 2026-11-19. Pomysł: Rafał.
+Status: zaimplementowane (commit 67f8d83), przetestowane na ROSbocie 3 z
+wstrzykniętymi błędami, 2026-11-19. Pomysł: Rafał. Odstępstwa od szkicu:
+progi są nazwanymi stałymi w `DiagnosticsMapper` (bridge nie używa
+`generate_parameter_library`, nie mieszałem stylów), a wiadomość ma też
+`fault_code` / `fault_pc` / `fault_task` (przyczyna ostatniego
+`fatalError()`). IWDG nadal poza zakresem.
 
 ## Po co
 

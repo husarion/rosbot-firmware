@@ -1,8 +1,9 @@
 # Plan: Arduino → STM32Cube HAL + FreeRTOS + ETL
 
-Status: kroki 0–7 na lokalnym `devel`, kroki 8–10 na lokalnym
-`cube-switchover`, 2026-11-19. Test HW na ROSbocie 3 (CORE2, tylny USB)
-trwa; ROSbot XL nietestowany.
+Status: kroki 0–7 na lokalnym `devel`, kroki 8–10, poprawki z testów HW,
+optymalizacje i diagnostyka na lokalnym `cube-switchover`, 2026-11-19.
+ROSbot 3 (CORE2) przetestowany zdalnie przez tylny USB (wyniki niżej);
+ROSbot XL nietestowany.
 
 Decyzje (Rafał, 2026-11-19): CMake + CubeMX po kroku 9; kroki 8–9 na
 krótko żyjącym branchu, merge do `devel` po teście HW na obu robotach;
@@ -295,6 +296,68 @@ commicie:
   kół zatrzymuje robota ~0,5 s po ustaniu komend; kalibracja IMU w runtime
   (komenda `ROSBOT_IMU_CALIBRATION`) nadal zapisuje offsety; idle % taska
   Monitor względem bazowych wartości z 2026-10 (build debug).
+
+## Wyniki testów HW: ROSbot 3, jazzy vs nowy firmware (2026-11-19)
+
+Ta sama płytka CORE2, bateria 12,3 V, koła w powietrzu. Link MAVLink przez
+tylny USB (FTDI) dzięki testowej fladze `FORCE_DIAGNOSTIC_LINK`, ta sama w
+obu wersjach; obciążenie CPU, zapas stosów i opóźnienie „próbka → kolejka
+TX” z identycznej instrumentacji w obu kopiach. Mediany z 6 przebiegów
+jazzy i 3–10 przebiegów nowego (`-O2`, link 1 kHz). Szczegóły i skrypty:
+scratchpad sesji (nie w repo).
+
+| Metryka | jazzy | nowy | Lepiej |
+|---|---:|---:|---|
+| CPU idle, bez jazdy | 92,8 % | 96,1 % | nowy |
+| CPU idle, jazda kół | 92,6 % | 95,9 % | nowy |
+| Task Imu | 3,75 % | 0,43 % | nowy |
+| Task Range | 1,26 % | 0,32 % | nowy |
+| Task MotorControl | 0,80 % | 0,64 % | nowy |
+| Task Link | 1,30 % | 2,38 % | jazzy (cena 1 kHz) |
+| Próbka IMU → TX, średnio / max | 5,95 / 10,05 ms | 3,53 / 6,98 ms | nowy |
+| Feedback kół → TX, średnio / max | 88 / 198 µs | 65 / 114 µs | nowy |
+| Odchylenie odstępów IMU / feedback | 1,89 / 1,11 ms | 1,68 / 0,60 ms | nowy |
+| Max odstęp na hoście IMU / feedback | 17,5 / 15,1 ms | 29,2 / 27,3 ms | jazzy (patrz niżej) |
+| Częstotliwości IMU / feedback / ranges | 99,8 / 199,6 / 40,0 Hz | bez zmian | — |
+| Start do pierwszego MAVLink | 5,64 s | 5,29 s | nowy |
+| Odpowiedź serwisu `_mcu_id` | 5,0 ms | 3,0 ms | nowy |
+| Wolna sterta | 89,4 KB | 99,4 KB (102,5 KB bez Monitora) | nowy |
+| Zapas stosu Imu / Range / Link | 604 / 396 / 2760 B | 468 / 372 / 2584 B | jazzy (wciąż duży zapas) |
+| Zapas stosu Battery / MotorControl | 272 / 608 B | 308 / 608 B | nowy / = |
+| Obraz (flash) | 88 KB | 100 KB | jazzy (11 % z 896 KB) |
+| Statyczny RAM | 11,4 KB | 9,3 KB | nowy |
+| Śledzenie prędkości kół, watchdog | 2,95 rad/s, 548 ms | 2,93–2,98 rad/s, 546–551 ms | = |
+| Szum żyroskopu w spoczynku | 0,0013 rad/s | 0,0013 rad/s | = |
+| Diagnostyka w release | brak | `/diagnostics` 1 Hz | nowy |
+
+Max odstęp na hoście: nowy firmware wysyła próbkę zaraz po odczycie, więc
+zmienny czas odczytu BNO055 (clock stretching, 1,5–7 ms) widać w czasie
+dostarczenia; jazzy publikował na sztywnej siatce 5 ms, która to maskowała
+kosztem większego opóźnienia. Znaczniki czasu próbek są regularne w obu.
+
+Usterki sterownika silników (nFAULT) przy kołach w powietrzu występują w
+obu wersjach w podobnej liczbie (0–12 na przebieg); zaniżają pojedyncze
+przebiegi prędkości ustalonej, dlatego mediany.
+
+Błędy znalezione na HW i poprawione w tej serii:
+- `Pin::setAsOutput(true)` przed włączeniem zegara portu (krok 2): pin
+  adresu BNO055 startował nisko, IMU nieznalezione.
+- Wyścig HEARTBEAT w `MavlinkNode::loop()` (był też w jazzy): zrywanie
+  linku co kilka sekund przy dłuższym `drainRx()`.
+- Niezasilony/zawieszony BNO055 wywoływał burzę przerwań I2C i zawieszał
+  MCU (link milknie, bez resetu); jazzy w tej sytuacji działał.
+- Licznik błędów RX MAVLink zawsze 0 (biblioteka nie wypełnia
+  `packet_rx_drop_count` kanału).
+- Mój błąd z kroku 7: zapis UNIT_SEL = rad/s (żyroskop ~1,8 % za nisko).
+
+Wypróbowane i odrzucone: budzenie taska Link przez producentów próbek. W
+4 z 4 sesji przedni VL53L0X przestawał odpowiadać (NACK pod swoim adresem)
+po testach kół; przyczyna niezrozumiana (ARCHITECTURE.md, I2C).
+
+Nie testowane zdalnie (wymaga człowieka przy robocie albo SBC): gesty
+przycisku przy starcie, diody, przyciski, osie IMU przy przechylaniu,
+okno kalibracji IMU, link przez UART SBC, fizyczne zwarcie SDA (zastąpione
+programowym), cały ROSbot XL.
 
 ## Strategia testów
 
