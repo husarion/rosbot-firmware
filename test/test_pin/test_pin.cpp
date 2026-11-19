@@ -1,0 +1,119 @@
+// Copyright 2026 Husarion sp. z o.o.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+
+#include <unity.h>
+
+#include <cstring>
+
+#include "pin.hpp"
+
+namespace {
+
+constexpr uintptr_t kPortStride = 0x400;
+
+GPIO_TypeDef* fakePort(uint8_t port_index) {
+  return reinterpret_cast<GPIO_TypeDef*>(GPIOA_BASE + port_index * kPortStride);
+}
+
+}  // namespace
+
+void setUp() {
+  std::memset(fake_gpio_memory, 0, sizeof(fake_gpio_memory));
+  fake_rcc.AHB1ENR = 0;
+  fake_primask = 0;
+  fake_irq_disable_count = 0;
+}
+void tearDown() {}
+
+void test_output_sets_level_mode_and_clock() {
+  const platform::Pin pin(GPIOA_BASE + 2 * kPortStride, 5);  // PC5
+  GPIO_TypeDef* gpio = fakePort(2);
+  gpio->MODER = 0xFFFFFFFF;  // analog on every line
+  gpio->OTYPER = 0xFFFF;
+
+  pin.setAsOutput(true);
+
+  TEST_ASSERT_EQUAL_HEX32(1UL << 5, gpio->BSRR);
+  TEST_ASSERT_EQUAL_HEX32(0xFFFFF7FF, gpio->MODER);
+  TEST_ASSERT_EQUAL_HEX32(0xFFDF, gpio->OTYPER);
+  TEST_ASSERT_EQUAL_HEX32(0b11UL << 10, gpio->OSPEEDR);
+  TEST_ASSERT_EQUAL_HEX32(1UL << 2, fake_rcc.AHB1ENR);
+}
+
+void test_output_low_uses_reset_half_of_bsrr() {
+  const platform::Pin pin(GPIOA_BASE, 15);
+  pin.setAsOutput();
+  TEST_ASSERT_EQUAL_HEX32(1UL << 31, fakePort(0)->BSRR);
+}
+
+void test_input_pull_touches_only_its_line() {
+  const platform::Pin pin(GPIOA_BASE + 6 * kPortStride, 3);  // PG3
+  GPIO_TypeDef* gpio = fakePort(6);
+  gpio->MODER = 0x55555555;  // all outputs
+  gpio->PUPDR = 0xAAAAAAAA;  // all pull-down
+
+  pin.setAsInput(platform::Pull::kUp);
+
+  TEST_ASSERT_EQUAL_HEX32(0x55555515, gpio->MODER);
+  TEST_ASSERT_EQUAL_HEX32(0xAAAAAA6A, gpio->PUPDR);
+  TEST_ASSERT_EQUAL_HEX32(1UL << 6, fake_rcc.AHB1ENR);
+}
+
+void test_analog_mode() {
+  const platform::Pin pin(GPIOA_BASE + kPortStride, 0);
+  pin.setAsAnalog();
+  TEST_ASSERT_EQUAL_HEX32(0b11, fakePort(1)->MODER);
+  TEST_ASSERT_EQUAL_HEX32(0, fakePort(1)->PUPDR);
+}
+
+void test_read_follows_idr() {
+  const platform::Pin pin(GPIOA_BASE, 7);
+  fakePort(0)->IDR = 1UL << 7;
+  TEST_ASSERT_TRUE(pin.read());
+  fakePort(0)->IDR = ~(1UL << 7);
+  TEST_ASSERT_FALSE(pin.read());
+}
+
+void test_configure_masks_irqs_and_restores_primask() {
+  const platform::Pin pin(GPIOA_BASE, 1);
+
+  pin.setAsInput();
+  TEST_ASSERT_EQUAL(1, fake_irq_disable_count);
+  TEST_ASSERT_EQUAL_UINT32(0, fake_primask);
+
+  fake_primask = 1;  // caller already in a critical section
+  pin.setAsInput();
+  TEST_ASSERT_EQUAL_UINT32(1, fake_primask);
+}
+
+void test_equality() {
+  constexpr platform::Pin a(0x40020000, 3);
+  constexpr platform::Pin b(0x40020000, 3);
+  constexpr platform::Pin c(0x40020400, 3);
+  static_assert(a == b, "same port and line");
+  static_assert(a != c, "different port");
+  TEST_ASSERT_TRUE(a == b);
+}
+
+int main() {
+  UNITY_BEGIN();
+  RUN_TEST(test_output_sets_level_mode_and_clock);
+  RUN_TEST(test_output_low_uses_reset_half_of_bsrr);
+  RUN_TEST(test_input_pull_touches_only_its_line);
+  RUN_TEST(test_analog_mode);
+  RUN_TEST(test_read_follows_idr);
+  RUN_TEST(test_configure_masks_irqs_and_restores_primask);
+  RUN_TEST(test_equality);
+  return UNITY_END();
+}
