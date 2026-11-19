@@ -719,7 +719,9 @@ help:
 ## Build
 
 CMake + Ninja + `arm-none-eabi-gcc` (Ubuntu: `apt install cmake
-ninja-build gcc-arm-none-eabi`; CI uses that package, GCC 13.2). The
+ninja-build gcc-arm-none-eabi libnewlib-arm-none-eabi
+libstdc++-arm-none-eabi-newlib`, the last two are only Recommends of the
+compiler; CI uses these packages, GCC 13.2). The
 project is `cmake/CMakeLists.txt`, not a root `CMakeLists.txt`: colcon
 would take the whole repo for one package and stop before
 `bridge/rosbot_mavlink_bridge`. `cmake/COLCON_IGNORE` and a
@@ -784,8 +786,9 @@ Flash: the image may use sectors 0–10 (896 KB); sector 11 belongs to
 `lib/persistent_config`, and the linker script fails the link if the image
 grows into it. RAM: one heap for libc and FreeRTOS (`pvPortMalloc()` is
 newlib `malloc()`), from the end of `.bss` up to a 1 KB main stack at the top
-of RAM; the main stack serves `setup()` and, after the scheduler starts,
-every ISR. Nothing is placed in CCM RAM, which is what lets `lib/fault` keep
+of RAM (and, until the scheduler starts, never past the current SP); the
+main stack serves `setup()` and, after the scheduler starts, every ISR. An
+allocation from an ISR asserts. Nothing is placed in CCM RAM, which is what lets `lib/fault` keep
 its reset marker there; DMA buffers are declared with `alignas(4)` at file
 scope and land in regular SRAM.
 
@@ -1004,6 +1007,18 @@ These are documented to avoid re-discovery:
   can overrun the ring. An IDLE-line IRQ waking the link task would remove
   both the poll and the limit, but changes the task's timing: measure on
   HW first.
+- **A stuck I2C bus is not recovered.** After an IMU DMA read times out,
+  `I2c::readRegDma()` calls `HAL_I2C_Master_Abort_IT`, which in HAL 1.8.1
+  only acts in `HAL_I2C_MODE_MASTER`, not the `MODE_MEM` that
+  `HAL_I2C_Mem_Read_DMA` sets. A late completion is harmless, but if a
+  device holds SCL/SDA every later transfer on that bus (on XL also the
+  EEPROM) returns `HAL_BUSY` until reboot. Same as under Arduino Wire.
+  Fix needs a DMA abort + bus reset (9 SCL clocks) + re-init, tested on HW.
+- **A UART TX DMA transfer error stops TX for good.** Only `TCIE` is
+  enabled on the TX stream; on `TEIF` the stream disables itself without
+  an interrupt, `tx_active_` stays set and frames are dropped once the
+  queue fills. Needs a bus fault to happen; the old HAL path behaved the
+  same.
 - **No SBC IP auto-discovery.** `SBC_IP` and `CLIENT_IP` are hardcoded in
   `include/rosbot_xl/config.hpp`. True auto-discovery options were
   considered (DHCP server on MCU, broadcast announcement protocol, mDNS)

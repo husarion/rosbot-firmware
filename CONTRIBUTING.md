@@ -35,8 +35,9 @@ The wrapper:
 
 Prerequisites on the ROSbot SBC:
 
-- `cmake`, `ninja-build` and `gcc-arm-none-eabi`
-  (`sudo apt install cmake ninja-build gcc-arm-none-eabi`). The first build
+- `cmake`, `ninja-build` and the Arm toolchain with newlib
+  (`sudo apt install cmake ninja-build gcc-arm-none-eabi
+  libnewlib-arm-none-eabi libstdc++-arm-none-eabi-newlib`). The first build
   downloads the pinned HAL / FreeRTOS / lwIP / ETL sources, so it needs
   network once.
 - A sourced ROS 2 environment with `rosbot_utils` available (i.e. the

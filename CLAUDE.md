@@ -44,7 +44,9 @@ just build-all                # both boards, both presets
 just test                     # host unit tests (CTest, test/)
 ```
 
-Needs `cmake ninja-build gcc-arm-none-eabi`. The CMake project is in
+Needs `cmake ninja-build gcc-arm-none-eabi libnewlib-arm-none-eabi
+libstdc++-arm-none-eabi-newlib` (the last two are only Recommends of the
+compiler package). The CMake project is in
 `cmake/` (a root `CMakeLists.txt` would hide `bridge/` from colcon), see
 ARCHITECTURE.md "Build". **After any change in `lib/`, `boards/` or
 `cmake/` build BOTH boards** (`just build-all`). CI does it, you should too.

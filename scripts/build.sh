@@ -7,7 +7,8 @@
 #
 # Output: build/<debug|release>/<board>.bin (path printed on stdout, build
 # log on stderr). Requires cmake >= 3.25, ninja, arm-none-eabi-gcc on PATH
-# (Ubuntu: sudo apt install cmake ninja-build gcc-arm-none-eabi).
+# (Ubuntu: sudo apt install cmake ninja-build gcc-arm-none-eabi
+# libnewlib-arm-none-eabi libstdc++-arm-none-eabi-newlib).
 
 set -euo pipefail
 

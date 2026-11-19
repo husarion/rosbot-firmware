@@ -31,7 +31,8 @@ default:
 #
 # Apt prerequisites (need root on Ubuntu 24.04):
 #   sudo apt install python3-venv python3-full stm32flash \
-#     cmake ninja-build gcc-arm-none-eabi
+#     cmake ninja-build gcc-arm-none-eabi libnewlib-arm-none-eabi \
+#     libstdc++-arm-none-eabi-newlib
 # `stm32flash` is bundled with rosbot-snap on production robots; install it
 # explicitly here for developer machines.
 install-deps:

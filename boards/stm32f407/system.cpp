@@ -72,6 +72,7 @@ extern "C" void SysTick_Handler(void) {
   }
 }
 
+extern "C" void NMI_Handler(void) { fatalError(); }
 extern "C" void HardFault_Handler(void) { fatalError(); }
 extern "C" void MemManage_Handler(void) { fatalError(); }
 extern "C" void BusFault_Handler(void) { fatalError(); }

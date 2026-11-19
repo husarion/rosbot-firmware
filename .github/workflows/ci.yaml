@@ -22,7 +22,8 @@ jobs:
     steps:
       - uses: actions/checkout@v6
       - name: Install toolchain
-        run: sudo apt-get update && sudo apt-get install -y cmake ninja-build gcc-arm-none-eabi
+        run: sudo apt-get update && sudo apt-get install -y --no-install-recommends cmake ninja-build
+          gcc-arm-none-eabi libnewlib-arm-none-eabi libstdc++-arm-none-eabi-newlib
       - name: Build rosbot and rosbot_xl
         run: |
           cmake -S cmake --preset ${{ matrix.preset }}

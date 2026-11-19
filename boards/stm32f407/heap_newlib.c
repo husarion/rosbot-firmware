@@ -37,7 +37,11 @@ static int schedulerRunning(void) {
 }
 
 void* _sbrk_r(struct _reent* r, ptrdiff_t incr) {
-  char* const limit = &_estack - (uintptr_t)&_Min_Stack_Size;
+  char* limit = &_estack - (uintptr_t)&_Min_Stack_Size;
+  // setup() runs on the main stack and may go deeper than its 1 KB
+  // reserve; until the scheduler takes over, never hand out RAM below SP.
+  char* const sp = (char*)__builtin_frame_address(0);
+  if (!schedulerRunning() && sp < limit) limit = sp;
   if (s_heap_end + incr > limit) {
     r->_errno = ENOMEM;
     return (void*)-1;
@@ -49,10 +53,12 @@ void* _sbrk_r(struct _reent* r, ptrdiff_t incr) {
 
 void* _sbrk(ptrdiff_t incr) { return _sbrk_r(_impure_ptr, incr); }
 
-// newlib's malloc and environ are not reentrant on their own. No ISR
-// allocates, so suspending the scheduler is enough.
+// newlib's malloc and environ are not reentrant on their own. Suspending
+// the scheduler is enough as long as no ISR allocates; vTaskSuspendAll()
+// from an ISR would corrupt the kernel, so that resets instead.
 void __malloc_lock(struct _reent* r) {
   (void)r;
+  configASSERT(!xPortIsInsideInterrupt());
   if (schedulerRunning()) vTaskSuspendAll();
 }
 
