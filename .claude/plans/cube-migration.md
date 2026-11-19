@@ -1,6 +1,6 @@
 # Plan: Arduino → STM32Cube HAL + FreeRTOS + ETL
 
-Status: steps 0–4 done (local `devel`, not HW-tested), 2026-11-19.
+Status: steps 0–5 done (local `devel`, not HW-tested), 2026-11-19.
 
 Decisions (Rafał, 2026-11-19): CMake + CubeMX after step 9; steps 8–9 on
 a short-lived branch merged into `devel` after HW test on both robots;
@@ -96,7 +96,7 @@ the next step lands.
 | 2 | GPIO: `pinMode/digitalWrite/digitalRead` → `platform::Pin` (`Pin{Port::E, 2}` in board configs). Done for every pure-GPIO pin; pins that also feed ADC or PWM (battery, NTC, current sense, fan) stay Arduino until steps 4–5 | low | yes |
 | 3 | Time: `platform::clock` on TIM5 (32-bit, 1 MHz) feeds `time_boot_us()`; `millis()` → `time_boot_ms()`, `micros()` → `clock::counterUs()`, `delay()` → `clock::delayMs()` (`vTaskDelay` once the scheduler runs, busy-wait before). Arduino libraries (Adafruit, Pololu, Wire) keep the core's own clock until step 7 | med (time_base invariants, TIMESYNC) | yes |
 | 4 | `platform/timer`: shared timer clock enable / kernel clock, `PwmOutput` (registers, same PSC/ARR/PWM1/preload as `HardwareTimer`, host-tested) for the motors; encoders and fan keep their HAL timer code but get pins via `Pin::setAsAlternate` | med (motor control) | yes |
-| 5 | ADC (battery, current sense, NTC) → HAL ADC + DMA | low | yes |
+| 5 | `platform::AnalogIn`: ADC1 single-shot on registers with the same setup as `analogRead()` (10-bit, 15 cycles, PCLK2/4), conversion under masked IRQs (XL motor and fan tasks share ADC1). DMA left out: nothing needs it at the current rates | low | yes |
 | 6 | UART: `HardwareSerial` → own DMA driver (link, debug, power board); closes finding 1 | high (link) | yes |
 | 7 | I2C/SPI: `Wire`/`SPI` → own drivers with bus mutex; BNO055 driver replaces Adafruit; VL53L0X port onto our I2C; LED strip SPI | high (IMU) | yes |
 | 8 | Ethernet: STM32Ethernet/LwIP Arduino → HAL ETH (new F4 ETH API) + Cube LwIP + LAN9303 init (XL) | high | yes |
@@ -140,10 +140,16 @@ only become fully interrupt-driven at step 9.
 - Timer map (both boards): TIM5 clock; TIM10/11/13/14 motor PWM; rosbot
   encoders TIM2/3/4/8; XL encoders TIM1/2/3/4, fan TIM8. STM32Ethernet's
   default TIM14 scheduler is compiled out on XL (`ETHERNET_USE_FREERTOS`).
-- Left on Arduino after step 4: `pinMode` in `battery_adc.cpp`,
-  `ntc.cpp`, `motor_hi_z.cpp` (current sense): all ADC, step 5.
+- After step 5 our own code calls no Arduino GPIO/time/ADC/timer API. Still
+  Arduino: `HardwareSerial` (link, debug, power board), `Wire`/`SPI`,
+  Adafruit BNO055, Pololu VL53L0X, STM32Ethernet/LwIP, `setup()`/`loop()`
+  entry, and the core's clock/HAL init.
+- Step 5 behaviour differences: ADC1 is configured once instead of a full
+  HAL init/deinit per `analogRead()` (each read drops from tens of us to
+  ~1.2 us); reads are now serialized, where XL's motor and fan tasks could
+  previously interleave ADC1 re-inits.
 
-## HW smoke test for steps 1–3
+## HW smoke test for steps 1–5
 
 Both robots, same firmware build as the commit:
 
@@ -157,6 +163,10 @@ Both robots, same firmware build as the commit:
   `ROSBOT_PANEL_LEDS`, both buttons in `ROSBOT_BUTTONS`.
 - ROSbot XL: rev 1.1 / 1.2 current limit (ILIM) path, power-board shutdown
   button → shutdown request + confirm line, USB hub alive, audio amp on.
+- PWM / ADC (steps 4–5): all four wheels track speed commands smoothly;
+  ROSbot `/battery` voltage matches a multimeter as before; XL rev 1.2
+  `_motors/feedback` effort follows load (CSO current sense), XL fan speeds
+  up with temperature and NTC temperature is plausible.
 - Timing (step 3): bridge TIMESYNC converges and stays (no clock jumps in
   `/imu` / `/joint_states` stamps over 10+ min); wheel watchdog stops the
   robot ~0.5 s after commands stop; runtime IMU calibration
