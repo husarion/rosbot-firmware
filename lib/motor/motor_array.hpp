@@ -14,6 +14,8 @@
 
 #pragma once
 
+#include <etl/span.h>
+
 #include <atomic>
 
 #include "STM32FreeRTOS.h"
@@ -44,10 +46,9 @@ class MotorArray {
 
   MotorArray() = default;
 
-  /// Construct from motor pointers + optional driver groups.
-  MotorArray(MotorInterface** motors, uint8_t count,
-             const DriverGroupConfig* drivers = nullptr,
-             uint8_t num_driver_groups = 0);
+  /// Motors beyond MAX_NUM_MOTORS are ignored.
+  explicit MotorArray(etl::span<MotorInterface* const> motors,
+                      etl::span<const DriverGroupConfig> drivers = {});
 
   /// Init driver pins + all motors.
   void init();
@@ -73,8 +74,8 @@ class MotorArray {
 
   // ── data access ──────────────────────────────────────────
   MotorsData getData() const { return data_; }
-  uint8_t count() const { return count_; }
-  bool isAvailable() const { return count_ > 0; }
+  uint8_t count() const { return static_cast<uint8_t>(motors_.size()); }
+  bool isAvailable() const { return !motors_.empty(); }
 
   // ── watchdog ─────────────────────────────────────────────
   void feedWatchdog();
@@ -88,17 +89,15 @@ class MotorArray {
 
   // ── element access ───────────────────────────────────────
   MotorInterface* operator[](uint8_t idx) {
-    return (idx < count_) ? motors_[idx] : nullptr;
+    return (idx < motors_.size()) ? motors_[idx] : nullptr;
   }
   const MotorInterface* operator[](uint8_t idx) const {
-    return (idx < count_) ? motors_[idx] : nullptr;
+    return (idx < motors_.size()) ? motors_[idx] : nullptr;
   }
 
  private:
-  MotorInterface** motors_ = nullptr;
-  uint8_t count_ = 0;
-  const DriverGroupConfig* drivers_ = nullptr;
-  uint8_t num_drivers_ = 0;
+  etl::span<MotorInterface* const> motors_;
+  etl::span<const DriverGroupConfig> drivers_;
   MotorsData data_ = {};
 
   // watchdog

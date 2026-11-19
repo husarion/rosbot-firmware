@@ -53,9 +53,6 @@ static MotorHiZ motor_fr(motor_fr_config, &enc_fr, PIDController(pid_config));
 static MotorHiZ motor_rl(motor_rl_config, &enc_rl, PIDController(pid_config));
 static MotorHiZ motor_rr(motor_rr_config, &enc_rr, PIDController(pid_config));
 static MotorInterface* motors[] = {&motor_fl, &motor_fr, &motor_rl, &motor_rr};
-static constexpr uint8_t MOTOR_COUNT = sizeof(motors) / sizeof(motors[0]);
-static constexpr uint8_t DRIVER_GROUP_COUNT =
-    sizeof(driver_groups) / sizeof(driver_groups[0]);
 
 // ───────── Ranges ─────────
 RangeVl53l0x range_fl(range_fl_config);
@@ -64,15 +61,13 @@ RangeVl53l0x range_rl(range_rl_config);
 RangeVl53l0x range_rr(range_rr_config);
 static RangeInterface* range_sensors[] = {&range_fl, &range_fr, &range_rl,
                                           &range_rr};
-static constexpr uint8_t RANGE_COUNT =
-    sizeof(range_sensors) / sizeof(range_sensors[0]);
 
 // ───────── Extern variables ─────────
 BatteryInterface* g_battery = &battery_adc;
 ImuInterface* g_imu = &imu_bno055;
 LedIndicator g_indicator(led_status_config);
-MotorArray g_motors(motors, MOTOR_COUNT, driver_groups, DRIVER_GROUP_COUNT);
-RangeArray g_ranges(range_sensors, RANGE_COUNT);
+MotorArray g_motors(motors, driver_groups);
+RangeArray g_ranges(range_sensors);
 
 // Resolved once by resolveBootAction() at the very start of setup(),
 // before anything else reads PUSH_BUTTON1/2 — see boot_option.hpp.

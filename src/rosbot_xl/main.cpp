@@ -59,7 +59,6 @@ static MotorHiZ motor_fr(motor_fr_config, &enc_fr, PIDController(pid_config));
 static MotorHiZ motor_rl(motor_rl_config, &enc_rl, PIDController(pid_config));
 static MotorHiZ motor_rr(motor_rr_config, &enc_rr, PIDController(pid_config));
 static MotorInterface* motors[] = {&motor_fl, &motor_fr, &motor_rl, &motor_rr};
-static constexpr uint8_t MOTOR_COUNT = sizeof(motors) / sizeof(motors[0]);
 
 // ───────── Power Board ─────────
 PowerBoard power_board(power_board_config);
@@ -69,7 +68,7 @@ BatteryInterface* g_battery = &power_board;
 ImuInterface* g_imu = &imu_bno055;
 LedIndicator g_indicator(led_status_config);
 LedStrip g_led_strip;
-MotorArray g_motors(motors, MOTOR_COUNT);
+MotorArray g_motors(motors);
 
 // Resolved once by resolveBootAction() at the very start of setup(),
 // before anything else reads PUSH_BUTTON1 — see boot_option.hpp.
