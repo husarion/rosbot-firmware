@@ -35,14 +35,18 @@ class Pin {
       : port_base_(port_base), index_(index) {}
 
   // ODR is written before MODER, so the line never glitches to the old
-  // output level.
+  // output level. The port clock must be on first: with it off the BSRR
+  // write is dropped and the pin starts low (seen on HW: the BNO055 address
+  // pin, first user of GPIOC, came up low and the IMU moved to 0x28).
   void setAsOutput(bool initial_high = false) const {
+    enableClockMasked();
     write(initial_high);
     configure(kModeOutput, Pull::kNone);
   }
 
   // Open-drain output, e.g. to bit-bang a shared I2C line: high releases it.
   void setAsOutputOpenDrain(bool initial_high = true) const {
+    enableClockMasked();
     write(initial_high);
     configure(kModeOutput, Pull::kNone, Speed::kVeryHigh, 0, true);
   }
@@ -121,6 +125,13 @@ class Pin {
       afr = (afr & ~(0xFUL << shift4)) | (static_cast<uint32_t>(af) << shift4);
     }
     gpio->MODER = (gpio->MODER & clear2) | (mode << shift2);
+    __set_PRIMASK(primask);
+  }
+
+  void enableClockMasked() const {
+    const uint32_t primask = __get_PRIMASK();
+    __disable_irq();
+    enableClock();
     __set_PRIMASK(primask);
   }
 
