@@ -81,7 +81,7 @@ void test_read_follows_idr() {
   const platform::Pin pin(GPIOA_BASE, 7);
   fakePort(0)->IDR = 1UL << 7;
   TEST_ASSERT_TRUE(pin.read());
-  fakePort(0)->IDR = ~(1UL << 7);
+  fakePort(0)->IDR = ~(UINT32_C(1) << 7);
   TEST_ASSERT_FALSE(pin.read());
 }
 

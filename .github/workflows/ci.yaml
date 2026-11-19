@@ -13,38 +13,33 @@ jobs:
       ros_distro: jazzy
 
   build-firmware:
-    name: Build firmware (${{ matrix.env }})
+    name: Build firmware (${{ matrix.preset }})
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
       matrix:
-        env:
-          - rosbot
-          - rosbot_xl
-          - rosbot_release
-          - rosbot_xl_release
+        preset: [debug, release]
     steps:
       - uses: actions/checkout@v6
-      - uses: actions/setup-python@v6
-        with:
-          python-version: '3.12'
-      - name: Install PlatformIO
-        run: pip3 install -U platformio
-      - name: Build env ${{ matrix.env }}
-        run: pio run -e ${{ matrix.env }}
+      - name: Install toolchain
+        run: sudo apt-get update && sudo apt-get install -y cmake ninja-build gcc-arm-none-eabi
+      - name: Build rosbot and rosbot_xl
+        run: |
+          cmake -S cmake --preset ${{ matrix.preset }}
+          cmake --build build/${{ matrix.preset }}
 
   test-native:
     name: Host unit tests
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v6
-      - uses: actions/setup-python@v6
-        with:
-          python-version: '3.12'
-      - name: Install PlatformIO
-        run: pip3 install -U platformio
+      - name: Install build tools
+        run: sudo apt-get update && sudo apt-get install -y cmake ninja-build
       - name: Run tests
-        run: pio test -e native
+        run: |
+          cmake -S test -B build/test -G Ninja
+          cmake --build build/test
+          ctest --test-dir build/test --output-on-failure
 
   build-bridge:
     name: Build bridge (${{ matrix.distro }})
