@@ -14,14 +14,13 @@
 
 #pragma once
 
-#include <Arduino.h>
-
+#include "analog_in.hpp"
 #include "ntc_math.hpp"
 
 // ─── NTC Temperature Sensor ─────────────────────────────────────
 class Ntc {
  public:
-  explicit Ntc(const NtcConfig& config);
+  Ntc(const platform::AnalogIn& adc, const NtcConfig& config);
 
   void init();
 
@@ -29,5 +28,6 @@ class Ntc {
   float readCelsius() const;
 
  private:
+  platform::AnalogIn adc_;
   NtcConfig config_;
 };

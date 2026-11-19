@@ -18,7 +18,6 @@
 #include <cstdint>
 
 struct NtcConfig {
-  uint8_t pin;              // analog input pin
   float pullup_resistance;  // pull-up resistor value [Ohm]
   float c1;                 // Steinhart-Hart coefficient
   float c2;                 // Steinhart-Hart coefficient

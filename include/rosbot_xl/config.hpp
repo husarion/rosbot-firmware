@@ -32,6 +32,7 @@
 #include "power_board.hpp"
 #include "transport/spi_transport.hpp"
 
+using platform::AnalogIn;
 using platform::Pin;
 using platform::Port;
 
@@ -152,14 +153,13 @@ inline constexpr uint8_t USART6_TX = PG14;
 
 // ───────── Fan and temperature ─────────
 inline constexpr NtcConfig ntc_cfg{
-    .pin = PB1,
     .pullup_resistance = 5230.0f,
     .c1 = 1.112613927e-03f,
     .c2 = 2.37277392e-04f,
     .c3 = 7.1670e-08f,
     .offset = 273.15 + 3,  // Kelvin to Celsius offset + calibration offset
     .adc_max = 1023.0f};
-inline Ntc ntc(ntc_cfg);
+inline Ntc ntc(AnalogIn{Pin{Port::B, 1}, 9}, ntc_cfg);
 
 inline constexpr Pin FAN_PP_PIN{Port::C, 13};
 inline constexpr Pin FAN_PWM_PIN{Port::B, 0};
@@ -278,7 +278,7 @@ inline constexpr MotorHiZConfig motor_fl_config = {
     .min_velocity = MIN_VELOCITY,
     .pwm_freq = MOTOR_PWM_FREQ,
     .frame_id = "fl_wheel_joint",
-    .current_sense_pin = PA0,
+    .current_sense = AnalogIn{Pin{Port::A, 0}, 0},
     .current_per_volt = MOTOR_CURRENT_PER_VOLT,
     .torque_constant = MOTOR_TORQUE_CONSTANT,
     .gear_ratio = GEAR_RATIO,
@@ -299,7 +299,7 @@ inline constexpr MotorHiZConfig motor_fr_config = {
     .min_velocity = MIN_VELOCITY,
     .pwm_freq = MOTOR_PWM_FREQ,
     .frame_id = "fr_wheel_joint",
-    .current_sense_pin = PA3,
+    .current_sense = AnalogIn{Pin{Port::A, 3}, 3},
     .current_per_volt = MOTOR_CURRENT_PER_VOLT,
     .torque_constant = MOTOR_TORQUE_CONSTANT,
     .gear_ratio = GEAR_RATIO,
@@ -320,7 +320,7 @@ inline constexpr MotorHiZConfig motor_rl_config = {
     .min_velocity = MIN_VELOCITY,
     .pwm_freq = MOTOR_PWM_FREQ,
     .frame_id = "rl_wheel_joint",
-    .current_sense_pin = PC3,
+    .current_sense = AnalogIn{Pin{Port::C, 3}, 13},
     .current_per_volt = MOTOR_CURRENT_PER_VOLT,
     .torque_constant = MOTOR_TORQUE_CONSTANT,
     .gear_ratio = GEAR_RATIO,
@@ -341,7 +341,7 @@ inline constexpr MotorHiZConfig motor_rr_config = {
     .min_velocity = MIN_VELOCITY,
     .pwm_freq = MOTOR_PWM_FREQ,
     .frame_id = "rr_wheel_joint",
-    .current_sense_pin = PC2,
+    .current_sense = AnalogIn{Pin{Port::C, 2}, 12},
     .current_per_volt = MOTOR_CURRENT_PER_VOLT,
     .torque_constant = MOTOR_TORQUE_CONSTANT,
     .gear_ratio = GEAR_RATIO,

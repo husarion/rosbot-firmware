@@ -17,7 +17,9 @@
 #include <Arduino.h>
 
 #include <atomic>
+#include <optional>
 
+#include "analog_in.hpp"
 #include "encoder_interface.hpp"
 #include "motor_interface.hpp"
 #include "pid.hpp"
@@ -33,7 +35,7 @@ struct MotorHiZConfig {
   float min_velocity;      // [rad/s] deadband
   uint32_t pwm_freq;       // [Hz]
   const char* frame_id;
-  uint8_t current_sense_pin = 0xFF;   // 0xFF = no analog current sensor
+  std::optional<platform::AnalogIn> current_sense = std::nullopt;  // ISEN/CSO
   float current_per_volt = 0.0f;      // [A/V] — I_motor = V_isen * this
   float current_filter_alpha = 0.2f;  // EMA on current: 1 = raw, 0 = frozen
   float torque_constant = 1.0f;       // Output-shaft torque per ampere of motor

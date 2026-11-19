@@ -15,12 +15,13 @@
 #include "ntc.hpp"
 
 // ─── Constructor ─────────────────────────────────────────────────
-Ntc::Ntc(const NtcConfig& config) : config_(config) {}
+Ntc::Ntc(const platform::AnalogIn& adc, const NtcConfig& config)
+    : adc_(adc), config_(config) {}
 
 // ─── Init ────────────────────────────────────────────────────────
-void Ntc::init() { pinMode(config_.pin, INPUT); }
+void Ntc::init() { adc_.init(); }
 
 // ─── Public: read temperature ────────────────────────────────────
 float Ntc::readCelsius() const {
-  return ntcAdcToCelsius(config_, static_cast<float>(analogRead(config_.pin)));
+  return ntcAdcToCelsius(config_, static_cast<float>(adc_.read()));
 }

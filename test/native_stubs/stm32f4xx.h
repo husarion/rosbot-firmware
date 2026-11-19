@@ -37,7 +37,37 @@ typedef struct {
 typedef struct {
   __IO uint32_t CFGR;
   __IO uint32_t AHB1ENR;
+  __IO uint32_t APB2ENR;
 } RCC_TypeDef;
+
+typedef struct {
+  __IO uint32_t SR;
+  __IO uint32_t CR1;
+  __IO uint32_t CR2;
+  __IO uint32_t SMPR1;
+  __IO uint32_t SMPR2;
+  __IO uint32_t JOFR1;
+  __IO uint32_t JOFR2;
+  __IO uint32_t JOFR3;
+  __IO uint32_t JOFR4;
+  __IO uint32_t HTR;
+  __IO uint32_t LTR;
+  __IO uint32_t SQR1;
+  __IO uint32_t SQR2;
+  __IO uint32_t SQR3;
+  __IO uint32_t JSQR;
+  __IO uint32_t JDR1;
+  __IO uint32_t JDR2;
+  __IO uint32_t JDR3;
+  __IO uint32_t JDR4;
+  __IO uint32_t DR;
+} ADC_TypeDef;
+
+typedef struct {
+  __IO uint32_t CSR;
+  __IO uint32_t CCR;
+  __IO uint32_t CDR;
+} ADC_Common_TypeDef;
 
 typedef struct {
   __IO uint32_t CR1;
@@ -112,6 +142,17 @@ inline uint32_t HAL_RCC_GetPCLK2Freq() { return fake_pclk2_hz; }
 #define RCC_CFGR_PPRE2 (0x7UL << 13)
 #define RCC_CFGR_PPRE2_DIV1 0x00000000U
 #define RCC_CFGR_PPRE2_DIV2 0x00008000U
+inline ADC_TypeDef fake_adc1;
+inline ADC_Common_TypeDef fake_adc_common;
+#define ADC1 (&fake_adc1)
+#define ADC123_COMMON (&fake_adc_common)
+#define RCC_APB2ENR_ADC1EN (1UL << 8)
+#define ADC_CR1_RES_Pos 24U
+#define ADC_CR2_ADON (1UL << 0)
+#define ADC_CR2_SWSTART (1UL << 30)
+#define ADC_SR_EOC (1UL << 1)
+#define ADC_CCR_ADCPRE_Pos 16U
+#define ADC_CCR_ADCPRE (0x3UL << 16)
 #define TIM_CR1_CEN (1UL << 0)
 #define TIM_CR1_ARPE (1UL << 7)
 #define TIM_EGR_UG (1UL << 0)

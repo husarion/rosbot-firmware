@@ -27,6 +27,7 @@
 #include "pin.hpp"
 #include "range_vl53l0.hpp"
 
+using platform::AnalogIn;
 using platform::Pin;
 using platform::Port;
 
@@ -41,7 +42,7 @@ inline constexpr float BATTERY_DESIGN_CAPACITY =
     BATTERY_NUM_CELLS * BATTERY_CELL_CAPACITY;
 
 inline constexpr BatteryAdcConfig battery_adc_config = {
-    .adc_pin = PA5,
+    .adc = AnalogIn{Pin{Port::A, 5}, 5},
     .v_ref = 3.3f,
     .num_cells = BATTERY_NUM_CELLS,
     .divider = (5.6e4 + 1.0e4) / 1.0e4,

@@ -16,11 +16,9 @@
 
 #include <cmath>
 
-// 10-bit ADC, Vref = 3.3V. Matches ADC_MAX_VALUE used elsewhere on the
-// board (e.g. battery_adc).
 static constexpr float kAdcVref = 3.3f;
-static constexpr float kAdcCounts = 1023.0f;
-static constexpr float kAdcToVolt = kAdcVref / kAdcCounts;
+static constexpr float kAdcToVolt =
+    kAdcVref / static_cast<float>(platform::AnalogIn::kMaxValue);
 
 void MotorHiZ::init() {
   setMode(Mode::Neutral);
@@ -31,9 +29,7 @@ void MotorHiZ::init() {
 
   pwm_.init(cfg_.pwm_freq);
 
-  if (cfg_.current_sense_pin != 0xFF) {
-    pinMode(cfg_.current_sense_pin, INPUT_ANALOG);
-  }
+  if (cfg_.current_sense) cfg_.current_sense->init();
 }
 
 MotorData MotorHiZ::getData() const {
@@ -99,7 +95,7 @@ void MotorHiZ::applyPWM(float duty) {
   pwm_.setCompare(static_cast<uint32_t>(std::fabs(duty) * pwm_.period()));
 
   const bool has_sensor = !current_sense_disabled_ &&
-                          cfg_.current_sense_pin != 0xFF &&
+                          cfg_.current_sense.has_value() &&
                           cfg_.current_per_volt > 0.0f;
   if (has_sensor) {
     sampleCurrent();
@@ -109,7 +105,7 @@ void MotorHiZ::applyPWM(float duty) {
 }
 
 void MotorHiZ::sampleCurrent() {
-  const uint16_t raw = analogRead(cfg_.current_sense_pin);
+  const uint16_t raw = cfg_.current_sense->read();
   float i = raw * kAdcToVolt * cfg_.current_per_volt;
   // ISEN output (e.g. MAX22205 CSO) is unipolar — sign comes from the
   // commanded direction.
