@@ -189,7 +189,7 @@ extern "C" void setup() {
   const FanConfig& fan_config =
       (rev == Revision::V1_1) ? rev1_1_fan_config : rev1_2_fan_config;
 
-  Ethernet.begin(MAC, CLIENT_IP);
+  ethernet::begin(ETHERNET_CONFIG);
   ntc.init();
   g_fan.init(fan_config);
 

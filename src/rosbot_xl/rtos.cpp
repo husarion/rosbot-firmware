@@ -243,7 +243,7 @@ namespace {
 // Served by rosbot-snap's db-server on the SBC.
 constexpr uint16_t kShutdownPort = 3000;
 
-// Runs in STM32Ethernet's ethernet_scheduler task, which owns lwIP.
+// Runs in the ethernet_scheduler task (lib/ethernet), which owns lwIP.
 err_t onShutdownConnected(void* /*arg*/, tcp_pcb* pcb, err_t /*err*/) {
   constexpr char kHead[] = "GET /shutdown HTTP/1.1\r\nHost: ";
   constexpr char kTail[] = "\r\nConnection: close\r\n\r\n";
@@ -259,13 +259,11 @@ err_t onShutdownConnected(void* /*arg*/, tcp_pcb* pcb, err_t /*err*/) {
   return ERR_OK;
 }
 
-// lwIP (NO_SYS) is not thread-safe and EthernetClient cannot be used from
-// here: its connect() only waits for ethernet_scheduler to make progress.
-// Start the connection under a critical section (connect() does not wait, so
-// masking the tick is fine) and let the callback send the request.
+// lwIP (NO_SYS) is not thread-safe: start the connection under a critical
+// section (tcp_connect() does not wait, so masking the tick is fine) and let
+// the callback send the request from the ethernet_scheduler task.
 void sendShutdownRequest() {
-  ip_addr_t addr =
-      IPADDR4_INIT_BYTES(SBC_IP[0], SBC_IP[1], SBC_IP[2], SBC_IP[3]);
+  ip_addr_t addr = SBC_IP;
   taskENTER_CRITICAL();
   tcp_pcb* pcb = tcp_new();
   if (pcb != nullptr &&

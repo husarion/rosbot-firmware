@@ -3,8 +3,9 @@
 # pre-commit hooks. Edits to rosbot.xml drive a fresh regen via `just
 # mavgen`; trailing-whitespace / clang-format / codespell / copyright
 # hooks would otherwise fight the generator and break CI's diff check.
-# lib/vl53l0x/ is vendored Pololu code (MIT) and keeps its upstream form.
-exclude: ^(bridge/rosbot_mavlink_bridge/mavlink_dialect/|lib/mavlink/dialect/(common\.xml|minimal\.xml|standard\.xml)|lib/vl53l0x/)
+# lib/vl53l0x/ (Pololu, MIT) and lib/ethernet/ethernetif.* (ST) are vendored
+# and keep their upstream form.
+exclude: ^(bridge/rosbot_mavlink_bridge/mavlink_dialect/|lib/mavlink/dialect/(common\.xml|minimal\.xml|standard\.xml)|lib/vl53l0x/|lib/ethernet/ethernetif\.(cpp|h))
 
 repos:
   # -------------------------

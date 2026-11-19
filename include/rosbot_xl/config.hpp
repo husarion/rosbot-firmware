@@ -14,10 +14,9 @@
 
 #pragma once
 
-#include <STM32Ethernet.h>
-
 #include "communication_manager.hpp"
 #include "eeprom.hpp"
+#include "ethernet.hpp"
 #include "fan.hpp"
 #include "hardware_encoder.hpp"
 #include "imu_bno055.hpp"
@@ -44,7 +43,7 @@ inline constexpr uint32_t ADC_MAX_VALUE =
 
 // ───────── Board Peripherals ─────────
 inline constexpr Pin AUDIO_SHDN{Port::B, 2};
-inline constexpr uint8_t AUDIO_DAC_OUT = PA4;
+inline constexpr Pin AUDIO_DAC_OUT{Port::A, 4};
 inline constexpr Pin EN_LOC_5V{Port::F, 13};
 inline constexpr Pin GPIO_HUB_NRST{Port::E, 1};
 
@@ -130,32 +129,32 @@ inline constexpr HardwareEncoderConfig enc_rr_config = {
 };
 
 // ───────── Extra GPIO ─────────
-inline constexpr uint8_t CAN1_TX = PD1;  // External transceiver needed
-inline constexpr uint8_t CAN1_RX = PD0;  // External transceiver needed
+inline constexpr Pin CAN1_TX{Port::D, 1};  // External transceiver needed
+inline constexpr Pin CAN1_RX{Port::D, 0};  // External transceiver needed
 
-inline constexpr uint8_t EXT_ADC1 = PF3;
-inline constexpr uint8_t EXT_ADC2 = PF4;
-inline constexpr uint8_t EXT_ADC3 = PF5;
+inline constexpr Pin EXT_ADC1{Port::F, 3};
+inline constexpr Pin EXT_ADC2{Port::F, 4};
+inline constexpr Pin EXT_ADC3{Port::F, 5};
 
-inline constexpr uint8_t EXT_GPIO1 = PG2;
-inline constexpr uint8_t EXT_GPIO2 = PG3;
-inline constexpr uint8_t EXT_GPIO3 = PG4;
+inline constexpr Pin EXT_GPIO1{Port::G, 2};
+inline constexpr Pin EXT_GPIO2{Port::G, 3};
+inline constexpr Pin EXT_GPIO3{Port::G, 4};
 
-inline constexpr uint8_t EXT_PWM1 = PE5;
-inline constexpr uint8_t EXT_PWM2 = PE6;
-inline constexpr uint8_t EXT_PWM3 = PB14;
+inline constexpr Pin EXT_PWM1{Port::E, 5};
+inline constexpr Pin EXT_PWM2{Port::E, 6};
+inline constexpr Pin EXT_PWM3{Port::B, 14};
 
-inline constexpr uint8_t I2C1_SDA = PB7;  // External pull-up needed
-inline constexpr uint8_t I2C1_SCL = PB6;  // External pull-up needed
-inline constexpr uint8_t I2C3_SDA = PC9;  // External pull-up needed
-inline constexpr uint8_t I2C3_SCL = PA8;  // External pull-up needed
+inline constexpr Pin I2C1_SDA{Port::B, 7};  // External pull-up needed
+inline constexpr Pin I2C1_SCL{Port::B, 6};  // External pull-up needed
+inline constexpr Pin I2C3_SDA{Port::C, 9};  // External pull-up needed
+inline constexpr Pin I2C3_SCL{Port::A, 8};  // External pull-up needed
 
-inline constexpr uint8_t SPI1_MOSI = PB5;
-inline constexpr uint8_t SPI1_MISO = PA6;
-inline constexpr uint8_t SPI1_SCK = PA5;
+inline constexpr Pin SPI1_MOSI{Port::B, 5};
+inline constexpr Pin SPI1_MISO{Port::A, 6};
+inline constexpr Pin SPI1_SCK{Port::A, 5};
 
-inline constexpr uint8_t USART6_RX = PG9;
-inline constexpr uint8_t USART6_TX = PG14;
+inline constexpr Pin USART6_RX{Port::G, 9};
+inline constexpr Pin USART6_TX{Port::G, 14};
 
 // ───────── Fan and temperature ─────────
 inline constexpr NtcConfig ntc_cfg{
@@ -369,9 +368,14 @@ inline constexpr PIDConfig pid_config = {
 };
 
 // ───────── Ethernet ─────────
-inline byte MAC[6] = {0x02, 0x47, 0x00, 0x00, 0x00, 0x01};
-inline IPAddress CLIENT_IP = {192, 168, 77, 3};
-inline IPAddress SBC_IP = {192, 168, 77, 2};
+// Netmask and gateway as Arduino's Ethernet.begin(mac, ip) derived them.
+inline constexpr ethernet::Config ETHERNET_CONFIG = {
+    .mac = {0x02, 0x47, 0x00, 0x00, 0x00, 0x01},
+    .ip = IPADDR4_INIT_BYTES(192, 168, 77, 3),
+    .netmask = IPADDR4_INIT_BYTES(255, 255, 255, 0),
+    .gateway = IPADDR4_INIT_BYTES(192, 168, 77, 1),
+};
+inline constexpr ip_addr_t SBC_IP = IPADDR4_INIT_BYTES(192, 168, 77, 2);
 
 // ───────── Publishers ─────────
 inline QueueHandle_t battery_queue;

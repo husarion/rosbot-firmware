@@ -14,7 +14,7 @@
 
 #pragma once
 
-#include <IPAddress.h>
+#include <lwip/ip_addr.h>
 
 #include "mavlink_transport_interface.hpp"
 
@@ -22,7 +22,7 @@
 // (peer_ip, peer_port); datagrams from any other IP are dropped.
 // MAVROS default: local=14555, peer=14550.
 struct MavlinkUdpConfig {
-  IPAddress peer_ip;
+  ip_addr_t peer_ip;
   uint16_t peer_port;
   uint16_t local_port;
 };
