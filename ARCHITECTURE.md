@@ -594,6 +594,21 @@ Standard HAL pattern (`platform::I2c` uses it; `platform::Uart` does the same on
 `HAL_I2C_ErrorCallback` (a NACK wakes the reader at once), which was
 impossible while Arduino Wire's `twi.c` defined it.
 
+### I2C fault recovery
+
+A transfer that ends in a bus fault (HAL timeout, `HAL_BUSY` from a stuck
+BUSY flag or a handle left mid-transfer, BERR, ARLO) returns false and then
+`I2c::recover()` runs under the bus lock: NVIC off for the bus IRQs,
+`HAL_DMA_Abort`, `HAL_I2C_DeInit`, `clearI2cBus()` (`i2c_bus_clear.hpp`: up
+to nine 100 kHz SCL pulses on open-drain GPIO until SDA is released, then a
+STOP, UM10204 3.1.16), RCC reset and re-init. A plain NACK (`AF`, e.g. a
+probe of an absent VL53L0X) does not trigger it. Before this, a timed-out
+IMU DMA read called `HAL_I2C_Master_Abort_IT`, which HAL 1.8.1 ignores for
+a `Mem_Read` (`MODE_MEM`), leaving the handle `BUSY_RX`; one stuck device
+then failed every later transfer on the bus until reboot (on XL also the
+EEPROM). `HAL_I2C_DeInit` also clears the handle lock that HAL's
+`IsDeviceReady` leaves taken on its `HAL_TIMEOUT` path.
+
 ### I2C bus speed (400 kHz)
 
 `platform::I2c::init()` sets 400 kHz with the 2:1 fast-mode duty cycle.
@@ -694,6 +709,12 @@ Stream 3 is the BNO055 I2C2 RX stream.
 | `DMA1_Stream4_IRQHandler` | `platform/uart.cpp` | USART3_TX |
 | `DMA1_Stream6_IRQHandler` | `platform/uart.cpp` | USART2_TX |
 | `DMA2_Stream7_IRQHandler` | `platform/uart.cpp` | USART1_TX |
+
+The TX stream interrupts on transfer complete and on transfer error (TEIE):
+on an error the hardware disables the stream, the handler drops that chunk
+and starts the next one, so a bus fault costs one bad frame instead of
+stalling TX for good. DMEIE stays off: a direct-mode error does not stop
+the stream, and re-arming it then would corrupt the transfer.
 
 RX streams run without an IRQ. Adding a UART: pick streams that do not
 collide with this table, add a `kStreams` entry and its TX IRQ handler in
@@ -1007,18 +1028,6 @@ These are documented to avoid re-discovery:
   can overrun the ring. An IDLE-line IRQ waking the link task would remove
   both the poll and the limit, but changes the task's timing: measure on
   HW first.
-- **A stuck I2C bus is not recovered.** After an IMU DMA read times out,
-  `I2c::readRegDma()` calls `HAL_I2C_Master_Abort_IT`, which in HAL 1.8.1
-  only acts in `HAL_I2C_MODE_MASTER`, not the `MODE_MEM` that
-  `HAL_I2C_Mem_Read_DMA` sets. A late completion is harmless, but if a
-  device holds SCL/SDA every later transfer on that bus (on XL also the
-  EEPROM) returns `HAL_BUSY` until reboot. Same as under Arduino Wire.
-  Fix needs a DMA abort + bus reset (9 SCL clocks) + re-init, tested on HW.
-- **A UART TX DMA transfer error stops TX for good.** Only `TCIE` is
-  enabled on the TX stream; on `TEIF` the stream disables itself without
-  an interrupt, `tx_active_` stays set and frames are dropped once the
-  queue fills. Needs a bus fault to happen; the old HAL path behaved the
-  same.
 - **No SBC IP auto-discovery.** `SBC_IP` and `CLIENT_IP` are hardcoded in
   `include/rosbot_xl/config.hpp`. True auto-discovery options were
   considered (DHCP server on MCU, broadcast announcement protocol, mDNS)

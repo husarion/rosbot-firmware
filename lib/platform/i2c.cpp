@@ -14,6 +14,11 @@
 
 #include "i2c.hpp"
 
+#include <initializer_list>
+
+#include "clock.hpp"
+#include "i2c_bus_clear.hpp"
+
 namespace platform {
 
 // DMA1 RX streams per RM0090 table 42, as the BNO055 DMA path used them
@@ -71,6 +76,11 @@ bool schedulerRunning() {
   return xTaskGetSchedulerState() == taskSCHEDULER_RUNNING;
 }
 
+// Errors that mean the bus or the peripheral is stuck, not a device that
+// simply did not answer (AF = NACK).
+constexpr uint32_t kBusFaultErrors =
+    HAL_I2C_ERROR_BERR | HAL_I2C_ERROR_ARLO | HAL_I2C_ERROR_TIMEOUT;
+
 }  // namespace
 
 // Holds the bus mutex for its scope; a no-op before the scheduler runs.
@@ -101,7 +111,27 @@ bool I2c::init() {
   if (mutex_ == nullptr) mutex_ = xSemaphoreCreateMutex();
   if (done_ == nullptr) done_ = xSemaphoreCreateBinary();
   if (mutex_ == nullptr || done_ == nullptr) return false;
+  if (!configureHardware()) return false;
 
+  HAL_NVIC_SetPriority(dma_->stream_irq, kIrqPriority, 0);
+  HAL_NVIC_SetPriority(dma_->ev_irq, kIrqPriority, 0);
+  HAL_NVIC_SetPriority(dma_->er_irq, kIrqPriority, 0);
+  setIrqsEnabled(true);
+  return true;
+}
+
+void I2c::setIrqsEnabled(bool on) {
+  for (IRQn_Type irq : {dma_->stream_irq, dma_->ev_irq, dma_->er_irq}) {
+    if (on) {
+      NVIC_ClearPendingIRQ(irq);
+      NVIC_EnableIRQ(irq);
+    } else {
+      NVIC_DisableIRQ(irq);
+    }
+  }
+}
+
+bool I2c::configureHardware() {
   // Same pin setup as the core's pin map: AF open-drain, external pull-ups.
   cfg_.scl.setAsAlternateOpenDrain(cfg_.af);
   cfg_.sda.setAsAlternateOpenDrain(cfg_.af);
@@ -134,19 +164,32 @@ bool I2c::init() {
   dma_rx_.Init.FIFOMode = DMA_FIFOMODE_DISABLE;
   if (HAL_DMA_Init(&dma_rx_) != HAL_OK) return false;
   __HAL_LINKDMA(&handle_, hdmarx, dma_rx_);
-
-  HAL_NVIC_SetPriority(dma_->stream_irq, kIrqPriority, 0);
-  HAL_NVIC_SetPriority(dma_->ev_irq, kIrqPriority, 0);
-  HAL_NVIC_SetPriority(dma_->er_irq, kIrqPriority, 0);
-  HAL_NVIC_EnableIRQ(dma_->stream_irq);
-  HAL_NVIC_EnableIRQ(dma_->ev_irq);
-  HAL_NVIC_EnableIRQ(dma_->er_irq);
   return true;
+}
+
+// A device holding SDA/SCL, or the F4 peripheral's stuck-BUSY state, makes
+// every later transfer fail until the peripheral is reset; on rosbot_xl
+// that would take the EEPROM down with the IMU. Called with the bus lock
+// held (or before the scheduler), so no other transfer can start meanwhile.
+void I2c::recover() {
+  setIrqsEnabled(false);
+  HAL_DMA_Abort(&dma_rx_);  // HAL_ERROR when idle, harmless
+  HAL_I2C_DeInit(&handle_);
+  clearI2cBus(cfg_.scl, cfg_.sda, [] { clock::delayUs(5); });  // 100 kHz
+  configureHardware();
+  xSemaphoreTake(done_, 0);
+  setIrqsEnabled(true);
 }
 
 bool I2c::finish(HAL_StatusTypeDef status) {
   if (status == HAL_OK) return true;
   last_error_ = HAL_I2C_GetError(&handle_);
+  // HAL_BUSY: BUSY flag stuck or the handle left mid-transfer.
+  if (status == HAL_BUSY || status == HAL_TIMEOUT ||
+      (last_error_ & kBusFaultErrors) != 0) {
+    if (status == HAL_BUSY) last_error_ |= HAL_I2C_ERROR_TIMEOUT;
+    recover();
+  }
   return false;
 }
 
@@ -199,11 +242,16 @@ bool I2c::readRegDma(uint8_t addr, uint8_t reg, uint8_t* data, size_t len,
     return false;
   }
   if (xSemaphoreTake(done_, pdMS_TO_TICKS(timeout_ms)) != pdTRUE) {
-    HAL_I2C_Master_Abort_IT(&handle_, addr << 1);
+    // HAL_I2C_Master_Abort_IT ignores a Mem_Read (MODE_MEM in HAL 1.8.1),
+    // which used to leave DMA armed and the handle BUSY_RX.
     last_error_ = HAL_I2C_ERROR_TIMEOUT;
+    recover();
     return false;
   }
-  if (!xfer_ok_) last_error_ = HAL_I2C_GetError(&handle_);
+  if (!xfer_ok_) {
+    last_error_ = HAL_I2C_GetError(&handle_);
+    if ((last_error_ & kBusFaultErrors) != 0) recover();
+  }
   return xfer_ok_;
 }
 

@@ -33,7 +33,9 @@ struct I2cConfig {
 
 // I2C master at 400 kHz on HAL. Every transfer holds the bus mutex once the
 // scheduler runs, so tasks sharing a bus (rosbot_xl: IMU + EEPROM) cannot
-// interleave. Addresses are 7-bit.
+// interleave. Addresses are 7-bit. A transfer that ends in a bus fault
+// (timeout, BERR, ARLO, stuck BUSY; not a plain NACK) fails and then
+// resets the peripheral and clears the bus, so the next one can work.
 class I2c {
  public:
   explicit I2c(const I2cConfig& cfg) : cfg_(cfg) {}
@@ -68,6 +70,9 @@ class I2c {
 
  private:
   class Lock;
+  bool configureHardware();
+  void setIrqsEnabled(bool on);
+  void recover();
   bool finish(HAL_StatusTypeDef status);
 
   I2cConfig cfg_;

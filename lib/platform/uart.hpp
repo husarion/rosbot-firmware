@@ -65,7 +65,7 @@ class Uart {
   int read();  // -1 when empty
   size_t read(uint8_t* buf, size_t len);
 
-  void onTxDmaComplete();  // TX DMA stream IRQ only
+  void onTxDmaComplete();  // TX DMA stream IRQ (complete or error) only
 
  private:
   static constexpr size_t kRxBufBytes = 512;

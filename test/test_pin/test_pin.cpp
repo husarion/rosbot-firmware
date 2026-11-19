@@ -130,6 +130,16 @@ void test_alternate_sets_afr_speed_and_pull() {
   TEST_ASSERT_EQUAL_HEX32((0b10UL << 12) | (0b11UL << 18), gpio->OSPEEDR);
 }
 
+void test_open_drain_output_releases_line_before_driving_it() {
+  const platform::Pin scl(GPIOA_BASE + kPortStride, 6);  // PB6
+  GPIO_TypeDef* gpio = fakePort(1);
+  scl.setAsOutputOpenDrain();
+  TEST_ASSERT_EQUAL_HEX32(1UL << 6, gpio->BSRR);  // high = released
+  TEST_ASSERT_EQUAL_HEX32(1UL << 6, gpio->OTYPER);
+  TEST_ASSERT_EQUAL_HEX32(0b01UL << 12, gpio->MODER);
+  TEST_ASSERT_EQUAL_HEX32(0, gpio->PUPDR);
+}
+
 void test_alternate_open_drain_sets_otyper() {
   const platform::Pin sda(platform::Port::C, 9);
   sda.setAsAlternateOpenDrain(4);
@@ -161,6 +171,7 @@ int main() {
   RUN_TEST(test_port_constructor_matches_base);
   RUN_TEST(test_toggle_inverts_output_latch);
   RUN_TEST(test_alternate_sets_afr_speed_and_pull);
+  RUN_TEST(test_open_drain_output_releases_line_before_driving_it);
   RUN_TEST(test_alternate_open_drain_sets_otyper);
   RUN_TEST(test_equality);
   return UNITY_END();

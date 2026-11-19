@@ -41,6 +41,12 @@ class Pin {
     configure(kModeOutput, Pull::kNone);
   }
 
+  // Open-drain output, e.g. to bit-bang a shared I2C line: high releases it.
+  void setAsOutputOpenDrain(bool initial_high = true) const {
+    write(initial_high);
+    configure(kModeOutput, Pull::kNone, Speed::kVeryHigh, 0, true);
+  }
+
   void setAsInput(Pull pull = Pull::kNone) const {
     configure(kModeInput, pull);
   }

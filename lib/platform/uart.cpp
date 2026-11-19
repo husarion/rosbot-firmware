@@ -129,7 +129,8 @@ bool Uart::open(uint32_t baud) {
   tx->PAR = reinterpret_cast<uint32_t>(&usart->DR);
   tx->FCR = 0;
   tx->CR = (static_cast<uint32_t>(dma_->tx_channel) << DMA_SxCR_CHSEL_Pos) |
-           DMA_SxCR_MINC | DMA_SxCR_DIR_0 | DMA_SxCR_PL_0 | DMA_SxCR_TCIE;
+           DMA_SxCR_MINC | DMA_SxCR_DIR_0 | DMA_SxCR_PL_0 | DMA_SxCR_TCIE |
+           DMA_SxCR_TEIE;
   NVIC_SetPriority(dma_->tx_irq, kTxIrqPriority);
   NVIC_EnableIRQ(dma_->tx_irq);
   tx_active_ = false;
@@ -253,6 +254,9 @@ void Uart::startTxDma(size_t len) {
   tx->CR |= DMA_SxCR_EN;
 }
 
+// Transfer complete or transfer error: either way the stream has stopped
+// (hardware clears EN on an error). A failed chunk is dropped; the receiver
+// sees one bad frame instead of TX stalling for good.
 void Uart::onTxDmaComplete() {
   clearStreamFlags(dma_->dma, dma_->tx_index);
   BaseType_t woken = pdFALSE;

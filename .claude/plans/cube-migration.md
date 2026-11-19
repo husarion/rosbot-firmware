@@ -256,6 +256,10 @@ commit under test:
   `configASSERT(0)`) resets and reports "MCU reset after a firmware fault";
   Monitor (debug build) shows stack high-water marks and idle % close to
   the step-8 numbers; `just flash` works on the SBC.
+- I2C recovery (after step 10): with `/imu` streaming, short the IMU bus
+  SDA to GND for ~1 s (ROSbot: I2C3 PC9, XL: I2C2 PF0), release it; `/imu`
+  resumes within a few reads without a reboot, and on XL the EEPROM still
+  answers (reboot shows the right board revision). Optional: same with SCL.
 - Timing (step 3): bridge TIMESYNC converges and stays (no clock jumps in
   `/imu` / `/joint_states` stamps over 10+ min); wheel watchdog stops the
   robot ~0.5 s after commands stop; runtime IMU calibration
