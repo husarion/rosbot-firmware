@@ -1,6 +1,6 @@
 # Plan: Arduino → STM32Cube HAL + FreeRTOS + ETL
 
-Status: steps 0–5 done (local `devel`, not HW-tested), 2026-11-19.
+Status: steps 0–6 done (local `devel`, not HW-tested), 2026-11-19.
 
 Decisions (Rafał, 2026-11-19): CMake + CubeMX after step 9; steps 8–9 on
 a short-lived branch merged into `devel` after HW test on both robots;
@@ -97,7 +97,7 @@ the next step lands.
 | 3 | Time: `platform::clock` on TIM5 (32-bit, 1 MHz) feeds `time_boot_us()`; `millis()` → `time_boot_ms()`, `micros()` → `clock::counterUs()`, `delay()` → `clock::delayMs()` (`vTaskDelay` once the scheduler runs, busy-wait before). Arduino libraries (Adafruit, Pololu, Wire) keep the core's own clock until step 7 | med (time_base invariants, TIMESYNC) | yes |
 | 4 | `platform/timer`: shared timer clock enable / kernel clock, `PwmOutput` (registers, same PSC/ARR/PWM1/preload as `HardwareTimer`, host-tested) for the motors; encoders and fan keep their HAL timer code but get pins via `Pin::setAsAlternate` | med (motor control) | yes |
 | 5 | `platform::AnalogIn`: ADC1 single-shot on registers with the same setup as `analogRead()` (10-bit, 15 cycles, PCLK2/4), conversion under masked IRQs (XL motor and fan tasks share ADC1). DMA left out: nothing needs it at the current rates | low | yes |
-| 6 | UART: `HardwareSerial` → own DMA driver (link, debug, power board); closes finding 1 | high (link) | yes |
+| 6 | `platform::Uart`: registers + DMA TX queue + circular DMA RX for the link, debug and power board UARTs; `HardwareSerial` and `-D ENABLE_HWSERIALx` gone. Finding 1 half closed: no per-byte RX IRQ, but the IDLE-line wakeup waits for step 9 (`USARTx_IRQHandler` is strong in the core's `uart.o`, which `Print.cpp` and Adafruit always link) | high (link) | yes |
 | 7 | I2C/SPI: `Wire`/`SPI` → own drivers with bus mutex; BNO055 driver replaces Adafruit; VL53L0X port onto our I2C; LED strip SPI | high (IMU) | yes |
 | 8 | Ethernet: STM32Ethernet/LwIP Arduino → HAL ETH (new F4 ETH API) + Cube LwIP + LAN9303 init (XL) | high | yes |
 | 9 | Switch-over: CMake + CubeMX `.ioc` per board, FreeRTOS kernel from CubeF4 middleware, linker script (sector 11 reserved, CCM fault marker), static allocation; drop `framework = arduino` | high | yes |
@@ -144,12 +144,20 @@ only become fully interrupt-driven at step 9.
   Arduino: `HardwareSerial` (link, debug, power board), `Wire`/`SPI`,
   Adafruit BNO055, Pololu VL53L0X, STM32Ethernet/LwIP, `setup()`/`loop()`
   entry, and the core's clock/HAL init.
+- Step 6 behaviour differences: RX bytes no longer cost an interrupt each
+  (921600 baud was up to ~92 k IRQ/s); debug text writes are queued and
+  DMA-driven inside tasks, polled before the scheduler; `printf` truncates
+  at 255 chars (the Monitor report goes through `print`). BRR is still
+  HAL's (USART3 at +1.27 %); plain rounding would give -0.93 %, a separate,
+  HW-checked change if ever wanted. Two old `printf` format mismatches
+  (`%d` for `BaseType_t`, `%u` for `unsigned long`) surfaced with the
+  `format` attribute and are fixed.
 - Step 5 behaviour differences: ADC1 is configured once instead of a full
   HAL init/deinit per `analogRead()` (each read drops from tens of us to
   ~1.2 us); reads are now serialized, where XL's motor and fan tasks could
   previously interleave ADC1 re-inits.
 
-## HW smoke test for steps 1–5
+## HW smoke test for steps 1–6
 
 Both robots, same firmware build as the commit:
 
@@ -167,6 +175,12 @@ Both robots, same firmware build as the commit:
   ROSbot `/battery` voltage matches a multimeter as before; XL rev 1.2
   `_motors/feedback` effort follows load (CSO current sense), XL fan speeds
   up with temperature and NTC temperature is plausible.
+- UART (step 6): ROSbot bridge connects over the SBC link and stays up for
+  10+ min under full telemetry (no MAVLink CRC errors in the bridge log);
+  boot handshake (FW/NS/BACKEND/END) works; rear FTDI shows boot text and
+  the Monitor report (debug build); FTDI as link via the boot tap; boot
+  IMU calibration text on both FTDI and SBC link. XL: debug text on USART1,
+  `/battery` from the power board (USART2), PB version service.
 - Timing (step 3): bridge TIMESYNC converges and stays (no clock jumps in
   `/imu` / `/joint_states` stamps over 10+ min); wheel watchdog stops the
   robot ~0.5 s after commands stop; runtime IMU calibration

@@ -122,8 +122,8 @@ as-is given the trade-off above.
 `rosbot_xl_release`. Each variant's env sets:
 
 - `build_src_filter` to include only `src/<variant>/*.cpp`
-- Variant-specific transport flags (`-D ENABLE_HWSERIAL1`,
-  `-D ETHERNET_USE_FREERTOS`, `-D LAN9303`, ...)
+- Variant-specific transport flags (`-D ETHERNET_USE_FREERTOS`,
+  `-D LAN9303`)
 
 There is no variant macro (`ROSBOT` / `ROSBOT_XL` were removed): the variant
 is chosen by which `src/<variant>/` is compiled, and those files include
@@ -182,7 +182,7 @@ upstream stack; it was removed after v2.1.0-jazzy (see git history).
 | `led_strip/` | APA102-style LED strip over SPI (rosbot_xl only) |
 | `motor/` | `MotorInterface`, `MotorHiZ`, `MotorArray` (Hi-Z PWM control) |
 | `persistent_config/` | Namespace + BNO055 calibration offsets, stored as one record appended to a log in flash sector 11. Appending is safe at runtime; only the 1-3 s sector erase (sector full) is deferred to a pre-scheduler `save()` — see "IMU calibration" |
-| `platform/` | Hardware access written on CMSIS registers / HAL, replacing the Arduino API piece by piece (see `.claude/plans/cube-migration.md`). `analog_in`: ADC1 single-shot 10-bit reads (battery, NTC, motor current), serialized with masked IRQs. `timer`: timer clock enable / kernel clock for any TIM, and `PwmOutput` (motor PWM). `clock`: TIM5 free-running at 1 MHz (also the FreeRTOS run-time stats source, see `time_base.cpp`) (`init()` is the first line of `setup()`), `delayUs()`, `delayMs()` (blocks the task once the scheduler runs). `Pin`: constexpr GPIO (`Pin{Port::E, 2}`) with output/input/analog setup under masked IRQs, used for every pure-GPIO pin in both board configs (timer and ADC pins too, via `setAsAlternate` / `AnalogIn`); host-tested against a fake register block in `test/native_stubs/stm32f4xx.h` |
+| `platform/` | Hardware access written on CMSIS registers / HAL, replacing the Arduino API piece by piece (see `.claude/plans/cube-migration.md`). `uart`: USART1/2/3 with DMA TX/RX, see "UART driver and DMA stream map". `analog_in`: ADC1 single-shot 10-bit reads (battery, NTC, motor current), serialized with masked IRQs. `timer`: timer clock enable / kernel clock for any TIM, and `PwmOutput` (motor PWM). `clock`: TIM5 free-running at 1 MHz (also the FreeRTOS run-time stats source, see `time_base.cpp`) (`init()` is the first line of `setup()`), `delayUs()`, `delayMs()` (blocks the task once the scheduler runs). `Pin`: constexpr GPIO (`Pin{Port::E, 2}`) with output/input/analog setup under masked IRQs, used for every pure-GPIO pin in both board configs (timer and ADC pins too, via `setAsAlternate` / `AnalogIn`); host-tested against a fake register block in `test/native_stubs/stm32f4xx.h` |
 | `pid/` | PID controller with feedforward, anti-windup, dead-zone boost |
 | `power_board/` | UART protocol to rosbot_xl power board MCU (battery state) |
 | `range/` | `RangeInterface` + `RangeVl53l0x` + `RangeArray` (rosbot only) |
@@ -501,20 +501,17 @@ in `lib/mavlink/transport/` replace both with blocking primitives:
   pushes the payload into a FreeRTOS stream buffer; `read()` blocks on
   `xStreamBufferReceive(timeout)`; `write()` calls `udp_sendto()` (LwIP TX
   is already DMA-driven).
-- **`mavlink_serial_transport`** (rosbot) —
-  - **RX**: an `available()`-based loop that calls `vTaskDelay(1)` when the
-    ring buffer is empty, with `vTaskSetTimeOutState` /
-    `xTaskCheckForTimeOut` for tick-wraparound-safe timing. **Not fully
-    event-driven** — `HardwareSerial::_serial` is private in the framework
-    and `HAL_UART_RxCpltCallback` is a strong symbol, so a per-byte
-    semaphore would need a framework patch. The yielding poll buys most of
-    the win at zero invasion.
-  - **TX**: DMA-driven. `write()` pushes bytes into a 2 KB `xStreamBuffer`;
-    the DMA TC IRQ chains the next chunk and only marks idle when the buffer
-    drains. A frame that does not fit in the free space is dropped whole
-    (never split), without blocking the caller. DMA stream + channel are
-    resolved at runtime from the Serial pointer — see "USART → DMA mapping"
-    below.
+- **`mavlink_serial_transport`** (rosbot) — a thin wrapper over
+  `platform::Uart` (see "UART driver and DMA stream map" below):
+  - **RX**: bytes land in the UART's circular DMA buffer; `read()` drains
+    it and, when empty, waits with `vTaskDelay(1)` (tick-wrap-safe via
+    `vTaskSetTimeOutState` / `xTaskCheckForTimeOut`). Still a 1-tick poll,
+    but of a DMA counter instead of a per-byte-IRQ ring: an IDLE-line wakeup
+    needs `USARTx_IRQHandler`, which the Arduino core owns until migration
+    step 9.
+  - **TX**: `Uart::writeFrame()` queues the whole frame in the UART's stream
+    buffer or drops it (never split, never blocks); DMA drains the queue in
+    256 B chunks.
 
 ### Fatal errors
 
@@ -649,8 +646,8 @@ look right, and what changed:
   holds and keeps a partial frame; the reply is picked up on a later
   10 Hz tick. The board-info request goes half a second after the battery
   one: sending both at once lost replies on HW. The cause is unconfirmed —
-  it was put down to a 64 B RX buffer, but the Husarion core fork's ring is
-  512 B (`SERIAL_RX_BUFFER_SIZE`, asserted in `mavlink_serial_transport.cpp`).
+  it was put down to a 64 B RX buffer, but the Husarion core fork's ring was
+  512 B (now `platform::Uart`'s 512 B circular DMA buffer).
 - `rangeTask` and `ledStripTask` used `vTaskDelay`, so their period grew by
   the execution time (range: 101 ms instead of 100).
 - The run-time stats timer ticked at 50 kHz, not 100 kHz: TIM5 is on APB1
@@ -683,71 +680,42 @@ stats.
 XL `MotorControl` uses ~536 B of its 1 KB: with the old 576 B (`Stack::XXS`)
 the margin would have been ~40 B. Free heap: 89 KB (ROSbot 3), 44 KB (XL).
 
-### USART → DMA mapping (and IRQ-handler symbol collisions)
+### UART driver and DMA stream map
 
-`mavlink_serial_transport` resolves the DMA stream / channel for each Serial at
-runtime via `findTxMap(HardwareSerial*)`. Currently mapped: `&Serial1`
-(USART1) and `&Serial3` (USART3). To extend to another Serial, add an
-entry in the function plus an IRQ handler symbol — but check the table
-below first for stream-IRQ collisions, since `lib/` is shared across
-variants and IRQ handlers are link-time strong symbols.
+`lib/platform/uart.{hpp,cpp}` (`platform::Uart`) drives USART1/2/3 on
+registers: 8N1, BRR computed exactly like HAL's `UART_BRR_SAMPLING16`
+(`uart_math.hpp`, host-tested), TX through a FreeRTOS stream buffer drained
+by DMA, RX by circular DMA into a 512 B buffer read by polling its counter.
+No USART interrupt is enabled: `USARTx_IRQHandler` is a strong symbol in
+the Arduino core's `uart.o`, which `Print.cpp` and the Adafruit libraries
+always pull into the link. Text writes (`print`/`printf`, 256 B per call)
+block until queued; before the scheduler runs (and while `createTasks()`
+has interrupts masked) every write is polled byte by byte.
 
-STM32F4 USART/UART TX → DMA mapping (RM0090 Table 43):
-
-| Serial | UART | TX DMA primary | TX DMA alt |
+| UART | Use | TX DMA | RX DMA |
 |---|---|---|---|
-| Serial1 | USART1 | DMA2 Stream 7 Ch4 | — |
-| Serial2 | USART2 | DMA1 Stream 6 Ch4 | — |
-| Serial3 | USART3 | DMA1 Stream 3 Ch4 | DMA1 Stream 4 Ch7 |
-| Serial4 | UART4 | DMA1 Stream 4 Ch4 | — |
-| Serial5 | UART5 | DMA1 Stream 7 Ch4 | — |
-| Serial6 | USART6 | DMA2 Stream 6 Ch5 | DMA2 Stream 7 Ch5 |
-| Serial7 | UART7 | DMA1 Stream 1 Ch5 | — |
-| Serial8 | UART8 | DMA1 Stream 0 Ch5 | — |
+| USART1 | rosbot SBC link / rosbot_xl debug | DMA2 S7 ch4 | DMA2 S2 ch4 |
+| USART2 | rosbot_xl power board | DMA1 S6 ch4 | DMA1 S5 ch4 |
+| USART3 | rosbot FTDI debug / alt link | DMA1 S4 ch7 | DMA1 S1 ch4 |
 
-Already-defined `DMAx_StreamY_IRQHandler` symbols in `lib/`:
+Request mapping cross-checked against ChibiOS's STM32F40x DMA registry
+(RM0090 tables 42/43). USART3 TX uses the Stream 4 alternative because
+Stream 3 is the BNO055 I2C2 RX stream.
+
+`DMAx_StreamY_IRQHandler` symbols defined in `lib/` (all others stay weak):
 
 | Symbol | Defined by | Reason |
 |---|---|---|
 | `DMA1_Stream0_IRQHandler` | `imu_bno055.cpp` | I2C1_RX (placeholder, not used today) |
 | `DMA1_Stream2_IRQHandler` | `imu_bno055.cpp` | I2C3_RX — rosbot IMU |
 | `DMA1_Stream3_IRQHandler` | `imu_bno055.cpp` | I2C2_RX — rosbot_xl IMU |
-| `DMA1_Stream4_IRQHandler` | `mavlink_serial_transport.cpp` | USART3_TX (alt mapping) |
-| `DMA2_Stream7_IRQHandler` | `mavlink_serial_transport.cpp` | USART1_TX |
+| `DMA1_Stream4_IRQHandler` | `platform/uart.cpp` | USART3_TX |
+| `DMA1_Stream6_IRQHandler` | `platform/uart.cpp` | USART2_TX |
+| `DMA2_Stream7_IRQHandler` | `platform/uart.cpp` | USART1_TX |
 
-Picking the alt mapping for USART3_TX (Stream 4 Ch7 instead of the
-primary Stream 3 Ch4) was deliberate: the primary collides with
-`imu_bno055.cpp`'s `DMA1_Stream3_IRQHandler` symbol, which is in the
-link on both variants even though only rosbot_xl uses it.
-
-Recipe for adding a new Serial to `mavlink_serial_transport`:
-
-1. Pick a stream (primary or alt) that does not collide with any symbol
-   in the table above.
-2. Add a `findTxMap` entry guarded by `defined(USARTx_BASE) &&
-   defined(ENABLE_HWSERIALx)`:
-   ```cpp
-   if (serial == &SerialN) {
-     static const UartTxDmaMap kMap = {USARTN, DMAx, DMAx_StreamY,
-                                       DMA_CHANNEL_z, DMAx_StreamY_IRQn};
-     return &kMap;
-   }
-   ```
-3. Add the matching IRQ handler at namespace scope:
-   ```cpp
-   extern "C" void DMAx_StreamY_IRQHandler(void) {
-     if (s_hdma_tx.Instance == DMAx_StreamY) HAL_DMA_IRQHandler(&s_hdma_tx);
-   }
-   ```
-4. Add `-D ENABLE_HWSERIALx` to the relevant `[env:...]` in
-   `platformio.ini` if the framework hasn't enabled it already.
-5. Add the new symbol to the "already-defined" table in this section so
-   the next person picking a stream sees it.
-
-If you ever need 4+ DMA-driven peripherals on shared streams, consider
-refactoring the IRQ handlers into a central dispatcher (`dma_dispatch.cpp`)
-where each module registers its own callback; current code keeps it
-simple because the conflict surface is small.
+RX streams run without an IRQ. Adding a UART: pick streams that do not
+collide with this table, add a `kStreams` entry and its TX IRQ handler in
+`uart.cpp`, and update both tables here.
 
 ### Variant universality in `lib/`
 
@@ -783,13 +751,11 @@ Ethernet pin map into `PinMap_Ethernet_MII/RMII` so RMII mode only claims its
 9 pins (upstream's single `PinMap_Ethernet[]` would grab MII-only GPIO used
 elsewhere on rosbot_xl).
 
-- `[env:rosbot]` — debug, `-D ENABLE_HWSERIAL1`,
-  `-D ENABLE_HWSERIAL3`, `build_src_filter = +<rosbot/*> -<rosbot_xl/*>`.
+- `[env:rosbot]` — debug, `build_src_filter = +<rosbot/*> -<rosbot_xl/*>`.
 - `[env:rosbot_release]` — same + `[release_flags]` (`-O2 -D RELEASE`,
   cortex-m4 / fpv4 flags). Strips `-g`. The `-O2` is not what the compiler
   ends up using — see "Optimisation level" below.
-- `[env:rosbot_xl]` — debug, `-D ENABLE_HWSERIAL1`,
-  `-D ETHERNET_USE_FREERTOS`, `-D LAN9303`,
+- `[env:rosbot_xl]` — debug, `-D ETHERNET_USE_FREERTOS`, `-D LAN9303`,
   `build_src_filter = -<rosbot/*> +<rosbot_xl/*>`.
 - `[env:rosbot_xl_release]` — release variant of the above.
 - `[env:native]` — host unit tests (`pio test -e native`, `just test`, CI
@@ -1025,13 +991,10 @@ namespace the host also sends the MCU in the `NS:` handshake line.
 
 These are documented to avoid re-discovery:
 
-- **Link RX path on rosbot is still polling.** TX is DMA-driven, but RX
-  uses a yielding `vTaskDelay(1)` poll because `HardwareSerial::_serial`
-  is private in the framework and `HAL_UART_RxCpltCallback` is a strong
-  symbol — neither lets us register a per-byte semaphore signal without
-  patching the stm32duino fork (or replacing `USARTx_IRQHandler`, also a
-  strong symbol). The poll buys most of the win at zero invasion but
-  leaves the link task with a CPU floor proportional to read activity.
+- **Link RX on rosbot is still a 1-tick poll.** RX runs on circular DMA
+  (no per-byte IRQ any more), but waking the link task on IDLE line needs
+  `USARTx_IRQHandler`, a strong symbol in the Arduino core until migration
+  step 9 removes the core.
 - **No SBC IP auto-discovery.** `SBC_IP` and `CLIENT_IP` are hardcoded in
   `include/rosbot_xl/config.hpp`. True auto-discovery options were
   considered (DHCP server on MCU, broadcast announcement protocol, mDNS)
