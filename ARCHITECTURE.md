@@ -182,7 +182,7 @@ upstream stack; it was removed after v2.1.0-jazzy (see git history).
 | `led_strip/` | APA102-style LED strip over SPI (rosbot_xl only) |
 | `motor/` | `MotorInterface`, `MotorHiZ`, `MotorArray` (Hi-Z PWM control) |
 | `persistent_config/` | Namespace + BNO055 calibration offsets, stored as one record appended to a log in flash sector 11. Appending is safe at runtime; only the 1-3 s sector erase (sector full) is deferred to a pre-scheduler `save()` — see "IMU calibration" |
-| `platform/` | Hardware access written on CMSIS registers / HAL, replacing the Arduino API piece by piece (see `.claude/plans/cube-migration.md`). `clock`: TIM5 free-running at 1 MHz (`init()` is the first line of `setup()`), `delayUs()`, `delayMs()` (blocks the task once the scheduler runs). `Pin`: constexpr GPIO (`Pin{Port::E, 2}`) with output/input/analog setup under masked IRQs, used for every pure-GPIO pin in both board configs (ADC/PWM pins are still Arduino pin numbers); host-tested against a fake register block in `test/native_stubs/stm32f4xx.h` |
+| `platform/` | Hardware access written on CMSIS registers / HAL, replacing the Arduino API piece by piece (see `.claude/plans/cube-migration.md`). `timer`: timer clock enable / kernel clock for any TIM, and `PwmOutput` (motor PWM). `clock`: TIM5 free-running at 1 MHz (also the FreeRTOS run-time stats source, see `time_base.cpp`) (`init()` is the first line of `setup()`), `delayUs()`, `delayMs()` (blocks the task once the scheduler runs). `Pin`: constexpr GPIO (`Pin{Port::E, 2}`) with output/input/analog setup under masked IRQs, used for every pure-GPIO pin in both board configs (ADC/PWM pins are still Arduino pin numbers); host-tested against a fake register block in `test/native_stubs/stm32f4xx.h` |
 | `pid/` | PID controller with feedforward, anti-windup, dead-zone boost |
 | `power_board/` | UART protocol to rosbot_xl power board MCU (battery state) |
 | `range/` | `RangeInterface` + `RangeVl53l0x` + `RangeArray` (rosbot only) |
@@ -653,8 +653,9 @@ look right, and what changed:
   512 B (`SERIAL_RX_BUFFER_SIZE`, asserted in `mavlink_serial_transport.cpp`).
 - `rangeTask` and `ledStripTask` used `vTaskDelay`, so their period grew by
   the execution time (range: 101 ms instead of 100).
-- The run-time stats timer ticks at 50 kHz, not 100 kHz: TIM5 is on APB1
-  (84 MHz timer clock).
+- The run-time stats timer ticked at 50 kHz, not 100 kHz: TIM5 is on APB1
+  (84 MHz timer clock). Since migration step 3 the stats read
+  `time_boot_us() >> 4` (62.5 kHz) and TIM5 is the 1 MHz system clock.
 
 Checked and fine: motor PWM 20 kHz on all four timers, XL fan PWM 25 kHz,
 encoder timers in encoder mode, USART1 923 kbaud for a 921.6 kbaud link

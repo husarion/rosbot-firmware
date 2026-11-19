@@ -1,6 +1,6 @@
 # Plan: Arduino → STM32Cube HAL + FreeRTOS + ETL
 
-Status: steps 0–3 done (local `devel`, not HW-tested), 2026-11-19.
+Status: steps 0–4 done (local `devel`, not HW-tested), 2026-11-19.
 
 Decisions (Rafał, 2026-11-19): CMake + CubeMX after step 9; steps 8–9 on
 a short-lived branch merged into `devel` after HW test on both robots;
@@ -95,7 +95,7 @@ the next step lands.
 | 1 | ETL (pinned) with first users (`etl::span` in `MotorArray`/`RangeArray`), `platform::Pin` + host tests, tasks get their `TaskConfig*` (finding 8). Time moves to step 3, static RTOS helpers to step 9, where their first users are | low | no |
 | 2 | GPIO: `pinMode/digitalWrite/digitalRead` → `platform::Pin` (`Pin{Port::E, 2}` in board configs). Done for every pure-GPIO pin; pins that also feed ADC or PWM (battery, NTC, current sense, fan) stay Arduino until steps 4–5 | low | yes |
 | 3 | Time: `platform::clock` on TIM5 (32-bit, 1 MHz) feeds `time_boot_us()`; `millis()` → `time_boot_ms()`, `micros()` → `clock::counterUs()`, `delay()` → `clock::delayMs()` (`vTaskDelay` once the scheduler runs, busy-wait before). Arduino libraries (Adafruit, Pololu, Wire) keep the core's own clock until step 7 | med (time_base invariants, TIMESYNC) | yes |
-| 4 | PWM + encoder timers: `HardwareTimer` → HAL/LL TIM (motor_hi_z, fan) | med (motor control) | yes |
+| 4 | `platform/timer`: shared timer clock enable / kernel clock, `PwmOutput` (registers, same PSC/ARR/PWM1/preload as `HardwareTimer`, host-tested) for the motors; encoders and fan keep their HAL timer code but get pins via `Pin::setAsAlternate` | med (motor control) | yes |
 | 5 | ADC (battery, current sense, NTC) → HAL ADC + DMA | low | yes |
 | 6 | UART: `HardwareSerial` → own DMA driver (link, debug, power board); closes finding 1 | high (link) | yes |
 | 7 | I2C/SPI: `Wire`/`SPI` → own drivers with bus mutex; BNO055 driver replaces Adafruit; VL53L0X port onto our I2C; LED strip SPI | high (IMU) | yes |
@@ -132,9 +132,16 @@ only become fully interrupt-driven at step 9.
   `platform::clock::init()` (first line of `setup()`), a few ms later than
   before; MAVLink TIMESYNC absorbs the offset. TIM5 freezes on a debugger
   halt.
-- Left on Arduino after step 4–5: `pinMode` in `battery_adc.cpp`,
-  `ntc.cpp`, `fan.cpp`, `motor_hi_z.cpp` (current sense) and `FAN_PP_PIN`
-  in `src/rosbot_xl/main.cpp` (shared with `rev1_1_fan_config`).
+- Step 3 fix (folded into its commit before any push): FreeRTOS run-time
+  stats used to program TIM5 to 50 kHz in `vConfigureTimerForRunTimeStats`,
+  which would have slowed `time_boot_us()` 50x once the scheduler started.
+  The hooks now live in `time_base.cpp` and read `time_boot_us() >> 4`
+  (16 us per count, wrap after ~19 h instead of ~23.8 h).
+- Timer map (both boards): TIM5 clock; TIM10/11/13/14 motor PWM; rosbot
+  encoders TIM2/3/4/8; XL encoders TIM1/2/3/4, fan TIM8. STM32Ethernet's
+  default TIM14 scheduler is compiled out on XL (`ETHERNET_USE_FREERTOS`).
+- Left on Arduino after step 4: `pinMode` in `battery_adc.cpp`,
+  `ntc.cpp`, `motor_hi_z.cpp` (current sense): all ADC, step 5.
 
 ## HW smoke test for steps 1–3
 
