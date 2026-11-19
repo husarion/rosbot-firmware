@@ -153,8 +153,9 @@ Layers, bottom-up:
    fork). Provides `Arduino.h`, `Wire`, `HardwareSerial`, `HardwareTimer`,
    `STM32Ethernet`, `LwIP`. Pinned via `platformio.ini`.
 3. **STM32FreeRTOS 10.3.3** — single-core preemptive scheduler.
-4. **Vendor / device libraries** — Adafruit_BNO055, Adafruit_BusIO,
-   Pololu VL53L0X, etc. Plus **ETL** (Embedded Template Library, pinned
+4. **Vendor / device libraries** — Pololu VL53L0X, vendored in
+   `lib/vl53l0x/` (MIT) and moved onto `platform::I2c`; the BNO055 driver
+   is our own. Plus **ETL** (Embedded Template Library, pinned
    tag in `lib_deps`) for fixed-capacity containers and `etl::span`
    (we build as C++17, so no `std::span`).
 5. **Project libraries** in `lib/`, including the MAVLink stack
@@ -177,12 +178,13 @@ upstream stack; it was removed after v2.1.0-jazzy (see git history).
 | `encoder/` | `EncoderInterface` + `HardwareEncoder` (STM32 timer in encoder mode, x4) |
 | `fan/` | Fan + NTC thermistor (rosbot_xl only) |
 | `fault/` | `fatalError()` and the fault/hook plumbing — see "Fatal errors" under "Patterns" |
-| `imu/` | `ImuInterface` + `ImuBno055` (BNO055, DMA path — see "Patterns"). Also exposes on-chip calibration status/offsets, persisted via `persistent_config` — see "IMU calibration" under "Patterns" |
+| `imu/` | `ImuInterface` + `ImuBno055` (own BNO055 driver on `platform::I2c`: same reset/config sequence as Adafruit_BNO055 1.6.4, 46-byte data block by DMA). Also exposes on-chip calibration status/offsets, persisted via `persistent_config` — see "IMU calibration" under "Patterns" |
 | `indicator/` | Status LED state machine |
-| `led_strip/` | APA102-style LED strip over SPI (rosbot_xl only) |
+| `led_strip/` | APA102-style LED strip over `platform::Spi` (rosbot_xl only) |
+| `vl53l0x/` | Vendored Pololu VL53L0X driver (MIT, `LICENSE.txt`), bus calls on `platform::I2c`; excluded from pre-commit |
 | `motor/` | `MotorInterface`, `MotorHiZ`, `MotorArray` (Hi-Z PWM control) |
 | `persistent_config/` | Namespace + BNO055 calibration offsets, stored as one record appended to a log in flash sector 11. Appending is safe at runtime; only the 1-3 s sector erase (sector full) is deferred to a pre-scheduler `save()` — see "IMU calibration" |
-| `platform/` | Hardware access written on CMSIS registers / HAL, replacing the Arduino API piece by piece (see `.claude/plans/cube-migration.md`). `uart`: USART1/2/3 with DMA TX/RX, see "UART driver and DMA stream map". `analog_in`: ADC1 single-shot 10-bit reads (battery, NTC, motor current), serialized with masked IRQs. `timer`: timer clock enable / kernel clock for any TIM, and `PwmOutput` (motor PWM). `clock`: TIM5 free-running at 1 MHz (also the FreeRTOS run-time stats source, see `time_base.cpp`) (`init()` is the first line of `setup()`), `delayUs()`, `delayMs()` (blocks the task once the scheduler runs). `Pin`: constexpr GPIO (`Pin{Port::E, 2}`) with output/input/analog setup under masked IRQs, used for every pure-GPIO pin in both board configs (timer and ADC pins too, via `setAsAlternate` / `AnalogIn`); host-tested against a fake register block in `test/native_stubs/stm32f4xx.h` |
+| `platform/` | Hardware access written on CMSIS registers / HAL, replacing the Arduino API piece by piece (see `.claude/plans/cube-migration.md`). `i2c`: HAL I2C master at 400 kHz with a per-bus mutex, blocking transfers and a DMA register read; owns the I2C IRQs and HAL I2C callbacks. `spi`: blocking SPI master. `device.hpp`: the one place that picks the device header while the Arduino core is linked. `uart`: USART1/2/3 with DMA TX/RX, see "UART driver and DMA stream map". `analog_in`: ADC1 single-shot 10-bit reads (battery, NTC, motor current), serialized with masked IRQs. `timer`: timer clock enable / kernel clock for any TIM, and `PwmOutput` (motor PWM). `clock`: TIM5 free-running at 1 MHz (also the FreeRTOS run-time stats source, see `time_base.cpp`) (`init()` is the first line of `setup()`), `delayUs()`, `delayMs()` (blocks the task once the scheduler runs). `Pin`: constexpr GPIO (`Pin{Port::E, 2}`) with output/input/analog setup under masked IRQs, used for every pure-GPIO pin in both board configs (timer and ADC pins too, via `setAsAlternate` / `AnalogIn`); host-tested against a fake register block in `test/native_stubs/stm32f4xx.h` |
 | `pid/` | PID controller with feedforward, anti-windup, dead-zone boost |
 | `power_board/` | UART protocol to rosbot_xl power board MCU (battery state) |
 | `range/` | `RangeInterface` + `RangeVl53l0x` + `RangeArray` (rosbot only) |
@@ -417,12 +419,6 @@ is wired to it:
   Not mirrored when the FTDI itself is the link (`kChangeTransport`, a
   developer setup): there is no free debug line then anyway.
 
-Step 2's blocking calls (`getCalibrationStatus()`,
-`captureCalibrationOffsets()`) only work because `main.cpp` calls
-`ImuBno055::init()` without following it with `enableDmaReads()` until
-*after* this whole window — see the "FreeRTOS-safe IRQ priorities"
-gotcha above for why that ordering matters.
-
 ### Hi-Z motor control
 
 `MotorHiZ` drives any dual-IN H-bridge whose truth table is:
@@ -564,22 +560,16 @@ DMA path lowers the EV/ER + DMA stream IRQ priority to 5 — canonical
 pattern in `lib/imu/imu_bno055.cpp`. Replicate this if you add another
 HAL-callback-driven path on top of a framework-managed peripheral.
 
-**Gotcha (HW-verified 2026-08-26):** that priority change — and linking
-our DMA handle into `s_hi2c` via `__HAL_LINKDMA` — breaks Wire's own
-blocking transactions (`HAL_I2C_Master_Receive_IT`, what
-`Adafruit_BNO055`'s non-DMA calls use). Confirmed by probing the I2C bus
-directly before/after: reads succeed before, fail with a generic HAL
-error immediately after. Boot-time IMU calibration (see "IMU
-calibration" below) needs those blocking calls, so `ImuBno055::init()`
-only brings the chip up (NDOF mode, axis remap) — the DMA/IRQ setup is a
-separate `enableDmaReads()`, called once right before
-`vTaskStartScheduler()`, after calibration is done. `update()` no-ops
-safely (`s_done_sem == nullptr` guard) until then, and no task calls it
-before the scheduler starts anyway.
+The I2C, UART TX and IMU DMA IRQs in `lib/platform/` are all set to 5.
+Before migration step 7 the I2C IRQs belonged to Arduino Wire (priority 2),
+and lowering them for the BNO055 DMA path broke Wire's own IT transfers
+(HW-verified 2026-08-26), which forced a separate `enableDmaReads()` after
+boot calibration. `platform::I2c` does blocking transfers by polling and
+only the DMA read uses interrupts, so that ordering constraint is gone.
 
 ### DMA + FreeRTOS handshake
 
-Standard pattern, reused for IMU and (planned) UART TX. Steps:
+Standard HAL pattern (`platform::I2c` uses it; `platform::Uart` does the same on registers). Steps:
 
 1. `__HAL_RCC_DMAx_CLK_ENABLE()`.
 2. Configure `DMA_HandleTypeDef` (direction, increments, sizes).
@@ -595,35 +585,24 @@ Standard pattern, reused for IMU and (planned) UART TX. Steps:
 9. Override `HAL_..._CpltCallback` (peripheral-specific) to do
    `xSemaphoreGiveFromISR + portYIELD_FROM_ISR`.
 
-Caveat: some HAL completion callbacks are strong-symbol in the framework
-(e.g. `HAL_I2C_ErrorCallback` in `Wire/utility/twi.c`). When that
-happens, fall back to the timeout in `xSemaphoreTake` and abort the
-transfer manually (`HAL_I2C_Master_Abort_IT` for I2C).
+`platform::I2c` follows this pattern and also handles
+`HAL_I2C_ErrorCallback` (a NACK wakes the reader at once), which was
+impossible while Arduino Wire's `twi.c` defined it.
 
-### Wire 100 kHz reset gotcha
+### I2C bus speed (400 kHz)
 
-`TwoWire::begin()` in stm32duino unconditionally calls
-`i2c_init(&_i2c, 100000, ...)` — hard-coded 100 kHz. Any third-party
-library that does its own `Wire.begin()` (e.g. Adafruit_BNO055 inside
-its `begin(mode)`) silently drops your previously-configured 400 kHz
-back to 100 kHz.
-
-`ImuBno055::init()` re-applies the fast-mode clock after `bno_.begin()`.
-This was documented here long before the code did it, and it mattered:
-at 100 kHz the DMA read took 5-9 ms against a 4 ms timeout, nearly every
-read timed out, and `imuTask` kept republishing the last good sample —
-orientation frozen while the robot was turned by hand (ROSbot 3, 2026-09).
-At 400 kHz: 1.6-6.9 ms, 0 timeouts in 2181 reads. The spread is the
-BNO055's clock stretching plus task wake-up jitter, hence
-`kReadTimeoutMs = 8` (under the 10 ms task period). `update()` now reports
-whether it read a fresh sample, and `imuTask` publishes only those.
-
-`setClock(400000)` itself is not 400 kHz either: stm32duino always picks
-the 16/9 duty cycle for fast mode, and with PCLK1 = 42 MHz CCR rounds up
-to 5, i.e. 336 kHz (read back from `I2C->CCR`). Use `setI2cFastMode()`
-(`lib/i2c_fast_mode/`) for every bus: it switches to the 2:1 duty cycle,
-which divides evenly (CCR 35 = exactly 400 kHz) and stays inside the
-fast-mode tLOW/tHIGH minimums.
+`platform::I2c::init()` sets 400 kHz with the 2:1 fast-mode duty cycle.
+Arduino's `setClock(400000)` picked 16/9, and with PCLK1 = 42 MHz CCR
+rounded to 5, i.e. 336 kHz (read back from `I2C->CCR`); 2:1 divides evenly
+(CCR 35 = exactly 400 kHz) and stays inside the fast-mode tLOW/tHIGH
+minimums. Under Wire, libraries calling `Wire.begin()` (Adafruit_BNO055)
+also silently reset the bus to 100 kHz, and at 100 kHz the IMU DMA read
+took 5-9 ms against a 4 ms timeout, nearly every read timed out and the
+published orientation froze (ROSbot 3, 2026-09). At 400 kHz: 1.6-6.9 ms,
+0 timeouts in 2181 reads. The spread is the BNO055's clock stretching plus
+task wake-up jitter, hence `kReadTimeoutMs = 8` (under the 10 ms task
+period). `update()` reports whether it read a fresh sample, and `imuTask`
+publishes only those.
 
 ### Timing measured on HW (2026-09)
 
@@ -687,8 +666,8 @@ registers: 8N1, BRR computed exactly like HAL's `UART_BRR_SAMPLING16`
 (`uart_math.hpp`, host-tested), TX through a FreeRTOS stream buffer drained
 by DMA, RX by circular DMA into a 512 B buffer read by polling its counter.
 No USART interrupt is enabled: `USARTx_IRQHandler` is a strong symbol in
-the Arduino core's `uart.o`, which `Print.cpp` and the Adafruit libraries
-always pull into the link. Text writes (`print`/`printf`, 256 B per call)
+the Arduino core's `uart.o`, which `Print.cpp` always pulls into the
+link. Text writes (`print`/`printf`, 256 B per call)
 block until queued; before the scheduler runs (and while `createTasks()`
 has interrupts masked) every write is polled byte by byte.
 
@@ -706,9 +685,9 @@ Stream 3 is the BNO055 I2C2 RX stream.
 
 | Symbol | Defined by | Reason |
 |---|---|---|
-| `DMA1_Stream0_IRQHandler` | `imu_bno055.cpp` | I2C1_RX (placeholder, not used today) |
-| `DMA1_Stream2_IRQHandler` | `imu_bno055.cpp` | I2C3_RX — rosbot IMU |
-| `DMA1_Stream3_IRQHandler` | `imu_bno055.cpp` | I2C2_RX — rosbot_xl IMU |
+| `DMA1_Stream0_IRQHandler` | `platform/i2c.cpp` | I2C1_RX (rosbot range bus, no DMA reads today) |
+| `DMA1_Stream2_IRQHandler` | `platform/i2c.cpp` | I2C3_RX — rosbot IMU |
+| `DMA1_Stream3_IRQHandler` | `platform/i2c.cpp` | I2C2_RX — rosbot_xl IMU |
 | `DMA1_Stream4_IRQHandler` | `platform/uart.cpp` | USART3_TX |
 | `DMA1_Stream6_IRQHandler` | `platform/uart.cpp` | USART2_TX |
 | `DMA2_Stream7_IRQHandler` | `platform/uart.cpp` | USART1_TX |
@@ -738,7 +717,7 @@ help:
 
 `platformio.ini` defines a base `[stm32]` section with shared
 `framework-arduinoststm32` (Husarion fork), STM32Ethernet, LwIP,
-STM32FreeRTOS, Adafruit BNO055, VL53L0X. Then four
+STM32FreeRTOS, ETL. Then four
 concrete envs select variant + debug/release:
 
 `board = rosbot_stm32f407` is a repo-local definition in `boards/`
@@ -760,8 +739,9 @@ elsewhere on rosbot_xl).
 - `[env:rosbot_xl_release]` — release variant of the above.
 - `[env:native]` — host unit tests (`pio test -e native`, `just test`, CI
   job `test-native`) for hardware-free code: PID, `time_base`, encoder
-  counter delta, NTC conversion. `test/native_stubs/` stands in for
-  `Arduino.h` / `STM32FreeRTOS.h`; its critical-section hook lets a test
+  counter delta, NTC conversion, and `lib/platform` drivers against fake
+  register blocks. `test/native_stubs/` stands in for the CMSIS device
+  header and `STM32FreeRTOS.h`; its critical-section hook lets a test
   simulate preemption. Code that touches HAL, FreeRTOS or a peripheral
   needs a seam before it can be tested here (PowerBoard parser,
   `persistent_config`, `MavlinkNode`).
@@ -999,15 +979,6 @@ These are documented to avoid re-discovery:
   `include/rosbot_xl/config.hpp`. True auto-discovery options were
   considered (DHCP server on MCU, broadcast announcement protocol, mDNS)
   but not implemented yet — see commit / chat history for trade-offs.
-- **Race on shared I2C bus** (rosbot_xl `i2c`): IMU DMA path and Wire
-  access from EEPROM init touch the same peripheral. EEPROM is only used
-  during boot setup so the race window is closed before tasks start. No
-  mutex needed today; if a future feature uses I2C2 from a task, add a
-  bus mutex.
-- **`HAL_I2C_ErrorCallback` is a strong symbol** in the framework, so
-  the IMU DMA path cannot signal a "DMA failed" semaphore — relies on
-  the read timeout instead. Acceptable; documented in
-  `imu_bno055.cpp`.
 
 When closing one of these items, remove the bullet here and add a
 matching entry to the relevant "Patterns" section.
