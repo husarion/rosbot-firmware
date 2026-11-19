@@ -14,11 +14,10 @@
 
 #pragma once
 
-#include <STM32FreeRTOS.h>
-
 #include <cstddef>
 #include <cstdint>
 
+#include "freertos.hpp"
 #include "pin.hpp"
 
 namespace platform {

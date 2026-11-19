@@ -12,8 +12,8 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-// Host-test stand-in for STM32FreeRTOS: the critical-section hooks call into
-// the test, which can simulate preemption there.
+// Host-test stand-in for the FreeRTOS kernel headers: the critical-section
+// hooks call into the test, which can simulate preemption there.
 
 #pragma once
 

@@ -14,12 +14,11 @@
 
 #pragma once
 
-#include <STM32FreeRTOS.h>
-
 #include <array>
 #include <cstddef>
 #include <cstdint>
 
+#include "freertos.hpp"
 #include "uart.hpp"
 
 enum class TransportType { kSerial, kEthernet };

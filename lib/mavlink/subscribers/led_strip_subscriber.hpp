@@ -14,10 +14,9 @@
 
 #pragma once
 
-#include <STM32FreeRTOS.h>
-
 #include <cstring>
 
+#include "freertos.hpp"
 #include "led_strip.hpp"  // for LedFrameMsg
 #include "mavlink.h"
 #include "mavlink_node.hpp"

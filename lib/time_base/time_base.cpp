@@ -14,9 +14,8 @@
 
 #include "time_base.hpp"
 
-#include <STM32FreeRTOS.h>
-
 #include "clock.hpp"
+#include "freertos.hpp"
 
 namespace {
 uint32_t s_last_us = 0;

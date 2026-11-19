@@ -14,7 +14,7 @@
 
 #include "mavlink_serial_transport.hpp"
 
-#include <STM32FreeRTOS.h>
+#include "freertos.hpp"
 
 bool MavlinkSerialTransport::open() {
   return cfg_.uart != nullptr && cfg_.uart->open(cfg_.baudrate);

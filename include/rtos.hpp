@@ -14,9 +14,8 @@
 
 #pragma once
 
-#include <STM32FreeRTOS.h>
-
 #include "communication_manager.hpp"
+#include "freertos.hpp"
 #include "time_base.hpp"
 
 // Monotonic time since boot; the bridge owns wall-clock time via TIMESYNC.

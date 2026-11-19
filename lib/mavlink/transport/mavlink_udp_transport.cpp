@@ -14,8 +14,7 @@
 
 #include "mavlink_udp_transport.hpp"
 
-#include <STM32FreeRTOS.h>
-#include <stream_buffer.h>
+#include "freertos.hpp"
 
 extern "C" {
 #include <lwip/ip_addr.h>

@@ -14,10 +14,9 @@
 
 #include "hardware_encoder.hpp"
 
-#include <STM32FreeRTOS.h>
-
 #include "clock.hpp"
 #include "counter_delta.hpp"
+#include "freertos.hpp"
 #include "timer.hpp"
 
 static TIM_HandleTypeDef s_htim_pool[4];

@@ -14,8 +14,7 @@
 
 #pragma once
 
-#include <STM32FreeRTOS.h>
-
+#include "freertos.hpp"
 #include "mavlink.h"
 #include "mavlink_types.hpp"
 #include "publisher_interface.hpp"

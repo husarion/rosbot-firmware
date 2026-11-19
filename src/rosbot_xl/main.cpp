@@ -146,10 +146,9 @@ void setMaxMotorsCurrent(Revision rev) {
 static persistent_config::Config s_persistent;
 
 /*───────── Setup ─────────*/
-// Entry points the Arduino core calls (C linkage) until migration step 9.
+// Called from main() (boards/stm32f407/system.cpp).
 extern "C" void setup() {
   platform::clock::init();
-  installFaultHandlers();
   boardPeripheralsInit();
 
   // Resolve the boot gesture before anything else touches the button —
@@ -230,6 +229,3 @@ extern "C" void setup() {
   createTasks();
   vTaskStartScheduler();
 }
-
-/*───────── Loop ─────────*/
-extern "C" void loop() {}

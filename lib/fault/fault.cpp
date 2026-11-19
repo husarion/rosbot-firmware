@@ -14,19 +14,10 @@
 
 #include "fault.hpp"
 
-#include <STM32FreeRTOS.h>
-
-#include <cstring>
+#include "device.hpp"
+#include "freertos.hpp"
 
 namespace {
-
-constexpr size_t kVectorCount = 16 + FPU_IRQn + 1;
-constexpr size_t kHardFault = 3;
-constexpr size_t kUsageFault = 6;
-
-// VTOR needs the table aligned to its size rounded up to a power of two.
-alignas(512) uint32_t s_vectors[kVectorCount];
-static_assert(sizeof(s_vectors) <= 512, "VTOR alignment too small");
 
 // The linker script places nothing in CCM RAM and the startup code never
 // clears it, so this survives a system reset. After power-on it holds
@@ -37,8 +28,6 @@ struct ResetMarker {
 };
 ResetMarker* const s_marker = reinterpret_cast<ResetMarker*>(0x1000FFF8);
 constexpr uint32_t kMagic = 0xFA17C0DE;
-
-void faultHandler() { fatalError(); }
 
 // Holding every timer in reset stops all PWM (motors, fan) before a possible
 // debugger halt; on the reset path it is redundant but harmless.
@@ -72,19 +61,6 @@ extern "C" void vApplicationStackOverflowHook(TaskHandle_t /*task*/,
 }
 
 extern "C" void vApplicationMallocFailedHook(void) { fatalError(); }
-
-void installFaultHandlers() {
-  std::memcpy(s_vectors, reinterpret_cast<const void*>(SCB->VTOR),
-              sizeof(s_vectors));
-  for (size_t i = kHardFault; i <= kUsageFault; ++i) {
-    s_vectors[i] = reinterpret_cast<uint32_t>(&faultHandler);
-  }
-  const uint32_t primask = __get_PRIMASK();
-  __disable_irq();
-  SCB->VTOR = reinterpret_cast<uint32_t>(s_vectors);
-  __DSB();
-  __set_PRIMASK(primask);
-}
 
 bool consumeFaultResetFlag() {
   const bool set = s_marker->magic == kMagic && s_marker->magic_inv == ~kMagic;

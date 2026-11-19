@@ -14,11 +14,10 @@
 
 #include "rtos.hpp"
 
-#include <STM32FreeRTOS.h>
-
 #include "battery_interface.hpp"
 #include "communication_manager.hpp"
 #include "critical_state.hpp"
+#include "freertos.hpp"
 #include "imu_calibration_runtime.hpp"
 #include "imu_interface.hpp"
 #include "led_indicator.hpp"

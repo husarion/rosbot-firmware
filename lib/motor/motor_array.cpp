@@ -14,10 +14,10 @@
 
 #include "motor_array.hpp"
 
-#include <FreeRTOS.h>
 #include <etl/algorithm.h>
 
 #include "clock.hpp"
+#include "freertos.hpp"
 #include "time_base.hpp"
 
 MotorArray::MotorArray(etl::span<MotorInterface* const> motors,

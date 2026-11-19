@@ -14,8 +14,7 @@
 
 #include "clock.hpp"
 
-#include <STM32FreeRTOS.h>
-
+#include "freertos.hpp"
 #include "timer.hpp"
 
 namespace platform::clock {

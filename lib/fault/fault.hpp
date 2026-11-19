@@ -26,12 +26,6 @@ void fatalError(void) __attribute__((noreturn));
 #ifdef __cplusplus
 }
 
-// Routes HardFault/MemManage/BusFault/UsageFault to fatalError(). The
-// handlers in STM32FreeRTOS are strong symbols that spin with PWM still
-// running, so the vector table is copied to RAM instead. Call first in
-// setup().
-void installFaultHandlers();
-
 // True once after a reset caused by fatalError().
 bool consumeFaultResetFlag();
 #endif

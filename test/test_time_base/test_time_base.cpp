@@ -16,8 +16,8 @@
 
 #include <cstdint>
 
-#include "STM32FreeRTOS.h"
 #include "clock.hpp"
+#include "freertos.hpp"
 #include "time_base.hpp"
 
 namespace {

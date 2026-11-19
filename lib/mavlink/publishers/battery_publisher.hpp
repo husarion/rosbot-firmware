@@ -14,12 +14,11 @@
 
 #pragma once
 
-#include <STM32FreeRTOS.h>
-
 #include <cmath>
 #include <limits>
 
 #include "battery_wire.hpp"
+#include "freertos.hpp"
 #include "mavlink.h"
 #include "mavlink_types.hpp"
 #include "publisher_interface.hpp"

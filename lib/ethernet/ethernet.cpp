@@ -14,9 +14,8 @@
 
 #include "ethernet.hpp"
 
-#include <STM32FreeRTOS.h>
-
 #include "ethernetif.h"
+#include "freertos.hpp"
 #include "lwip/dhcp.h"
 #include "lwip/init.h"
 #include "lwip/netif.h"

@@ -18,7 +18,7 @@
 
 #include <atomic>
 
-#include "STM32FreeRTOS.h"
+#include "freertos.hpp"
 #include "motor_interface.hpp"
 #include "pin.hpp"
 

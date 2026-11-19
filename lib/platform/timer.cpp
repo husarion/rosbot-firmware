@@ -14,7 +14,7 @@
 
 #include "timer.hpp"
 
-#include <STM32FreeRTOS.h>
+#include "freertos.hpp"
 
 namespace platform {
 
