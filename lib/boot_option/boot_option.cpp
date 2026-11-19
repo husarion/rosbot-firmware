@@ -14,8 +14,6 @@
 
 #include "boot_option.hpp"
 
-#include <Arduino.h>
-
 #include "clock.hpp"
 #include "time_base.hpp"
 

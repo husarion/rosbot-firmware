@@ -14,8 +14,6 @@
 
 #include "mavlink_node.hpp"
 
-#include <Arduino.h>
-
 #include <cstdarg>
 #include <cstdio>
 #include <cstring>

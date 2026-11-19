@@ -14,7 +14,6 @@
 
 #pragma once
 
-#include <Arduino.h>
 #include <STM32Ethernet.h>
 
 #include "communication_manager.hpp"
@@ -35,6 +34,9 @@
 using platform::AnalogIn;
 using platform::Pin;
 using platform::Port;
+
+// Same value as Arduino's PI, so RAD_PER_TICK keeps its float bits.
+inline constexpr double kPi = 3.1415926535897932384626433832795;
 
 // ───────── Arduino settings ─────────
 inline constexpr uint32_t ADC_MAX_VALUE =
@@ -84,7 +86,7 @@ inline constexpr float GEAR_RATIO = 50.0f;
 inline constexpr uint16_t ENCODER_CPR = 64;
 inline constexpr float TICKS_PER_REVOLUTION = ENCODER_CPR * GEAR_RATIO;
 inline constexpr float RAD_PER_TICK =
-    static_cast<float>(2.0 * PI / static_cast<double>(TICKS_PER_REVOLUTION));
+    static_cast<float>(2.0 * kPi / static_cast<double>(TICKS_PER_REVOLUTION));
 inline constexpr float LOW_PASS_ALPHA = 0.25f;
 
 inline constexpr HardwareEncoderConfig enc_fl_config = {

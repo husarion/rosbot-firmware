@@ -14,8 +14,6 @@
 
 #pragma once
 
-#include <Arduino.h>
-
 #include <atomic>
 #include <optional>
 

@@ -14,8 +14,6 @@
 
 #pragma once
 
-#include <Arduino.h>
-
 #include "pin.hpp"
 #include "stm32f4xx_hal.h"
 

@@ -14,7 +14,6 @@
 
 #pragma once
 
-#include <Arduino.h>
 #include <etl/span.h>
 
 #include "mavlink.h"

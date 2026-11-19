@@ -14,7 +14,6 @@
 
 #include "range_array.hpp"
 
-#include <Arduino.h>
 #include <etl/algorithm.h>
 
 RangeArray::RangeArray(etl::span<RangeInterface* const> sensors)

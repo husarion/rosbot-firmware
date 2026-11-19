@@ -14,8 +14,6 @@
 
 #pragma once
 
-#include <Arduino.h>
-
 #include "pin.hpp"
 
 /// Configuration for a status LED indicator.

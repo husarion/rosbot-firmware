@@ -14,6 +14,7 @@
 
 #include "motor_hi_z.hpp"
 
+#include <algorithm>
 #include <cmath>
 
 static constexpr float kAdcVref = 3.3f;
@@ -78,9 +79,9 @@ void MotorHiZ::setMode(Mode movement) {
 }
 
 void MotorHiZ::applyPWM(float duty) {
-  // constrain() passes NaN through, and casting NaN to uint16_t is UB.
+  // std::clamp() passes NaN through, and casting NaN to uint32_t is UB.
   if (!std::isfinite(duty)) duty = 0.0f;
-  duty = constrain(duty, -1.0f, 1.0f);
+  duty = std::clamp(duty, -1.0f, 1.0f);
   // Default effort = commanded duty. Overridden below if a current sensor
   // or a back-EMF model is available (then it becomes a torque value).
   current_effort_.store(duty, std::memory_order_relaxed);
@@ -140,7 +141,7 @@ void MotorHiZ::applyCurrentSample(float i_motor) {
 }
 
 void MotorHiZ::setVelocity(float vel) {
-  float v = constrain(vel, -cfg_.max_velocity, cfg_.max_velocity);
+  float v = std::clamp(vel, -cfg_.max_velocity, cfg_.max_velocity);
   if (std::fabs(v) < cfg_.min_velocity) v = 0.0f;
   target_velocity_.store(v, std::memory_order_relaxed);
 }

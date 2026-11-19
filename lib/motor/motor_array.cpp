@@ -14,7 +14,6 @@
 
 #include "motor_array.hpp"
 
-#include <Arduino.h>
 #include <FreeRTOS.h>
 #include <etl/algorithm.h>
 

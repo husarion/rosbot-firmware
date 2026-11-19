@@ -14,7 +14,6 @@
 
 #include "fault.hpp"
 
-#include <Arduino.h>
 #include <STM32FreeRTOS.h>
 
 #include <cstring>

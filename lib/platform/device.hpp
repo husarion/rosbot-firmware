@@ -12,12 +12,13 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-// Host-test stand-in for the Arduino core: only what the libraries under
-// test (`pio test -e native`) use.
-
 #pragma once
 
-#include <cstdint>
-
-#define constrain(amt, low, high) \
-  ((amt) < (low) ? (low) : ((amt) > (high) ? (high) : (amt)))
+// CMSIS device + HAL. Until the Arduino core is gone (migration step 9) its
+// stm32_def.h must be the first device header in a TU, or the core's own
+// headers fail to build.
+#if __has_include(<stm32_def.h>)
+#include <stm32_def.h>
+#else
+#include "stm32f4xx.h"
+#endif

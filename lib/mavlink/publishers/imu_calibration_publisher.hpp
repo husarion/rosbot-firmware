@@ -14,8 +14,6 @@
 
 #pragma once
 
-#include <Arduino.h>
-
 #include "imu_calibration_runtime.hpp"
 #include "imu_interface.hpp"
 #include "mavlink.h"

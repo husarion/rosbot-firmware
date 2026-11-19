@@ -12,8 +12,6 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#include <Arduino.h>
-
 #include <cstring>
 
 #include "battery_interface.hpp"
@@ -148,7 +146,8 @@ void setMaxMotorsCurrent(Revision rev) {
 static persistent_config::Config s_persistent;
 
 /*───────── Setup ─────────*/
-void setup() {
+// Entry points the Arduino core calls (C linkage) until migration step 9.
+extern "C" void setup() {
   platform::clock::init();
   installFaultHandlers();
   boardPeripheralsInit();
@@ -233,4 +232,4 @@ void setup() {
 }
 
 /*───────── Loop ─────────*/
-void loop() {}
+extern "C" void loop() {}

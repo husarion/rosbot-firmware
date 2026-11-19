@@ -16,13 +16,7 @@
 
 #include <cstdint>
 
-// Until the Arduino core is gone (migration step 9) its stm32_def.h must be
-// the first device header in a TU, or the core's own headers fail to build.
-#if __has_include(<stm32_def.h>)
-#include <stm32_def.h>
-#else
-#include "stm32f4xx.h"
-#endif
+#include "device.hpp"
 
 namespace platform {
 

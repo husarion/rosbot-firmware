@@ -14,7 +14,6 @@
 
 #pragma once
 
-#include <Arduino.h>
 #include <STM32FreeRTOS.h>
 
 #include "communication_manager.hpp"

@@ -14,8 +14,6 @@
 
 #include "imu_calibration_boot.hpp"
 
-#include <Arduino.h>
-
 #include <cstdarg>
 #include <cstdio>
 
