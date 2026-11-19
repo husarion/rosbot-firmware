@@ -18,6 +18,8 @@
 
 #include <cmath>
 
+#include "time_base.hpp"
+
 BatteryAdc::BatteryAdc(const BatteryAdcConfig config)
     : cfg_(config), soc_(SocEstimatorConfig{.num_cells = config.num_cells}) {
   voltage_factor_ = cfg_.v_ref * cfg_.correction * cfg_.divider;
@@ -30,7 +32,7 @@ void BatteryAdc::update() {
 
   data_.voltage = raw * voltage_factor_;
 
-  const uint32_t now_ms = millis();
+  const uint32_t now_ms = time_boot_ms();
   const float dt_s =
       (last_update_ms_ == 0)
           ? 0.0f

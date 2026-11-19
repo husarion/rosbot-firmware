@@ -20,6 +20,7 @@
 #include "mavlink_types.hpp"
 #include "publisher_interface.hpp"
 #include "range_array.hpp"
+#include "time_base.hpp"
 
 using RangesStamped = Stamped<RangesData>;
 
@@ -36,7 +37,7 @@ class MavlinkRangePublisher : public MavlinkPublisherInterface {
       : cfg_(cfg) {}
 
   void publish(MavlinkNode& node) override {
-    const uint32_t now = millis();
+    const uint32_t now = time_boot_ms();
     if ((now - last_pub_ms_) < cfg_.period_ms && last_pub_ms_ != 0) return;
 
     RangesStamped data;

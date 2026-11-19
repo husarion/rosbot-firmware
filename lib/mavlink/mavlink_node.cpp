@@ -87,7 +87,7 @@ void MavlinkNode::loop() {
     if (!begin()) return;
   }
 
-  const uint32_t now = millis();
+  const uint32_t now = time_boot_ms();
 
   emitHeartbeatIfDue(now);
   drainRx();
@@ -168,7 +168,7 @@ void MavlinkNode::drainRx() {
 void MavlinkNode::dispatchMessage(const mavlink_message_t& msg) {
   switch (msg.msgid) {
     case MAVLINK_MSG_ID_HEARTBEAT:
-      last_peer_heartbeat_ms_ = millis();
+      last_peer_heartbeat_ms_ = time_boot_ms();
       peer_seen_ = true;
       return;
     case MAVLINK_MSG_ID_TIMESYNC: {

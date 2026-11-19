@@ -18,6 +18,9 @@
 #include <FreeRTOS.h>
 #include <etl/algorithm.h>
 
+#include "clock.hpp"
+#include "time_base.hpp"
+
 MotorArray::MotorArray(etl::span<MotorInterface* const> motors,
                        etl::span<const DriverGroupConfig> drivers)
     : motors_(motors.first(etl::min(motors.size(), size_t{MAX_NUM_MOTORS}))),
@@ -40,7 +43,7 @@ void MotorArray::init() {
   data_.count = count();
   for (auto* motor : motors_) motor->init();
 
-  last_update_us_ = micros();
+  last_update_us_ = platform::clock::counterUs();
   enableDrivers();
 }
 
@@ -49,7 +52,7 @@ void MotorArray::init() {
 void MotorArray::enableDrivers() {
   for (const auto& driver : drivers_) driver.sleep_pin.set();
   drivers_enabled_.store(true, std::memory_order_relaxed);
-  delayMicroseconds(100);  // DRV8848 wake-up
+  platform::clock::delayUs(100);  // DRV8848 wake-up
 }
 
 void MotorArray::disableDrivers() {
@@ -79,11 +82,11 @@ void MotorArray::setVelocities(const float* velocities) {
 void MotorArray::update() {
   if (!isDriversEnabled()) return;
 
-  const uint32_t now_us = micros();
+  const uint32_t now_us = platform::clock::counterUs();
   const float dt = (now_us - last_update_us_) * 1e-6f;
   last_update_us_ = now_us;
 
-  const bool fault = updateFaultLatch(millis());
+  const bool fault = updateFaultLatch(time_boot_ms());
 
   if (xSemaphoreTake(mutex_, pdMS_TO_TICKS(5)) == pdTRUE) {
     for (size_t i = 0; i < motors_.size(); ++i) {
@@ -117,12 +120,12 @@ bool MotorArray::updateFaultLatch(uint32_t now_ms) {
 // ─── watchdog ────────────────────────────────────────────────────
 
 void MotorArray::feedWatchdog() {
-  last_cmd_time_.store(millis(), std::memory_order_relaxed);
+  last_cmd_time_.store(time_boot_ms(), std::memory_order_relaxed);
   watchdog_enabled_.store(true, std::memory_order_relaxed);
 }
 
 bool MotorArray::isWatchdogExpired() const {
   if (!watchdog_enabled_.load(std::memory_order_relaxed)) return false;
-  return (millis() - last_cmd_time_.load(std::memory_order_relaxed)) >
+  return (time_boot_ms() - last_cmd_time_.load(std::memory_order_relaxed)) >
          WATCHDOG_TIMEOUT_MS;
 }

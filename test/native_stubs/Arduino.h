@@ -21,6 +21,3 @@
 
 #define constrain(amt, low, high) \
   ((amt) < (low) ? (low) : ((amt) > (high) ? (high) : (amt)))
-
-// Defined by the test that needs it.
-uint32_t micros();

@@ -19,6 +19,7 @@
 #include "mavlink.h"
 #include "mavlink_types.hpp"
 #include "publisher_interface.hpp"
+#include "time_base.hpp"
 
 struct MavlinkImuPublisherConfig {
   QueueHandle_t& queue;
@@ -31,7 +32,7 @@ class MavlinkImuPublisher : public MavlinkPublisherInterface {
       : cfg_(cfg) {}
 
   void publish(MavlinkNode& node) override {
-    const uint32_t now = millis();
+    const uint32_t now = time_boot_ms();
     if ((now - last_pub_ms_) < cfg_.period_ms && last_pub_ms_ != 0) return;
 
     ImuStamped data;

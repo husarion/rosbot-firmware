@@ -16,6 +16,7 @@
 
 #include <STM32FreeRTOS.h>
 
+#include "clock.hpp"
 #include "counter_delta.hpp"
 
 static TIM_HandleTypeDef s_htim_pool[4];
@@ -111,13 +112,13 @@ void HardwareEncoder::reset() {
   __HAL_TIM_SET_COUNTER(timer_handle_, 0);
   last_cnt_ = 0;
   total_ticks_ = 0;
-  last_time_us_ = micros();
+  last_time_us_ = platform::clock::counterUs();
   data_ = {};
   last_velocity_ = 0.0f;
 }
 
 void HardwareEncoder::update() {
-  const uint32_t now = micros();
+  const uint32_t now = platform::clock::counterUs();
   const uint32_t dt_us = now - last_time_us_;
 
   if (dt_us >= MIN_DT_US) {

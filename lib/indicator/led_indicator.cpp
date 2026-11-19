@@ -14,6 +14,8 @@
 
 #include "led_indicator.hpp"
 
+#include "time_base.hpp"
+
 void LedIndicator::init() { cfg_.pin.setAsOutput(cfg_.initial_on); }
 
 void LedIndicator::calibrating(bool fully_calibrated) {
@@ -23,7 +25,7 @@ void LedIndicator::calibrating(bool fully_calibrated) {
     cfg_.pin.reset();
     return;
   }
-  const uint32_t now = millis();
+  const uint32_t now = time_boot_ms();
   if (now - last_toggle_ >= kFastBlinkMs) {
     cfg_.pin.toggle();
     last_toggle_ = now;
@@ -32,7 +34,7 @@ void LedIndicator::calibrating(bool fully_calibrated) {
 
 void LedIndicator::update(bool battery_low, bool link_disconnected,
                           bool error) {
-  uint32_t now = millis();
+  uint32_t now = time_boot_ms();
 
   // Priority 1: error → SOS, kept for at least kMinSosCycles full cycles so a
   // short fault is still readable.

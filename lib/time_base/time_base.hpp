@@ -16,7 +16,12 @@
 
 #include <cstdint>
 
-// Monotonic microseconds since boot, safe from any task, from ISRs at or
-// below configMAX_SYSCALL_INTERRUPT_PRIORITY, and before the scheduler
-// starts. Must be called at least every ~35 min.
+// Monotonic microseconds since platform::clock::init(), safe from any task,
+// from ISRs at or below configMAX_SYSCALL_INTERRUPT_PRIORITY, and before the
+// scheduler starts. Must be called at least every ~35 min.
 uint64_t time_boot_us();
+
+// time_boot_us() in ms, wrapping every ~49.7 days like Arduino millis().
+inline uint32_t time_boot_ms() {
+  return static_cast<uint32_t>(time_boot_us() / 1000U);
+}

@@ -19,6 +19,9 @@
 #include <cstdarg>
 #include <cstdio>
 
+#include "clock.hpp"
+#include "time_base.hpp"
+
 namespace imu_calibration_boot {
 
 namespace {
@@ -40,7 +43,7 @@ bool run(ImuBno055& imu, platform::Pin red_led,
          etl::span<const platform::Pin> green_leds, ImuCalibrationOffsets& out,
          HardwareSerial* debug_serial, HardwareSerial* link_serial,
          uint32_t timeout_ms, uint32_t blink_ms) {
-  const uint32_t start = millis();
+  const uint32_t start = time_boot_ms();
   uint32_t last_toggle = start;
   uint32_t last_log = start;
   bool led_on = false;
@@ -51,7 +54,7 @@ bool run(ImuBno055& imu, platform::Pin red_led,
           "rests >45deg apart (accel).\r\n",
           static_cast<unsigned long>(timeout_ms / 1000));
 
-  while (millis() - start < timeout_ms) {
+  while (time_boot_ms() - start < timeout_ms) {
     const ImuCalibrationStatus status = imu.getCalibrationStatus();
     if (status.fullyCalibrated()) {
       red_led.reset();
@@ -63,7 +66,7 @@ bool run(ImuBno055& imu, platform::Pin red_led,
               status.system, captured ? "captured" : "capture FAILED");
       return captured;
     }
-    const uint32_t now = millis();
+    const uint32_t now = time_boot_ms();
     if (now - last_toggle >= blink_ms) {
       led_on = !led_on;
       red_led.write(led_on);
@@ -83,7 +86,7 @@ bool run(ImuBno055& imu, platform::Pin red_led,
               i2c_ok ? "ok" : "FAILED", raw_byte, wire_error);
       last_log = now;
     }
-    delay(20);
+    platform::clock::delayMs(20);
   }
   red_led.reset();
   logLine(debug_serial, link_serial,

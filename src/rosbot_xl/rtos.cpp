@@ -34,6 +34,7 @@
 #include "ntc.hpp"
 #include "power_board.hpp"
 #include "rosbot_xl/config.hpp"
+#include "time_base.hpp"
 
 extern FanController g_fan;
 extern PowerBoard power_board;
@@ -86,7 +87,7 @@ void hwMonitorTask(void* p) {
     // LED Indicator
     bool battery_low = g_battery->isLow();
     const bool error_state = g_motors.hasFault();
-    if (imu_calibration::sessionActive(millis())) {
+    if (imu_calibration::sessionActive(time_boot_ms())) {
       ImuCalibrationStatus calib{};
       g_indicator.calibrating(g_imu->calibrationStatus(calib) &&
                               calib.fullyCalibrated());

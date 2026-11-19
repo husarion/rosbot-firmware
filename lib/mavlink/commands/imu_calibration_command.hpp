@@ -23,6 +23,7 @@
 #include "mavlink.h"
 #include "mavlink_node.hpp"
 #include "subscribers/subscriber_interface.hpp"
+#include "time_base.hpp"
 
 // MAV_CMD_USER_2, param1 = imu_calibration::Action. kSave persists the
 // offsets the BNO055 is using right now; its ACK only says whether the
@@ -43,7 +44,7 @@ class ImuCalibrationCommand : public MavlinkSubscriberInterface {
     if (action == imu_calibration::Action::kStart ||
         action == imu_calibration::Action::kStop) {
       if (action == imu_calibration::Action::kStart) {
-        imu_calibration::startSession(millis());
+        imu_calibration::startSession(time_boot_ms());
       } else {
         imu_calibration::stopSession();
       }

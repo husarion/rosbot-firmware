@@ -16,6 +16,9 @@
 
 #include <Arduino.h>
 
+#include "clock.hpp"
+#include "time_base.hpp"
+
 namespace {
 
 bool anyButtonLow(const BootOptionConfig& cfg) {
@@ -35,30 +38,30 @@ constexpr uint32_t kCalibrationConfirmBlinkMs = 150;
 void confirmCalibrationEntry(const BootOptionConfig& cfg) {
   for (int i = 0; i < kCalibrationConfirmBlinks; ++i) {
     setGreen(cfg, true);
-    delay(kCalibrationConfirmBlinkMs);
+    platform::clock::delayMs(kCalibrationConfirmBlinkMs);
     setGreen(cfg, false);
-    delay(kCalibrationConfirmBlinkMs);
+    platform::clock::delayMs(kCalibrationConfirmBlinkMs);
   }
 }
 
 }  // namespace
 
 BootAction resolveBootAction(const BootOptionConfig& cfg) {
-  const uint32_t detect_start = millis();
+  const uint32_t detect_start = time_boot_ms();
   while (!anyButtonLow(cfg)) {
-    if (millis() - detect_start >= cfg.press_detect_window_ms) {
+    if (time_boot_ms() - detect_start >= cfg.press_detect_window_ms) {
       return BootAction::kNone;
     }
-    delay(10);
+    platform::clock::delayMs(10);
   }
 
-  const uint32_t start = millis();
+  const uint32_t start = time_boot_ms();
   while (anyButtonLow(cfg)) {
-    if (millis() - start >= cfg.calibration_hold_ms) {
+    if (time_boot_ms() - start >= cfg.calibration_hold_ms) {
       confirmCalibrationEntry(cfg);
       return BootAction::kCalibrateImu;
     }
-    delay(10);
+    platform::clock::delayMs(10);
   }
 
   setGreen(cfg, true);

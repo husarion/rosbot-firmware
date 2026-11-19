@@ -18,6 +18,9 @@
 
 #include <cstring>
 
+#include "clock.hpp"
+#include "time_base.hpp"
+
 namespace {
 
 const char* fwVersion() {
@@ -59,9 +62,9 @@ void CommunicationManager::init() {
 }
 
 const SerialConfig* CommunicationManager::selectTransport(uint32_t timeout_ms) {
-  const uint32_t start = millis();
+  const uint32_t start = time_boot_ms();
 
-  while ((millis() - start) < timeout_ms) {
+  while ((time_boot_ms() - start) < timeout_ms) {
     if (cfg_.useDiagnosticCondition && cfg_.useDiagnosticCondition()) {
       selected_type_ = TransportType::kSerial;
       selected_serial_ = &cfg_.diagnostic_serial;
@@ -69,7 +72,7 @@ const SerialConfig* CommunicationManager::selectTransport(uint32_t timeout_ms) {
       if (cfg_.onDiagnosticSelected) cfg_.onDiagnosticSelected();
       return selected_serial_;
     }
-    delay(cfg_.check_interval_ms);
+    platform::clock::delayMs(cfg_.check_interval_ms);
   }
 
   selected_type_ = cfg_.primary_type;
@@ -122,15 +125,15 @@ bool CommunicationManager::waitForHostConfig(HardwareSerial& serial,
                                              uint32_t timeout_ms) {
   std::array<char, NS_MAX_LENGTH> buffer{};
   size_t idx = 0;
-  const uint32_t start = millis();
-  uint32_t last_prompt = millis();
+  const uint32_t start = time_boot_ms();
+  uint32_t last_prompt = time_boot_ms();
 
   sendVersionPrompt(serial);
 
   // END terminates the handshake so BACKEND:/NS: may arrive in any order.
   // Legacy hosts that don't send END fall through on timeout instead.
   bool received_ns = false;
-  while ((millis() - start) < timeout_ms) {
+  while ((time_boot_ms() - start) < timeout_ms) {
     if (consumeAvailable(serial, buffer.data(), &idx, NS_MAX_LENGTH)) {
       if (parseBackend(serial, buffer.data(), idx)) {
         idx = 0;
@@ -149,9 +152,9 @@ bool CommunicationManager::waitForHostConfig(HardwareSerial& serial,
       idx = 0;
       buffer.fill('\0');
     }
-    if ((millis() - last_prompt) >= cfg_.resend_ready_interval_ms) {
+    if ((time_boot_ms() - last_prompt) >= cfg_.resend_ready_interval_ms) {
       sendVersionPrompt(serial);
-      last_prompt = millis();
+      last_prompt = time_boot_ms();
     }
   }
   return received_ns;

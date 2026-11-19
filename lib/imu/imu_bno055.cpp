@@ -19,6 +19,7 @@
 
 #include <atomic>
 
+#include "clock.hpp"
 #include "i2c_fast_mode.hpp"
 
 namespace {
@@ -330,7 +331,7 @@ bool ImuBno055::captureCalibrationOffsets(ImuCalibrationOffsets& out) {
   if (!getCalibrationStatus().fullyCalibrated()) return false;
 
   bno_.setMode(OPERATION_MODE_CONFIG);
-  delay(kToConfigMs);
+  platform::clock::delayMs(kToConfigMs);
   uint8_t raw[kOffsetsLen] = {};
   bool ok = false;
   cfg_.bus->beginTransmission(cfg_.i2c_addr);

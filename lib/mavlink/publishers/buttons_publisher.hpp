@@ -20,6 +20,7 @@
 #include "mavlink.h"
 #include "pin.hpp"
 #include "publisher_interface.hpp"
+#include "time_base.hpp"
 
 struct MavlinkButtonsPublisherConfig {
   etl::span<const platform::Pin> pins;  // active-low
@@ -32,7 +33,7 @@ class MavlinkButtonsPublisher : public MavlinkPublisherInterface {
       : cfg_(cfg) {}
 
   void publish(MavlinkNode& node) override {
-    const uint32_t now = millis();
+    const uint32_t now = time_boot_ms();
     if ((now - last_pub_ms_) < cfg_.period_ms && last_pub_ms_ != 0) return;
     last_pub_ms_ = now;
 

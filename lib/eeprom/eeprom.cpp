@@ -16,6 +16,8 @@
 
 #include <cstring>
 
+#include "clock.hpp"
+
 // ─── Constructor ─────────────────────────────────────────
 
 Eeprom::Eeprom(const EepromConfig& cfg)
@@ -35,7 +37,7 @@ EepromStatus Eeprom::writeByte(uint8_t block, uint8_t addr, uint8_t value) {
 
   if (!ok) return EepromStatus::WriteError;
 
-  delay(write_delay_ms_);
+  platform::clock::delayMs(write_delay_ms_);
   return EepromStatus::Ok;
 }
 
@@ -76,7 +78,7 @@ EepromStatus Eeprom::writePage(uint8_t block, uint8_t addr, const uint8_t* data,
 
   if (!ok) return EepromStatus::WriteError;
 
-  delay(write_delay_ms_);
+  platform::clock::delayMs(write_delay_ms_);
   return EepromStatus::Ok;
 }
 

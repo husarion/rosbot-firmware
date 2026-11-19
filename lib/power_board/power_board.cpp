@@ -14,6 +14,8 @@
 
 #include "power_board.hpp"
 
+#include "time_base.hpp"
+
 // ═══════════════════════════════════════════════════════════════════
 //  Constructor — stores config, does NOT touch hardware
 // ═══════════════════════════════════════════════════════════════════
@@ -299,7 +301,7 @@ void PowerBoard::handleBatteryState(const Frame& frame) {
   data_.current = charge - discharge;
 
   // Percentage is not part of this protocol; estimate it from V and I.
-  const uint32_t now_ms = millis();
+  const uint32_t now_ms = time_boot_ms();
   const float dt_s =
       (last_battery_ms_ == 0)
           ? 0.0f

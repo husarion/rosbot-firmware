@@ -17,13 +17,14 @@
 #include <cstdint>
 
 #include "STM32FreeRTOS.h"
+#include "clock.hpp"
 #include "time_base.hpp"
 
 namespace {
 
 uint32_t s_micros = 0;
 // Runs once inside the next critical section, i.e. after time_boot_us()
-// has already read micros() — the window a preempting task would hit.
+// has already read the counter — the window a preempting task would hit.
 void (*s_on_enter_critical)() = nullptr;
 
 void advance(uint32_t us) {
@@ -38,7 +39,7 @@ void advance(uint32_t us) {
 
 }  // namespace
 
-uint32_t micros() { return s_micros; }
+uint32_t platform::clock::counterUs() { return s_micros; }
 
 UBaseType_t testEnterCritical() {
   if (s_on_enter_critical != nullptr) {
@@ -53,6 +54,12 @@ void testExitCritical(UBaseType_t /*mask*/) {}
 
 void setUp() {}
 void tearDown() {}
+
+void test_ms_truncates_us() {
+  advance(2999);
+  const uint64_t us = time_boot_us();
+  TEST_ASSERT_EQUAL_UINT32(static_cast<uint32_t>(us / 1000), time_boot_ms());
+}
 
 void test_follows_micros() {
   const uint64_t t0 = time_boot_us();
@@ -97,5 +104,6 @@ int main() {
   RUN_TEST(test_survives_micros_wrap);
   RUN_TEST(test_stale_reading_does_not_move_the_clock);
   RUN_TEST(test_preemption_does_not_double_count);
+  RUN_TEST(test_ms_truncates_us);
   return UNITY_END();
 }

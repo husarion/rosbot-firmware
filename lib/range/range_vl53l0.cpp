@@ -16,6 +16,8 @@
 
 #include <Arduino.h>
 
+#include "clock.hpp"
+
 static constexpr uint8_t RESULT_READY_MASK = 0x07;
 
 RangeVl53l0x::RangeVl53l0x(const RangeVl53l0xConfig& cfg) : cfg_(cfg) {}
@@ -53,10 +55,10 @@ void RangeVl53l0x::update() {
 void RangeVl53l0x::powerOff() {
   cfg_.xshut_pin.setAsOutput(false);
   initialized_ = false;
-  delay(10);
+  platform::clock::delayMs(10);
 }
 
 void RangeVl53l0x::powerOn() {
   cfg_.xshut_pin.setAsOutput(true);
-  delay(20);
+  platform::clock::delayMs(20);
 }

@@ -27,6 +27,7 @@
 #include "motor_array.hpp"
 #include "publishers/range_publisher.hpp"
 #include "rosbot/config.hpp"
+#include "time_base.hpp"
 
 void createQueues() {
   battery_queue = xQueueCreate(1, sizeof(BatteryStamped));
@@ -108,7 +109,7 @@ void ledIndicatorTask(void* p) {
     bool battery_low = g_battery->isLow();
     const bool error_state = g_motors.hasFault();
 
-    if (imu_calibration::sessionActive(millis())) {
+    if (imu_calibration::sessionActive(time_boot_ms())) {
       ImuCalibrationStatus calib{};
       g_indicator.calibrating(g_imu->calibrationStatus(calib) &&
                               calib.fullyCalibrated());

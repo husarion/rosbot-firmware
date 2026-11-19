@@ -19,6 +19,7 @@
 #include "battery_adc.hpp"
 #include "battery_interface.hpp"
 #include "boot_option.hpp"
+#include "clock.hpp"
 #include "communication_manager.hpp"
 #include "fault.hpp"
 #include "hardware_encoder.hpp"
@@ -113,7 +114,7 @@ void boardPeripheralsInit() {
   range_i2c.begin();
   setI2cFastMode(range_i2c);
 
-  delay(20);
+  platform::clock::delayMs(20);
 }
 
 // Lives in .data so g_comm_mgr's ns_default pointer stays valid.
@@ -121,6 +122,7 @@ static persistent_config::Config s_persistent;
 
 /*───────── Setup ─────────*/
 void setup() {
+  platform::clock::init();
   installFaultHandlers();
   boardPeripheralsInit();
 
@@ -217,18 +219,3 @@ void setup() {
 
 /*───────── Loop ─────────*/
 void loop() {}
-
-/*───────── Runtime stats ─────────*/
-HardwareTimer RunTimeStatsTimer(TIM5);
-
-void vConfigureTimerForRunTimeStats(void) {
-  // TIM5 sits on APB1: 84 MHz timer clock / 1680 = 50 kHz (20 us per count).
-  RunTimeStatsTimer.setPrescaleFactor(1680);
-  RunTimeStatsTimer.setOverflow(0xFFFFFFFF);
-  RunTimeStatsTimer.refresh();
-  RunTimeStatsTimer.resume();
-}
-
-uint32_t vGetTimerValueForRunTimeStats(void) {
-  return RunTimeStatsTimer.getCount();
-}
