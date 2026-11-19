@@ -85,10 +85,13 @@ void MavlinkNode::loop() {
     if (!begin()) return;
   }
 
+  // RX first: a HEARTBEAT handled after `now` was read stamps
+  // last_peer_heartbeat_ms_ later than `now`, and the unsigned timeout check
+  // below then wraps and drops a live connection for a heartbeat period.
+  drainRx();
   const uint32_t now = time_boot_ms();
 
   emitHeartbeatIfDue(now);
-  drainRx();
 
   switch (state_) {
     case WAITING:
