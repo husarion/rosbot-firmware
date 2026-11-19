@@ -122,16 +122,18 @@ as-is given the trade-off above.
 `rosbot_xl_release`. Each variant's env sets:
 
 - `build_src_filter` to include only `src/<variant>/*.cpp`
-- `-D ROSBOT` or `-D ROSBOT_XL` macro
 - Variant-specific transport flags (`-D ENABLE_HWSERIAL1`,
   `-D ETHERNET_USE_FREERTOS`, `-D LAN9303`, ...)
 
-`include/config.hpp` is a thin dispatcher that includes
-`include/<variant>/config.hpp` based on the macro.
+There is no variant macro (`ROSBOT` / `ROSBOT_XL` were removed): the variant
+is chosen by which `src/<variant>/` is compiled, and those files include
+`include/<variant>/config.hpp` directly. `lib/` never includes a variant
+config and has no variant `#ifdef`; a type only one variant uses lives next
+to its only user (e.g. `RangesStamped` in `publishers/range_publisher.hpp`).
 
-Why this matters: **anything in `lib/`, `include/config.hpp`, or
-`platformio.ini` affects both variants.** Anything in `src/<variant>/` or
-`include/<variant>/` is variant-only.
+Why this matters: **anything in `lib/` or `platformio.ini` affects both
+variants.** Anything in `src/<variant>/` or `include/<variant>/` is
+variant-only.
 
 For runtime board-revision selection (rosbot_xl rev 1.1 vs 1.2), the MCU
 reads a string from EEPROM at boot via the `BoardRevision` class. Pin
@@ -777,12 +779,12 @@ Ethernet pin map into `PinMap_Ethernet_MII/RMII` so RMII mode only claims its
 9 pins (upstream's single `PinMap_Ethernet[]` would grab MII-only GPIO used
 elsewhere on rosbot_xl).
 
-- `[env:rosbot]` — debug, `-D ROSBOT`, `-D ENABLE_HWSERIAL1`,
+- `[env:rosbot]` — debug, `-D ENABLE_HWSERIAL1`,
   `-D ENABLE_HWSERIAL3`, `build_src_filter = +<rosbot/*> -<rosbot_xl/*>`.
 - `[env:rosbot_release]` — same + `[release_flags]` (`-O2 -D RELEASE`,
   cortex-m4 / fpv4 flags). Strips `-g`. The `-O2` is not what the compiler
   ends up using — see "Optimisation level" below.
-- `[env:rosbot_xl]` — debug, `-D ROSBOT_XL`, `-D ENABLE_HWSERIAL1`,
+- `[env:rosbot_xl]` — debug, `-D ENABLE_HWSERIAL1`,
   `-D ETHERNET_USE_FREERTOS`, `-D LAN9303`,
   `build_src_filter = -<rosbot/*> +<rosbot_xl/*>`.
 - `[env:rosbot_xl_release]` — release variant of the above.

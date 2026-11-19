@@ -19,8 +19,9 @@
 #include "mavlink.h"
 #include "mavlink_types.hpp"
 #include "publisher_interface.hpp"
+#include "range_array.hpp"
 
-#ifdef ROSBOT
+using RangesStamped = Stamped<RangesData>;
 
 struct MavlinkRangePublisherConfig {
   QueueHandle_t& queue;
@@ -67,5 +68,3 @@ class MavlinkRangePublisher : public MavlinkPublisherInterface {
   MavlinkRangePublisherConfig cfg_;
   uint32_t last_pub_ms_ = 0;
 };
-
-#endif  // ROSBOT

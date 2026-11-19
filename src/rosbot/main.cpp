@@ -20,7 +20,6 @@
 #include "battery_interface.hpp"
 #include "boot_option.hpp"
 #include "communication_manager.hpp"
-#include "config.hpp"
 #include "fault.hpp"
 #include "hardware_encoder.hpp"
 #include "i2c_fast_mode.hpp"
@@ -33,6 +32,7 @@
 #include "persistent_config.hpp"
 #include "range_array.hpp"
 #include "range_vl53l0.hpp"
+#include "rosbot/config.hpp"
 #include "rtos.hpp"
 
 // ───────── Battery ─────────

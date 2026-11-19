@@ -18,7 +18,6 @@
 
 #include "battery_interface.hpp"
 #include "communication_manager.hpp"
-#include "config.hpp"
 #include "critical_state.hpp"
 #include "imu_calibration_runtime.hpp"
 #include "imu_interface.hpp"
@@ -26,6 +25,8 @@
 #include "mavlink_node.hpp"
 #include "mavlink_types.hpp"
 #include "motor_array.hpp"
+#include "publishers/range_publisher.hpp"
+#include "rosbot/config.hpp"
 
 void createQueues() {
   battery_queue = xQueueCreate(1, sizeof(BatteryStamped));

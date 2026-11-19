@@ -14,7 +14,6 @@
 
 #include "commands/imu_calibration_command.hpp"
 #include "commands/mcu_id_command.hpp"
-#include "config.hpp"
 #include "mavlink_node.hpp"
 #include "publishers/battery_publisher.hpp"
 #include "publishers/buttons_publisher.hpp"
@@ -22,6 +21,7 @@
 #include "publishers/imu_publisher.hpp"
 #include "publishers/joint_state_publisher.hpp"
 #include "publishers/range_publisher.hpp"
+#include "rosbot/config.hpp"
 #include "subscribers/led_subscriber.hpp"
 #include "subscribers/wheel_cmd_subscriber.hpp"
 #include "transport/mavlink_serial_transport.hpp"

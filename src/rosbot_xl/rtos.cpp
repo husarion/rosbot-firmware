@@ -22,7 +22,6 @@
 #include "animations/led_animations.hpp"
 #include "battery_interface.hpp"
 #include "communication_manager.hpp"
-#include "config.hpp"
 #include "critical_state.hpp"
 #include "fan.hpp"
 #include "imu_calibration_runtime.hpp"
@@ -34,6 +33,7 @@
 #include "motor_array.hpp"
 #include "ntc.hpp"
 #include "power_board.hpp"
+#include "rosbot_xl/config.hpp"
 
 extern FanController g_fan;
 extern PowerBoard power_board;

@@ -19,7 +19,6 @@
 #include "battery_interface.hpp"
 #include "boot_option.hpp"
 #include "communication_manager.hpp"
-#include "config.hpp"
 #include "fault.hpp"
 #include "hardware_encoder.hpp"
 #include "i2c_fast_mode.hpp"
@@ -32,6 +31,7 @@
 #include "motor_hi_z.hpp"
 #include "persistent_config.hpp"
 #include "power_board.hpp"
+#include "rosbot_xl/config.hpp"
 #include "rtos.hpp"
 
 // ───────── Board Revision ─────────

@@ -48,7 +48,7 @@ platformio run -e rosbot_xl_release
 platformio test -e native
 ```
 
-**After any change in `lib/`, `include/config.hpp`, or `platformio.ini`
+**After any change in `lib/` or `platformio.ini`
 build BOTH variants.** CI does it, you should too. Variant-only changes
 (`src/<variant>/`, `include/<variant>/`) only need the matching env.
 
