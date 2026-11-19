@@ -19,15 +19,14 @@
 namespace {
 
 bool anyButtonLow(const BootOptionConfig& cfg) {
-  for (uint8_t i = 0; i < cfg.button_count; ++i) {
-    if (digitalRead(cfg.buttons[i]) == LOW) return true;
+  for (const auto& button : cfg.buttons) {
+    if (!button.read()) return true;
   }
   return false;
 }
 
 void setGreen(const BootOptionConfig& cfg, bool on) {
-  digitalWrite(cfg.green_led, on ? HIGH : LOW);
-  if (cfg.green_led2 != 0) digitalWrite(cfg.green_led2, on ? HIGH : LOW);
+  for (const auto& led : cfg.green_leds) led.write(on);
 }
 
 constexpr int kCalibrationConfirmBlinks = 3;

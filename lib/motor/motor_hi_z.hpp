@@ -22,15 +22,16 @@
 #include "encoder_interface.hpp"
 #include "motor_interface.hpp"
 #include "pid.hpp"
+#include "pin.hpp"
 
 struct MotorHiZConfig {
-  uint8_t pwm_pin;     // PWM output
-  uint8_t in_a_pin;    // direction input A
-  uint8_t in_b_pin;    // direction input B
-  bool inv_dir;        // polarity inversion
-  float max_velocity;  // [rad/s] clamp
-  float min_velocity;  // [rad/s] deadband
-  uint32_t pwm_freq;   // [Hz]
+  uint8_t pwm_pin;         // PWM output
+  platform::Pin in_a_pin;  // direction input A
+  platform::Pin in_b_pin;  // direction input B
+  bool inv_dir;            // polarity inversion
+  float max_velocity;      // [rad/s] clamp
+  float min_velocity;      // [rad/s] deadband
+  uint32_t pwm_freq;       // [Hz]
   const char* frame_id;
   uint8_t current_sense_pin = 0xFF;   // 0xFF = no analog current sensor
   float current_per_volt = 0.0f;      // [A/V] — I_motor = V_isen * this
@@ -50,7 +51,6 @@ struct MotorHiZConfig {
 /// PWM applied to nSLEEP/EN, direction via IN_A / IN_B pins.
 class MotorHiZ : public MotorInterface {
  public:
-  MotorHiZ() = default;
   explicit MotorHiZ(const MotorHiZConfig& cfg, EncoderInterface* encoder,
                     PIDController pid)
       : cfg_(cfg), encoder_(encoder), pid_(pid) {}
@@ -84,7 +84,7 @@ class MotorHiZ : public MotorInterface {
   void estimateCurrent(float duty);
   void applyCurrentSample(float i_motor);
 
-  MotorHiZConfig cfg_ = {};
+  MotorHiZConfig cfg_;
   EncoderInterface* encoder_ = nullptr;
   PIDController pid_;
   HardwareTimer* pwm_timer_ = nullptr;

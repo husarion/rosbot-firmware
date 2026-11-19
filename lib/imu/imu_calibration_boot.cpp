@@ -36,9 +36,10 @@ void logLine(HardwareSerial* a, HardwareSerial* b, const char* fmt, ...) {
 }
 }  // namespace
 
-bool run(ImuBno055& imu, uint8_t red_led, uint8_t green_led, uint8_t green_led2,
-         ImuCalibrationOffsets& out, HardwareSerial* debug_serial,
-         HardwareSerial* link_serial, uint32_t timeout_ms, uint32_t blink_ms) {
+bool run(ImuBno055& imu, platform::Pin red_led,
+         etl::span<const platform::Pin> green_leds, ImuCalibrationOffsets& out,
+         HardwareSerial* debug_serial, HardwareSerial* link_serial,
+         uint32_t timeout_ms, uint32_t blink_ms) {
   const uint32_t start = millis();
   uint32_t last_toggle = start;
   uint32_t last_log = start;
@@ -53,9 +54,8 @@ bool run(ImuBno055& imu, uint8_t red_led, uint8_t green_led, uint8_t green_led2,
   while (millis() - start < timeout_ms) {
     const ImuCalibrationStatus status = imu.getCalibrationStatus();
     if (status.fullyCalibrated()) {
-      digitalWrite(red_led, LOW);
-      digitalWrite(green_led, HIGH);
-      if (green_led2 != 0) digitalWrite(green_led2, HIGH);
+      red_led.reset();
+      for (const auto& led : green_leds) led.set();
       const bool captured = imu.captureCalibrationOffsets(out);
       logLine(debug_serial, link_serial,
               "IMU calibration: fully calibrated (sys=%u gyro=3 accel=3 "
@@ -66,7 +66,7 @@ bool run(ImuBno055& imu, uint8_t red_led, uint8_t green_led, uint8_t green_led2,
     const uint32_t now = millis();
     if (now - last_toggle >= blink_ms) {
       led_on = !led_on;
-      digitalWrite(red_led, led_on ? HIGH : LOW);
+      red_led.write(led_on);
       last_toggle = now;
     }
     if ((debug_serial != nullptr || link_serial != nullptr) &&
@@ -85,7 +85,7 @@ bool run(ImuBno055& imu, uint8_t red_led, uint8_t green_led, uint8_t green_led2,
     }
     delay(20);
   }
-  digitalWrite(red_led, LOW);
+  red_led.reset();
   logLine(debug_serial, link_serial,
           "IMU calibration: timed out, nothing saved.\r\n");
   return false;

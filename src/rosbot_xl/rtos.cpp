@@ -279,11 +279,11 @@ void shutdownTask(void* p) {
   TickType_t wake_time = xTaskGetTickCount();
 
   while (true) {
-    if (digitalRead(PB_SHD_DETECT) == HIGH) {
+    if (PB_SHD_DETECT.read()) {
       sendShutdownRequest();
 
       vTaskDelay(pdMS_TO_TICKS(SHUTDOWN_WAIT_MS));
-      digitalWrite(PB_SHD_CONFIRM, HIGH);
+      PB_SHD_CONFIRM.set();
       vTaskSuspend(nullptr);
     }
     vTaskDelayUntil(&wake_time, period);

@@ -28,18 +28,22 @@
 #include "motor_hi_z.hpp"
 #include "ntc.hpp"
 #include "pid.hpp"
+#include "pin.hpp"
 #include "power_board.hpp"
 #include "transport/spi_transport.hpp"
+
+using platform::Pin;
+using platform::Port;
 
 // ───────── Arduino settings ─────────
 inline constexpr uint32_t ADC_MAX_VALUE =
     1023;  // 10-bit ADC resolution (0-1023)
 
 // ───────── Board Peripherals ─────────
-inline constexpr uint8_t AUDIO_SHDN = PB2;
+inline constexpr Pin AUDIO_SHDN{Port::B, 2};
 inline constexpr uint8_t AUDIO_DAC_OUT = PA4;
-inline constexpr uint8_t EN_LOC_5V = PF13;
-inline constexpr uint8_t GPIO_HUB_NRST = PE1;
+inline constexpr Pin EN_LOC_5V{Port::F, 13};
+inline constexpr Pin GPIO_HUB_NRST{Port::E, 1};
 
 inline constexpr uint8_t I2C_SDA = PF0;
 inline constexpr uint8_t I2C_SCL = PF1;
@@ -50,8 +54,8 @@ inline constexpr uint8_t PB_SERIAL_TX = PD5;
 inline HardwareSerial pb_serial(PB_SERIAL_RX, PB_SERIAL_TX);
 
 // ───────── Buttons ─────────
-inline constexpr uint8_t PUSH_BUTTON1 = PF11;
-inline constexpr uint8_t PUSH_BUTTON2 = PF12;  // MCU reset button
+inline constexpr Pin PUSH_BUTTON1{Port::F, 11};
+inline constexpr Pin PUSH_BUTTON2{Port::F, 12};  // MCU reset button
 
 // ───────── EEPROM ─────────
 inline constexpr EepromConfig eeprom_config = {
@@ -187,12 +191,13 @@ inline constexpr ImuBno055Config imu_bno055_config = {
 };
 
 // ───────── LEDs ─────────
-inline constexpr uint8_t RED_LED = PE4;
-inline constexpr uint8_t GRN_LED = PE3;
+inline constexpr Pin RED_LED{Port::E, 4};
+inline constexpr Pin GRN_LED{Port::E, 3};
+inline constexpr Pin green_leds[] = {GRN_LED};
 
 inline constexpr LedIndicatorConfig led_status_config = {
     .pin = RED_LED,
-    .initial_state = HIGH,
+    .initial_on = true,
     .blink_period_ms = 500,
     .label = "STATUS",
 };
@@ -231,10 +236,10 @@ inline constexpr float MIN_VELOCITY = 0.0f;
 
 // Table 2:
 // https://www.analog.com/media/en/technical-documentation/data-sheets/max22205.pdf
-inline constexpr uint8_t ILIM1 = PE10;
-inline constexpr uint8_t ILIM2 = PG15;
-inline constexpr uint8_t ILIM3 = PG7;
-inline constexpr uint8_t ILIM4 = PD14;
+inline constexpr Pin ILIM1{Port::E, 10};
+inline constexpr Pin ILIM2{Port::G, 15};
+inline constexpr Pin ILIM3{Port::G, 7};
+inline constexpr Pin ILIM4{Port::D, 14};
 
 // MAX22205 current-sense (rev 1.2 only). The CSO/ISEN pin sources
 //   I_isen = I_motor / KISEN          (KISEN = 7500 A/A, datasheet)
@@ -263,8 +268,8 @@ inline constexpr float MOTOR_SUPPLY_VOLTAGE = 12.0f;   // [V] nominal
 
 inline constexpr MotorHiZConfig motor_fl_config = {
     .pwm_pin = PF9,
-    .in_a_pin = PD10,
-    .in_b_pin = PD11,
+    .in_a_pin = Pin{Port::D, 10},
+    .in_b_pin = Pin{Port::D, 11},
     .inv_dir = true,
     .max_velocity = MAX_VELOCITY,
     .min_velocity = MIN_VELOCITY,
@@ -281,8 +286,8 @@ inline constexpr MotorHiZConfig motor_fl_config = {
 
 inline constexpr MotorHiZConfig motor_fr_config = {
     .pwm_pin = PF8,
-    .in_a_pin = PG5,
-    .in_b_pin = PG6,
+    .in_a_pin = Pin{Port::G, 5},
+    .in_b_pin = Pin{Port::G, 6},
     .inv_dir = false,
     .max_velocity = MAX_VELOCITY,
     .min_velocity = MIN_VELOCITY,
@@ -299,8 +304,8 @@ inline constexpr MotorHiZConfig motor_fr_config = {
 
 inline constexpr MotorHiZConfig motor_rl_config = {
     .pwm_pin = PF7,
-    .in_a_pin = PG11,
-    .in_b_pin = PG12,
+    .in_a_pin = Pin{Port::G, 11},
+    .in_b_pin = Pin{Port::G, 12},
     .inv_dir = true,
     .max_velocity = MAX_VELOCITY,
     .min_velocity = MIN_VELOCITY,
@@ -317,8 +322,8 @@ inline constexpr MotorHiZConfig motor_rl_config = {
 
 inline constexpr MotorHiZConfig motor_rr_config = {
     .pwm_pin = PF6,
-    .in_a_pin = PE12,
-    .in_b_pin = PE13,
+    .in_a_pin = Pin{Port::E, 12},
+    .in_b_pin = Pin{Port::E, 13},
     .inv_dir = false,
     .max_velocity = MAX_VELOCITY,
     .min_velocity = MIN_VELOCITY,
@@ -362,7 +367,7 @@ inline constexpr uint8_t BATTERY_PARALLEL_CELLS = 3;
 inline constexpr float BATTERY_CELL_CAPACITY = 2.6f;  // Ah
 inline constexpr float BATTERY_DESIGN_CAPACITY =
     BATTERY_PARALLEL_CELLS * BATTERY_CELL_CAPACITY;
-inline constexpr uint8_t buttons_pins[] = {PUSH_BUTTON1};
+inline constexpr Pin buttons_pins[] = {PUSH_BUTTON1};
 
 // Publisher configs live in src/rosbot_xl/mavlink_entities.cpp.
 
@@ -376,9 +381,9 @@ inline constexpr PowerBoardConfig power_board_config = {
 
 // ───────── Power Board - Shutdown ─────────
 // Power Board send high signal when shutdown button is pressed
-inline constexpr uint8_t PB_SHD_DETECT = PD4;
+inline constexpr Pin PB_SHD_DETECT{Port::D, 4};
 // Power Board monitors if signal is high to confirm shutdown
-inline constexpr uint8_t PB_SHD_CONFIRM = PD7;
+inline constexpr Pin PB_SHD_CONFIRM{Port::D, 7};
 
 // ───────── SBC Interface ─────────
 // SBC has few seconds to shutdown after receiving shutdown command

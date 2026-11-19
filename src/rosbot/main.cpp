@@ -92,23 +92,20 @@ static float supplyVoltage() { return g_battery->getData().voltage; }
 
 void boardPeripheralsInit() {
   // Initialize Buttons
-  pinMode(PUSH_BUTTON1, INPUT_PULLUP);
-  pinMode(PUSH_BUTTON2, INPUT_PULLUP);
+  PUSH_BUTTON1.setAsInput(platform::Pull::kUp);
+  PUSH_BUTTON2.setAsInput(platform::Pull::kUp);
 
   // Initialize LEDs
-  pinMode(RED_LED, OUTPUT);
-  pinMode(GRN_LED, OUTPUT);
-  pinMode(GRN_LED2, OUTPUT);
-  digitalWrite(RED_LED, HIGH);
+  RED_LED.setAsOutput(true);
+  GRN_LED.setAsOutput(false);
+  GRN_LED2.setAsOutput(false);
 
   // Select BNO055 I2C address 0x29 before powering the sensor: COM3 must
   // have a defined level at boot and the line has no pull resistor.
-  pinMode(IMU_ADDR_SEL, OUTPUT);
-  digitalWrite(IMU_ADDR_SEL, HIGH);
+  IMU_ADDR_SEL.setAsOutput(true);
 
   // Enable power for IMU sensor
-  pinMode(IMU_POWER_ON, OUTPUT);
-  digitalWrite(IMU_POWER_ON, HIGH);
+  IMU_POWER_ON.setAsOutput(true);
 
   // Initialize I2C
   imu_i2c.begin();
@@ -130,12 +127,10 @@ void setup() {
   // Resolve the boot gesture before anything else touches the buttons —
   // see boot_option.hpp. rosbot has two interchangeable buttons; either
   // one qualifies.
-  const uint8_t boot_buttons[] = {PUSH_BUTTON1, PUSH_BUTTON2};
+  static constexpr Pin boot_buttons[] = {PUSH_BUTTON1, PUSH_BUTTON2};
   const BootOptionConfig boot_option_config = {
       .buttons = boot_buttons,
-      .button_count = 2,
-      .green_led = GRN_LED,
-      .green_led2 = GRN_LED2,
+      .green_leds = green_leds,
   };
   const BootAction boot_action = resolveBootAction(boot_option_config);
   s_transport_diagnostic_requested =
@@ -175,9 +170,8 @@ void setup() {
     }
     if (imu_calibration_requested) {
       ImuCalibrationOffsets captured{};
-      if (imu_calibration_boot::run(imu_bno055, RED_LED, GRN_LED, GRN_LED2,
-                                    captured, g_comm_mgr.debugSerial(),
-                                    link_serial)) {
+      if (imu_calibration_boot::run(imu_bno055, RED_LED, green_leds, captured,
+                                    g_comm_mgr.debugSerial(), link_serial)) {
         now.has_imu_calibration = true;
         now.imu_calibration = captured;
       }

@@ -20,13 +20,14 @@
 
 #include "STM32FreeRTOS.h"
 #include "motor_interface.hpp"
+#include "pin.hpp"
 
 #define MAX_NUM_MOTORS 4
 
 /// H-bridge driver group (e.g. one DRV8848 chip → 2 channels).
 struct DriverGroupConfig {
-  uint8_t sleep_pin;  // nSLEEP output
-  uint8_t fault_pin;  // nFAULT input (active-LOW)
+  platform::Pin sleep_pin;  // nSLEEP output
+  platform::Pin fault_pin;  // nFAULT input (active-LOW)
 };
 
 /// Aggregate data snapshot for all motors.

@@ -97,6 +97,22 @@ void test_configure_masks_irqs_and_restores_primask() {
   TEST_ASSERT_EQUAL_UINT32(1, fake_primask);
 }
 
+void test_port_constructor_matches_base() {
+  const platform::Pin by_port(platform::Port::G, 3);
+  const platform::Pin by_base(GPIOA_BASE + 6 * kPortStride, 3);
+  TEST_ASSERT_TRUE(by_port == by_base);
+}
+
+void test_toggle_inverts_output_latch() {
+  const platform::Pin pin(platform::Port::B, 4);
+  fakePort(1)->ODR = 0;
+  pin.toggle();
+  TEST_ASSERT_EQUAL_HEX32(1UL << 4, fakePort(1)->BSRR);
+  fakePort(1)->ODR = 1UL << 4;
+  pin.toggle();
+  TEST_ASSERT_EQUAL_HEX32(1UL << 20, fakePort(1)->BSRR);
+}
+
 void test_equality() {
   constexpr platform::Pin a(0x40020000, 3);
   constexpr platform::Pin b(0x40020000, 3);
@@ -114,6 +130,8 @@ int main() {
   RUN_TEST(test_analog_mode);
   RUN_TEST(test_read_follows_idr);
   RUN_TEST(test_configure_masks_irqs_and_restores_primask);
+  RUN_TEST(test_port_constructor_matches_base);
+  RUN_TEST(test_toggle_inverts_output_latch);
   RUN_TEST(test_equality);
   return UNITY_END();
 }

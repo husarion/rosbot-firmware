@@ -14,21 +14,18 @@
 
 #include "led_indicator.hpp"
 
-void LedIndicator::init() {
-  pinMode(cfg_.pin, OUTPUT);
-  digitalWrite(cfg_.pin, cfg_.initial_state);
-}
+void LedIndicator::init() { cfg_.pin.setAsOutput(cfg_.initial_on); }
 
 void LedIndicator::calibrating(bool fully_calibrated) {
   constexpr uint32_t kFastBlinkMs = 100;
   resetSOS();
   if (fully_calibrated) {
-    digitalWrite(cfg_.pin, LOW);
+    cfg_.pin.reset();
     return;
   }
   const uint32_t now = millis();
   if (now - last_toggle_ >= kFastBlinkMs) {
-    digitalToggle(cfg_.pin);
+    cfg_.pin.toggle();
     last_toggle_ = now;
   }
 }
@@ -49,17 +46,17 @@ void LedIndicator::update(bool battery_low, bool link_disconnected,
 
   // Priority 3: µROS disconnected → solid ON
   if (link_disconnected) {
-    digitalWrite(cfg_.pin, HIGH);
+    cfg_.pin.set();
     return;
   }
 
   // All OK → OFF
-  digitalWrite(cfg_.pin, LOW);
+  cfg_.pin.reset();
 }
 
 void LedIndicator::handleBlink(uint32_t now) {
   if (now - last_toggle_ >= cfg_.blink_period_ms) {
-    digitalToggle(cfg_.pin);
+    cfg_.pin.toggle();
     last_toggle_ = now;
   }
 }
@@ -96,6 +93,6 @@ bool LedIndicator::handleSOS(uint32_t now, bool error) {
       }
     }
   }
-  digitalWrite(cfg_.pin, kSos[sos_step_].on ? HIGH : LOW);
+  cfg_.pin.write(kSos[sos_step_].on);
   return true;
 }

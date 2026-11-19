@@ -15,13 +15,14 @@
 #pragma once
 
 #include <Arduino.h>
+#include <etl/span.h>
 
 #include "mavlink.h"
+#include "pin.hpp"
 #include "publisher_interface.hpp"
 
 struct MavlinkButtonsPublisherConfig {
-  const uint8_t* pins;
-  uint8_t num_buttons;
+  etl::span<const platform::Pin> pins;  // active-low
   uint32_t period_ms;
 };
 
@@ -36,8 +37,8 @@ class MavlinkButtonsPublisher : public MavlinkPublisherInterface {
     last_pub_ms_ = now;
 
     uint8_t mask = 0;
-    for (uint8_t i = 0; i < cfg_.num_buttons; ++i) {
-      if (digitalRead(cfg_.pins[i]) == LOW) mask |= (1u << i);
+    for (size_t i = 0; i < cfg_.pins.size(); ++i) {
+      if (!cfg_.pins[i].read()) mask |= (1u << i);
     }
 
     mavlink_message_t m;

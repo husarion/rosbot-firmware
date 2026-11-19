@@ -51,14 +51,12 @@ void RangeVl53l0x::update() {
 }
 
 void RangeVl53l0x::powerOff() {
-  pinMode(cfg_.xshut_pin, OUTPUT);
-  digitalWrite(cfg_.xshut_pin, LOW);
+  cfg_.xshut_pin.setAsOutput(false);
   initialized_ = false;
   delay(10);
 }
 
 void RangeVl53l0x::powerOn() {
-  pinMode(cfg_.xshut_pin, OUTPUT);
-  digitalWrite(cfg_.xshut_pin, HIGH);
+  cfg_.xshut_pin.setAsOutput(true);
   delay(20);
 }

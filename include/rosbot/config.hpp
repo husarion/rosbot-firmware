@@ -24,7 +24,11 @@
 #include "motor_array.hpp"
 #include "motor_hi_z.hpp"
 #include "pid.hpp"
+#include "pin.hpp"
 #include "range_vl53l0.hpp"
+
+using platform::Pin;
+using platform::Port;
 
 // ───────── Arduino settings ─────────
 inline constexpr uint32_t ADC_MAX_VALUE =
@@ -46,8 +50,8 @@ inline constexpr BatteryAdcConfig battery_adc_config = {
 };
 
 // ───────── Buttons ─────────
-inline constexpr uint8_t PUSH_BUTTON1 = PG12;
-inline constexpr uint8_t PUSH_BUTTON2 = PG13;
+inline constexpr Pin PUSH_BUTTON1{Port::G, 12};
+inline constexpr Pin PUSH_BUTTON2{Port::G, 13};
 
 // ───────── Encoders ─────────
 inline constexpr float GEAR_RATIO = 34.0f;
@@ -98,10 +102,10 @@ inline constexpr HardwareEncoderConfig enc_rr_config = {
 };
 
 // ───────── IMU ─────────
-inline constexpr uint8_t IMU_POWER_ON = PG4;
+inline constexpr Pin IMU_POWER_ON{Port::G, 4};
 // BNO055 COM3 (address select) is an MCU GPIO here with no pull resistor;
 // drive HIGH → 0x29. rosbot_xl hard-wires this line to 3V3 instead.
-inline constexpr uint8_t IMU_ADDR_SEL = PC8;
+inline constexpr Pin IMU_ADDR_SEL{Port::C, 8};
 inline constexpr uint8_t IMU_I2C_SDA = PC9;
 inline constexpr uint8_t IMU_I2C_SCL = PA8;
 
@@ -116,13 +120,14 @@ inline constexpr ImuBno055Config imu_bno055_config = {
 };
 
 // ───────── LEDs ─────────
-inline constexpr uint8_t RED_LED = PE2;
-inline constexpr uint8_t GRN_LED = PE3;
-inline constexpr uint8_t GRN_LED2 = PE4;
+inline constexpr Pin RED_LED{Port::E, 2};
+inline constexpr Pin GRN_LED{Port::E, 3};
+inline constexpr Pin GRN_LED2{Port::E, 4};
+inline constexpr Pin green_leds[] = {GRN_LED, GRN_LED2};
 
 inline constexpr LedIndicatorConfig led_status_config = {
     .pin = RED_LED,
-    .initial_state = HIGH,
+    .initial_on = true,
     .blink_period_ms = 500,
     .label = "STATUS",
 };
@@ -142,8 +147,10 @@ inline constexpr float MOTOR_RESISTANCE = 7.2f;        // [Ω]
 inline constexpr float MOTOR_BACK_EMF = 0.008f;        // [V·s/rad]
 inline constexpr float MOTOR_SUPPLY_VOLTAGE = 12.0f;   // [V] nominal
 
-inline constexpr DriverGroupConfig right_motors_driver = {PC13, PE0};
-inline constexpr DriverGroupConfig left_motors_driver = {PC14, PE1};
+inline constexpr DriverGroupConfig right_motors_driver = {Pin{Port::C, 13},
+                                                          Pin{Port::E, 0}};
+inline constexpr DriverGroupConfig left_motors_driver = {Pin{Port::C, 14},
+                                                         Pin{Port::E, 1}};
 inline constexpr DriverGroupConfig driver_groups[] = {
     right_motors_driver,
     left_motors_driver,
@@ -151,8 +158,8 @@ inline constexpr DriverGroupConfig driver_groups[] = {
 
 inline constexpr MotorHiZConfig motor_fl_config = {
     .pwm_pin = PF9,
-    .in_a_pin = PE5,
-    .in_b_pin = PE6,
+    .in_a_pin = Pin{Port::E, 5},
+    .in_b_pin = Pin{Port::E, 6},
     .inv_dir = false,
     .max_velocity = MAX_VELOCITY,
     .min_velocity = MIN_VELOCITY,
@@ -167,8 +174,8 @@ inline constexpr MotorHiZConfig motor_fl_config = {
 
 inline constexpr MotorHiZConfig motor_fr_config = {
     .pwm_pin = PF6,
-    .in_a_pin = PG10,
-    .in_b_pin = PG11,
+    .in_a_pin = Pin{Port::G, 10},
+    .in_b_pin = Pin{Port::G, 11},
     .inv_dir = true,
     .max_velocity = MAX_VELOCITY,
     .min_velocity = MIN_VELOCITY,
@@ -183,8 +190,8 @@ inline constexpr MotorHiZConfig motor_fr_config = {
 
 inline constexpr MotorHiZConfig motor_rl_config = {
     .pwm_pin = PF8,
-    .in_a_pin = PC15,
-    .in_b_pin = PF2,
+    .in_a_pin = Pin{Port::C, 15},
+    .in_b_pin = Pin{Port::F, 2},
     .inv_dir = false,
     .max_velocity = MAX_VELOCITY,
     .min_velocity = MIN_VELOCITY,
@@ -199,8 +206,8 @@ inline constexpr MotorHiZConfig motor_rl_config = {
 
 inline constexpr MotorHiZConfig motor_rr_config = {
     .pwm_pin = PF7,
-    .in_a_pin = PD3,
-    .in_b_pin = PD4,
+    .in_a_pin = Pin{Port::D, 3},
+    .in_b_pin = Pin{Port::D, 4},
     .inv_dir = true,
     .max_velocity = MAX_VELOCITY,
     .min_velocity = MIN_VELOCITY,
@@ -235,28 +242,28 @@ inline constexpr uint8_t RANGE_I2C_SCL = PB8;
 inline TwoWire range_i2c(RANGE_I2C_SDA, RANGE_I2C_SCL);
 inline constexpr RangeVl53l0xConfig range_fl_config = {
     .bus = &range_i2c,
-    .xshut_pin = PD8,
+    .xshut_pin = Pin{Port::D, 8},
     .i2c_address = 0x30,
     .frame_id = "fl_range",
 };
 
 inline constexpr RangeVl53l0xConfig range_fr_config = {
     .bus = &range_i2c,
-    .xshut_pin = PB1,
+    .xshut_pin = Pin{Port::B, 1},
     .i2c_address = 0x31,
     .frame_id = "fr_range",
 };
 
 inline constexpr RangeVl53l0xConfig range_rl_config = {
     .bus = &range_i2c,
-    .xshut_pin = PD10,
+    .xshut_pin = Pin{Port::D, 10},
     .i2c_address = 0x32,
     .frame_id = "rl_range",
 };
 
 inline constexpr RangeVl53l0xConfig range_rr_config = {
     .bus = &range_i2c,
-    .xshut_pin = PD9,
+    .xshut_pin = Pin{Port::D, 9},
     .i2c_address = 0x33,
     .frame_id = "rr_range",
 };
@@ -267,15 +274,16 @@ inline QueueHandle_t imu_queue;
 inline QueueHandle_t joint_state_queue;
 inline QueueHandle_t ranges_queue;
 
-inline constexpr uint8_t buttons_pins[2] = {PUSH_BUTTON2, PUSH_BUTTON1};
+inline constexpr Pin buttons_pins[] = {PUSH_BUTTON2, PUSH_BUTTON1};
 
 // Publisher configs live in src/rosbot/mavlink_entities.cpp.
 
 // ───────── SBC Interface ─────────
 inline constexpr uint32_t SBC_SERIAL_TIMEOUT_MS = 100;
-inline constexpr uint8_t SBC_STATUS = PG6;  // Detect RPi which is a pullup pin
-inline constexpr uint8_t RPI_CONSOLE = PG5;
-inline constexpr uint8_t RPI_BTN = PG7;
+inline constexpr Pin SBC_STATUS{Port::G,
+                                6};  // Detect RPi which is a pullup pin
+inline constexpr Pin RPI_CONSOLE{Port::G, 5};
+inline constexpr Pin RPI_BTN{Port::G, 7};
 
 // Primary: SBC Serial (SBC connection)
 inline constexpr SerialConfig SBC_SERIAL_CONFIG = {.serial = &Serial1,

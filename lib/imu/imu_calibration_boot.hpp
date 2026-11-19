@@ -15,10 +15,12 @@
 #pragma once
 
 #include <HardwareSerial.h>
+#include <etl/span.h>
 
 #include <cstdint>
 
 #include "imu_bno055.hpp"
+#include "pin.hpp"
 
 // Boot-time (pre-scheduler) IMU calibration UI, shared by both variants'
 // setup(). Persisting a calibration must happen before
@@ -29,9 +31,8 @@
 namespace imu_calibration_boot {
 
 // Blocks until the BNO055 reports sys/gyro/accel/mag == 3/3/3/3 or
-// `timeout_ms` elapses. `red_led` blinks while waiting; `green_led` (and
-// `green_led2`, pass 0 if the board doesn't have a second one) go solid
-// on success. Fills `out` and returns true only on success.
+// `timeout_ms` elapses. `red_led` blinks while waiting; `green_leds` go
+// solid on success. Fills `out` and returns true only on success.
 //
 // `debug_serial` and `link_serial` (either may be nullptr) both get the
 // sys/gyro/accel/mag status printed once a second plus entry/success/timeout
@@ -45,8 +46,9 @@ namespace imu_calibration_boot {
 // debug UART isn't wired to it. It is idle here — MAVLink starts
 // after this returns — and the host bridge relays these lines, so they must
 // stay plain ASCII.
-bool run(ImuBno055& imu, uint8_t red_led, uint8_t green_led, uint8_t green_led2,
-         ImuCalibrationOffsets& out, HardwareSerial* debug_serial = nullptr,
+bool run(ImuBno055& imu, platform::Pin red_led,
+         etl::span<const platform::Pin> green_leds, ImuCalibrationOffsets& out,
+         HardwareSerial* debug_serial = nullptr,
          HardwareSerial* link_serial = nullptr, uint32_t timeout_ms = 120000,
          uint32_t blink_ms = 150);
 

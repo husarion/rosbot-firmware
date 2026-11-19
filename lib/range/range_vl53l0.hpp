@@ -17,11 +17,12 @@
 #include <VL53L0X.h>
 #include <Wire.h>
 
+#include "pin.hpp"
 #include "range_interface.hpp"
 
 struct RangeVl53l0xConfig {
   TwoWire* bus;
-  uint8_t xshut_pin;
+  platform::Pin xshut_pin;
   uint8_t i2c_address;
   const char* frame_id = "range";
   uint16_t timeout_ms = 500;

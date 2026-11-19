@@ -16,16 +16,25 @@
 
 #include <cstdint>
 
+// Until the Arduino core is gone (migration step 9) its stm32_def.h must be
+// the first device header in a TU, or the core's own headers fail to build.
+#if __has_include(<stm32_def.h>)
+#include <stm32_def.h>
+#else
 #include "stm32f4xx.h"
+#endif
 
 namespace platform {
 
+enum class Port : uint8_t { A, B, C, D, E, F, G, H, I };
+
 enum class Pull : uint8_t { kNone = 0b00, kUp = 0b01, kDown = 0b10 };
 
-// One GPIO line, addressed by port base and line index so it can be a
-// constexpr member of a board config: Pin{GPIOA_BASE, 5}.
+// One GPIO line, constexpr so it can live in a board config: Pin{Port::E, 2}.
 class Pin {
  public:
+  constexpr Pin(Port port, uint8_t index)
+      : Pin(GPIOA_BASE + static_cast<uintptr_t>(port) * kPortStride, index) {}
   constexpr Pin(uintptr_t port_base, uint8_t index)
       : port_base_(port_base), index_(index) {}
 
@@ -45,6 +54,8 @@ class Pin {
   void write(bool high) const { port()->BSRR = high ? mask() : (mask() << 16); }
   void set() const { write(true); }
   void reset() const { write(false); }
+  // Not atomic against another writer of the same line; a pin has one owner.
+  void toggle() const { write((port()->ODR & mask()) == 0); }
   bool read() const { return (port()->IDR & mask()) != 0; }
 
   uintptr_t portBase() const { return port_base_; }

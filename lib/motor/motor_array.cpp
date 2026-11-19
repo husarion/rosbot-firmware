@@ -31,8 +31,8 @@ void MotorArray::init() {
 
   // Setup driver control pins
   for (const auto& driver : drivers_) {
-    pinMode(driver.sleep_pin, OUTPUT);
-    pinMode(driver.fault_pin, INPUT_PULLUP);
+    driver.sleep_pin.setAsOutput(false);
+    driver.fault_pin.setAsInput(platform::Pull::kUp);
   }
   disableDrivers();
 
@@ -47,19 +47,19 @@ void MotorArray::init() {
 // ─── driver control ───────────────────────────────────────────────
 
 void MotorArray::enableDrivers() {
-  for (const auto& driver : drivers_) digitalWrite(driver.sleep_pin, HIGH);
+  for (const auto& driver : drivers_) driver.sleep_pin.set();
   drivers_enabled_.store(true, std::memory_order_relaxed);
   delayMicroseconds(100);  // DRV8848 wake-up
 }
 
 void MotorArray::disableDrivers() {
-  for (const auto& driver : drivers_) digitalWrite(driver.sleep_pin, LOW);
+  for (const auto& driver : drivers_) driver.sleep_pin.reset();
   drivers_enabled_.store(false, std::memory_order_relaxed);
 }
 
 bool MotorArray::checkFaults() const {
   for (const auto& driver : drivers_)
-    if (!digitalRead(driver.fault_pin)) return true;
+    if (!driver.fault_pin.read()) return true;
   return false;
 }
 

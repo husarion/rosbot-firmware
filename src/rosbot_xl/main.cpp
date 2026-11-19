@@ -93,33 +93,29 @@ static float supplyVoltage() { return g_battery->getData().voltage; }
 
 void boardPeripheralsInit() {
   // Audio
-  pinMode(AUDIO_SHDN, OUTPUT);
-  digitalWrite(AUDIO_SHDN, HIGH);
+  AUDIO_SHDN.setAsOutput(true);
 
   // Active-low hub reset; the pull-up keeps the hub running.
-  pinMode(GPIO_HUB_NRST, INPUT_PULLUP);
+  GPIO_HUB_NRST.setAsInput(platform::Pull::kUp);
 
   // Buttons
-  pinMode(PUSH_BUTTON1, INPUT_PULLUP);
-  pinMode(PUSH_BUTTON2, INPUT_PULLUP);
+  PUSH_BUTTON1.setAsInput(platform::Pull::kUp);
+  PUSH_BUTTON2.setAsInput(platform::Pull::kUp);
 
   // Fan
   pinMode(FAN_PP_PIN, OUTPUT);
   digitalWrite(FAN_PP_PIN, LOW);
 
   // LEDs
-  pinMode(RED_LED, OUTPUT);
-  pinMode(GRN_LED, OUTPUT);
-  digitalWrite(RED_LED, HIGH);
+  RED_LED.setAsOutput(true);
+  GRN_LED.setAsOutput(false);
 
   // Peripheral Power
-  pinMode(EN_LOC_5V, OUTPUT);
-  digitalWrite(EN_LOC_5V, HIGH);
+  EN_LOC_5V.setAsOutput(true);
 
   // Power board
-  pinMode(PB_SHD_DETECT, INPUT_PULLUP);
-  pinMode(PB_SHD_CONFIRM, OUTPUT);
-  digitalWrite(PB_SHD_CONFIRM, LOW);
+  PB_SHD_DETECT.setAsInput(platform::Pull::kUp);
+  PB_SHD_CONFIRM.setAsOutput(false);
 
   // I2C
   i2c.begin();
@@ -131,21 +127,13 @@ void boardPeripheralsInit() {
 void setMaxMotorsCurrent(Revision rev) {
   switch (rev) {
     case Revision::V1_2:
-      pinMode(ILIM1, INPUT);
-      pinMode(ILIM2, INPUT);
-      pinMode(ILIM3, INPUT);
-      pinMode(ILIM4, INPUT);
+      for (const Pin& ilim : {ILIM1, ILIM2, ILIM3, ILIM4}) ilim.setAsInput();
       break;
 
     case Revision::V1_1:
-      pinMode(ILIM1, OUTPUT);
-      pinMode(ILIM2, OUTPUT);
-      pinMode(ILIM3, OUTPUT);
-      pinMode(ILIM4, OUTPUT);
-      digitalWrite(ILIM1, HIGH);
-      digitalWrite(ILIM2, HIGH);
-      digitalWrite(ILIM3, HIGH);
-      digitalWrite(ILIM4, HIGH);
+      for (const Pin& ilim : {ILIM1, ILIM2, ILIM3, ILIM4}) {
+        ilim.setAsOutput(true);
+      }
       // V1_1 uses DRV8870 do not have a real current sensor.
       motor_fl.disableCurrentSensor();
       motor_fr.disableCurrentSensor();
@@ -168,13 +156,10 @@ void setup() {
 
   // Resolve the boot gesture before anything else touches the button —
   // see boot_option.hpp. rosbot_xl only exposes PUSH_BUTTON1 as a
-  // readable GPIO (PUSH_BUTTON2 is wired to MCU NRST) and has a single
-  // green LED, so green_led2 is left unused (0).
-  const uint8_t boot_buttons[] = {PUSH_BUTTON1};
+  // readable GPIO (PUSH_BUTTON2 is wired to MCU NRST).
   const BootOptionConfig boot_option_config = {
-      .buttons = boot_buttons,
-      .button_count = 1,
-      .green_led = GRN_LED,
+      .buttons = buttons_pins,
+      .green_leds = green_leds,
   };
   const BootAction boot_action = resolveBootAction(boot_option_config);
   s_transport_diagnostic_requested =
@@ -217,8 +202,7 @@ void setup() {
     }
     if (imu_calibration_requested) {
       ImuCalibrationOffsets captured{};
-      if (imu_calibration_boot::run(imu_bno055, RED_LED, GRN_LED,
-                                    /*green_led2=*/0, captured,
+      if (imu_calibration_boot::run(imu_bno055, RED_LED, green_leds, captured,
                                     g_comm_mgr.debugSerial())) {
         now.has_imu_calibration = true;
         now.imu_calibration = captured;

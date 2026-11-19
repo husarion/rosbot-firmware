@@ -49,7 +49,6 @@ static MavlinkImuCalibrationPublisher imu_calibration_pub({.period_ms = 200});
 static MavlinkJointStatePublisher joint_state_pub({.queue = joint_state_queue,
                                                    .period_ms = 0});
 static MavlinkButtonsPublisher buttons_pub({.pins = buttons_pins,
-                                            .num_buttons = sizeof(buttons_pins),
                                             .period_ms = 50});
 
 static MavlinkPublisherInterface* s_publishers[] = {
@@ -61,8 +60,7 @@ static const PanelLedConfig s_panel_leds[] = {
     {.pin = GRN_LED, .bit_mask = 0x01},
 };
 static WheelCmdSubscriber wheel_cmd_sub(g_motors);
-static PanelLedSubscriber leds_sub(s_panel_leds, sizeof(s_panel_leds) /
-                                                     sizeof(s_panel_leds[0]));
+static PanelLedSubscriber leds_sub(s_panel_leds);
 static LedStripSubscriber led_strip_sub(led_strip_queue);
 static McuIdCommand mcu_id_cmd;
 

@@ -58,36 +58,30 @@ void MotorHiZ::setMode(Mode movement) {
   if (movement == current_mode_) return;
   current_mode_ = movement;
 
-  uint8_t pin_a = cfg_.inv_dir ? cfg_.in_b_pin : cfg_.in_a_pin;
-  uint8_t pin_b = cfg_.inv_dir ? cfg_.in_a_pin : cfg_.in_b_pin;
+  const platform::Pin& pin_a = cfg_.inv_dir ? cfg_.in_b_pin : cfg_.in_a_pin;
+  const platform::Pin& pin_b = cfg_.inv_dir ? cfg_.in_a_pin : cfg_.in_b_pin;
 
   switch (movement) {
     case Mode::Forward:
-      pinMode(pin_a, INPUT);  // Hi-Z → receives PWM
-      pinMode(pin_b, OUTPUT);
-      digitalWrite(pin_b, LOW);
+      pin_a.setAsInput();  // Hi-Z → receives PWM
+      pin_b.setAsOutput(false);
       break;
 
     case Mode::Reverse:
-      pinMode(pin_a, OUTPUT);
-      digitalWrite(pin_a, LOW);
-      pinMode(pin_b, INPUT);  // Hi-Z → receives PWM
+      pin_a.setAsOutput(false);
+      pin_b.setAsInput();  // Hi-Z → receives PWM
       break;
 
     case Mode::Brake:
-      pinMode(cfg_.in_a_pin, OUTPUT);
-      pinMode(cfg_.in_b_pin, OUTPUT);
-      digitalWrite(cfg_.in_a_pin, HIGH);
-      digitalWrite(cfg_.in_b_pin, HIGH);
+      cfg_.in_a_pin.setAsOutput(true);
+      cfg_.in_b_pin.setAsOutput(true);
       pwm_timer_->setCaptureCompare(pwm_channel_, pwm_arr_);
       break;
 
     case Mode::Neutral:
     default:
-      pinMode(cfg_.in_a_pin, OUTPUT);
-      pinMode(cfg_.in_b_pin, OUTPUT);
-      digitalWrite(cfg_.in_a_pin, LOW);
-      digitalWrite(cfg_.in_b_pin, LOW);
+      cfg_.in_a_pin.setAsOutput(false);
+      cfg_.in_b_pin.setAsOutput(false);
       pwm_timer_->setCaptureCompare(pwm_channel_, 0);
       break;
   }

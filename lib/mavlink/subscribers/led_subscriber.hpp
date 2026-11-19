@@ -14,34 +14,33 @@
 
 #pragma once
 
-#include <Arduino.h>
+#include <etl/span.h>
 
 #include "mavlink.h"
 #include "mavlink_node.hpp"
+#include "pin.hpp"
 #include "subscriber_interface.hpp"
 
 struct PanelLedConfig {
-  uint8_t pin;
+  platform::Pin pin;
   uint8_t bit_mask;
 };
 
 class PanelLedSubscriber : public MavlinkSubscriberInterface {
  public:
-  PanelLedSubscriber(const PanelLedConfig* configs, uint8_t count)
-      : configs_(configs), count_(count) {}
+  explicit PanelLedSubscriber(etl::span<const PanelLedConfig> configs)
+      : configs_(configs) {}
 
   uint32_t msgId() const override { return MAVLINK_MSG_ID_ROSBOT_PANEL_LEDS; }
 
   void onMessage(const mavlink_message_t& msg, MavlinkNode& /*node*/) override {
     mavlink_rosbot_panel_leds_t leds;
     mavlink_msg_rosbot_panel_leds_decode(&msg, &leds);
-    for (uint8_t i = 0; i < count_; ++i) {
-      const bool on = (leds.mask & configs_[i].bit_mask) != 0;
-      digitalWrite(configs_[i].pin, on ? HIGH : LOW);
+    for (const auto& led : configs_) {
+      led.pin.write((leds.mask & led.bit_mask) != 0);
     }
   }
 
  private:
-  const PanelLedConfig* configs_;
-  uint8_t count_;
+  etl::span<const PanelLedConfig> configs_;
 };
