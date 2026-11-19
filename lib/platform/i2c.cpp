@@ -220,8 +220,7 @@ void I2c::onTransferDone(bool ok) {
 
 }  // namespace platform
 
-// HAL completion callbacks are weak in HAL; nothing else defines them now
-// that the Arduino Wire library (twi.c) is out of the link.
+// HAL's completion callbacks are weak; these are the only definitions.
 extern "C" void HAL_I2C_MemRxCpltCallback(I2C_HandleTypeDef* h) {
   if (auto* bus = platform::ownerOf(h)) bus->onTransferDone(true);
 }

@@ -34,8 +34,7 @@ struct UartConfig {
 
 // 8N1 UART on registers. TX: a FreeRTOS stream buffer drained by DMA in
 // chunks. RX: circular DMA into a 512 B ring, read by polling its counter;
-// no USART interrupt is used (the Arduino core still owns USARTx_IRQHandler
-// until migration step 9).
+// no USART interrupt is used, since every reader is a periodic task.
 //
 // Writers must be serialised by the caller (MavlinkNode's tx mutex, the
 // debug-serial mutex, one PowerBoard task). Before the scheduler runs, and

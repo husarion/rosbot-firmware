@@ -32,7 +32,7 @@ using platform::Port;
 // Same value as Arduino's PI, so RAD_PER_TICK keeps its float bits.
 inline constexpr double kPi = 3.1415926535897932384626433832795;
 
-// ───────── Arduino settings ─────────
+// ───────── ADC (platform::AnalogIn, 10-bit) ─────────
 inline constexpr uint32_t ADC_MAX_VALUE =
     1023;  // 10-bit ADC resolution (0-1023)
 

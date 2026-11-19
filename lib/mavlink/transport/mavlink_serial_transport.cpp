@@ -29,9 +29,9 @@ size_t MavlinkSerialTransport::write(const uint8_t* buf, size_t len) {
   return cfg_.uart->writeFrame(buf, len) ? len : 0;
 }
 
-// RX lands in the UART's circular DMA buffer; without a USART interrupt
-// (owned by the Arduino core until migration step 9) the wait is a 1-tick
-// poll of its counter.
+// RX lands in the UART's circular DMA buffer and has no interrupt, so a
+// wait is a 1-tick poll of its counter. MavlinkNode only reads with a zero
+// timeout from the periodic link task.
 size_t MavlinkSerialTransport::read(uint8_t* buf, size_t len,
                                     uint32_t timeout_ms) {
   if (cfg_.uart == nullptr || buf == nullptr || len == 0) return 0;
