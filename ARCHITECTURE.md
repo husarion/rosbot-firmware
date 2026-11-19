@@ -154,7 +154,9 @@ Layers, bottom-up:
    `STM32Ethernet`, `LwIP`. Pinned via `platformio.ini`.
 3. **STM32FreeRTOS 10.3.3** — single-core preemptive scheduler.
 4. **Vendor / device libraries** — Adafruit_BNO055, Adafruit_BusIO,
-   Pololu VL53L0X, etc.
+   Pololu VL53L0X, etc. Plus **ETL** (Embedded Template Library, pinned
+   tag in `lib_deps`) for fixed-capacity containers and `etl::span`
+   (we build as C++17, so no `std::span`).
 5. **Project libraries** in `lib/`, including the MAVLink stack
    (`lib/mavlink/`).
 6. **Variant entry** in `src/<variant>/`.
@@ -180,6 +182,7 @@ upstream stack; it was removed after v2.1.0-jazzy (see git history).
 | `led_strip/` | APA102-style LED strip over SPI (rosbot_xl only) |
 | `motor/` | `MotorInterface`, `MotorHiZ`, `MotorArray` (Hi-Z PWM control) |
 | `persistent_config/` | Namespace + BNO055 calibration offsets, stored as one record appended to a log in flash sector 11. Appending is safe at runtime; only the 1-3 s sector erase (sector full) is deferred to a pre-scheduler `save()` — see "IMU calibration" |
+| `platform/` | Hardware access written on CMSIS registers / HAL, replacing the Arduino API piece by piece (see `.claude/plans/cube-migration.md`). `Pin`: constexpr `{port base, line}` GPIO with output/input/analog setup under masked IRQs; host-tested against a fake register block in `test/native_stubs/stm32f4xx.h` |
 | `pid/` | PID controller with feedforward, anti-windup, dead-zone boost |
 | `power_board/` | UART protocol to rosbot_xl power board MCU (battery state) |
 | `range/` | `RangeInterface` + `RangeVl53l0x` + `RangeArray` (rosbot only) |

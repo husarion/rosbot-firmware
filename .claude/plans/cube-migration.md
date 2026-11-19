@@ -1,6 +1,10 @@
 # Plan: Arduino → STM32Cube HAL + FreeRTOS + ETL
 
-Status: draft, 2026-11-19. Branch: `devel`.
+Status: steps 0–1 done (local `devel`, not HW-tested), 2026-11-19.
+
+Decisions (Rafał, 2026-11-19): CMake + CubeMX after step 9; steps 8–9 on
+a short-lived branch merged into `devel` after HW test on both robots;
+ETL only where it replaces hand-rolled code.
 
 ## Goal
 
@@ -43,9 +47,8 @@ To fix during the migration:
 7. Heap use after boot is avoidable: `new HardwareTimer` in
    `motor_hi_z.cpp`, `xTaskCreate`/`xQueueCreate` with heap_4. Target:
    `configSUPPORT_DYNAMIC_ALLOCATION 0`, static tasks/queues.
-8. Task frequency travels as `float → uintptr_t → uint16_t` through the
-   task `void*` (`include/rtos.hpp`), so a fractional rate truncates.
-   Pass a `const TaskConfig*` instead.
+8. ~~Task frequency travels as `float → uintptr_t → uint16_t` through the
+   task `void*`, so a fractional rate truncates.~~ Fixed in step 1.
 9. Globals reached from `lib/` (`g_battery`, `g_imu`, `g_comm_mgr`,
    `g_motors`, `g_indicator`) couple libraries to the app. Inject them.
 10. `src/rosbot/rtos.cpp` and `src/rosbot_xl/rtos.cpp` duplicate most
@@ -82,7 +85,7 @@ the next step lands.
 | # | Step | Risk | HW |
 |---|------|------|----|
 | 0 | Remove variant macros + `config.hpp` dispatcher | none (machine code identical, verified) | no |
-| 1 | Add ETL (pinned) and `lib/platform/` skeleton: `Pin`, `time` (DWT/TIM µs clock), `Mutex`/static task helpers on FreeRTOS | low | no |
+| 1 | ETL (pinned) with first users (`etl::span` in `MotorArray`/`RangeArray`), `platform::Pin` + host tests, tasks get their `TaskConfig*` (finding 8). Time moves to step 3, static RTOS helpers to step 9, where their first users are | low | no |
 | 2 | GPIO: `pinMode/digitalWrite/digitalRead` → `platform::Pin` (Arduino pin ints → `{GPIOx, GPIO_PIN_n}` in board configs) | low | yes |
 | 3 | Time: `millis/micros/delay` → `platform::time` / `vTaskDelay` | med (time_base invariants, TIMESYNC) | yes |
 | 4 | PWM + encoder timers: `HardwareTimer` → HAL/LL TIM (motor_hi_z, fan) | med (motor control) | yes |
@@ -100,18 +103,12 @@ until step 9, our drivers must avoid colliding with core IRQ handlers and
 weak callbacks (same trouble as findings 1, 2, 6), so a few drivers may
 only become fully interrupt-driven at step 9.
 
-## Open decisions (Rafał)
+## Notes for later steps
 
-1. Build system after step 9: CMake + CubeMX (recommended; ST's current
-   toolchain, VS Code extension, no platform-appended flags) vs PlatformIO
-   `framework = stm32cube` (keeps `pio`, but its CubeF4 package lags and
-   FreeRTOS/LwIP middleware has to be wired by hand).
-2. Where steps 8–9 land: directly on `devel` (allowed) or a short-lived
-   branch merged after HW test on both robots (recommended: these two
-   steps cannot stay green incrementally).
-3. ETL scope: containers/strings/delegates where they replace hand-rolled
-   code (fixed arrays in `*Array`, function pointers, ring buffers), not a
-   blanket rewrite.
+- Step 2: `Pin` keeps Arduino's very-high output speed for parity; lowering
+  it (EMI) is a separate, HW-measured change.
+- Step 2: `MotorArray` now clamps to `MAX_NUM_MOTORS` (it used to overflow
+  `MotorsData` with more than 4 motors; both boards have exactly 4).
 
 ## Test strategy
 
