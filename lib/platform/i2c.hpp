@@ -53,7 +53,8 @@ class I2c {
   bool write(uint8_t addr, const uint8_t* data, size_t len);
   bool probe(uint8_t addr);
 
-  // readReg() through DMA; the calling task sleeps until the transfer ends.
+  // readReg() through DMA, for long blocks; every transfer already sleeps
+  // instead of polling once the scheduler runs.
   // Falls back to readReg() before the scheduler runs. The buffer must be in
   // SRAM, not CCM (DMA1 cannot reach CCM).
   bool readRegDma(uint8_t addr, uint8_t reg, uint8_t* data, size_t len,
@@ -61,6 +62,8 @@ class I2c {
 
   // HAL error bits of the last failed transfer (HAL_I2C_ERROR_*).
   uint32_t lastError() const { return last_error_; }
+  // Bus resets after faults since boot.
+  uint32_t recoveries() const { return recoveries_; }
 
   void onIrqEvent();
   void onIrqError();
@@ -75,6 +78,9 @@ class I2c {
   void recover();
   bool finish(HAL_StatusTypeDef status);
   bool awaitTransfer(uint32_t timeout_ms);
+  void armTransfer();
+  bool transmit(uint8_t addr, const uint8_t* data, size_t len);
+  bool receive(uint8_t addr, uint8_t* data, size_t len);
 
   I2cConfig cfg_;
   const I2cDmaStream* dma_ = nullptr;
@@ -85,6 +91,7 @@ class I2c {
   volatile bool xfer_ok_ = false;
   uint8_t reg_ = 0;  // register byte the IT transmit reads after return
   uint32_t last_error_ = 0;
+  uint32_t recoveries_ = 0;
 };
 
 }  // namespace platform

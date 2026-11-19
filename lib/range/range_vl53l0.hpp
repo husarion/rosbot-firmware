@@ -40,10 +40,15 @@ class RangeVl53l0x : public RangeInterface {
   void update() override;
   void powerOff() override;
   void powerOn() override;
+
+  bool initialized() const { return initialized_; }
+  // Reads that hit the driver timeout since boot.
+  uint32_t timeouts() const { return timeouts_; }
   const char* name() const override { return cfg_.frame_id; }
 
  private:
   VL53L0X driver_;
   const RangeVl53l0xConfig cfg_;
   bool initialized_ = false;
+  uint32_t timeouts_ = 0;
 };

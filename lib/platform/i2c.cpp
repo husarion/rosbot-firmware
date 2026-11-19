@@ -179,6 +179,7 @@ void I2c::recover() {
   configureHardware();
   xSemaphoreTake(done_, 0);
   setIrqsEnabled(true);
+  ++recoveries_;
 }
 
 bool I2c::finish(HAL_StatusTypeDef status) {
@@ -193,36 +194,76 @@ bool I2c::finish(HAL_StatusTypeDef status) {
   return false;
 }
 
+// Once the scheduler runs, every transfer goes through HAL's IT API and the
+// task sleeps until it ends. The polled HAL calls have steps that must
+// follow each other within a byte time (for a 1-byte read, STOP right after
+// ADDR is cleared); a task switch in between corrupted VL53L0X transactions
+// and left the sensors timing out (HW-seen on ROSbot 3). In IT mode those
+// steps run in the I2C ISR. The polled calls stay for boot, before any task
+// can preempt them.
 bool I2c::writeReg(uint8_t addr, uint8_t reg, const uint8_t* data, size_t len) {
   Lock lock(mutex_);
-  return finish(
-      HAL_I2C_Mem_Write(&handle_, addr << 1, reg, I2C_MEMADD_SIZE_8BIT,
-                        const_cast<uint8_t*>(data), len, kBlockingTimeoutMs));
+  auto* buf = const_cast<uint8_t*>(data);
+  if (!schedulerRunning()) {
+    return finish(HAL_I2C_Mem_Write(&handle_, addr << 1, reg,
+                                    I2C_MEMADD_SIZE_8BIT, buf, len,
+                                    kBlockingTimeoutMs));
+  }
+  armTransfer();
+  return finish(HAL_I2C_Mem_Write_IT(&handle_, addr << 1, reg,
+                                     I2C_MEMADD_SIZE_8BIT, buf, len)) &&
+         awaitTransfer(kBlockingTimeoutMs);
 }
 
 bool I2c::readReg(uint8_t addr, uint8_t reg, uint8_t* data, size_t len) {
   Lock lock(mutex_);
-  return finish(HAL_I2C_Mem_Read(&handle_, addr << 1, reg, I2C_MEMADD_SIZE_8BIT,
-                                 data, len, kBlockingTimeoutMs));
+  if (!schedulerRunning()) {
+    return finish(HAL_I2C_Mem_Read(&handle_, addr << 1, reg,
+                                   I2C_MEMADD_SIZE_8BIT, data, len,
+                                   kBlockingTimeoutMs));
+  }
+  armTransfer();
+  return finish(HAL_I2C_Mem_Read_IT(&handle_, addr << 1, reg,
+                                    I2C_MEMADD_SIZE_8BIT, data, len)) &&
+         awaitTransfer(kBlockingTimeoutMs);
 }
 
 bool I2c::writeThenRead(uint8_t addr, const uint8_t* out, size_t out_len,
                         uint8_t* in, size_t in_len) {
   Lock lock(mutex_);
-  if (!finish(HAL_I2C_Master_Transmit(&handle_, addr << 1,
-                                      const_cast<uint8_t*>(out), out_len,
-                                      kBlockingTimeoutMs))) {
-    return false;
-  }
-  return finish(HAL_I2C_Master_Receive(&handle_, addr << 1, in, in_len,
-                                       kBlockingTimeoutMs));
+  return transmit(addr, out, out_len) && receive(addr, in, in_len);
 }
 
 bool I2c::write(uint8_t addr, const uint8_t* data, size_t len) {
   Lock lock(mutex_);
-  return finish(HAL_I2C_Master_Transmit(&handle_, addr << 1,
-                                        const_cast<uint8_t*>(data), len,
-                                        kBlockingTimeoutMs));
+  return transmit(addr, data, len);
+}
+
+bool I2c::transmit(uint8_t addr, const uint8_t* data, size_t len) {
+  auto* buf = const_cast<uint8_t*>(data);
+  if (!schedulerRunning()) {
+    return finish(HAL_I2C_Master_Transmit(&handle_, addr << 1, buf, len,
+                                          kBlockingTimeoutMs));
+  }
+  armTransfer();
+  return finish(HAL_I2C_Master_Transmit_IT(&handle_, addr << 1, buf, len)) &&
+         awaitTransfer(kBlockingTimeoutMs);
+}
+
+bool I2c::receive(uint8_t addr, uint8_t* data, size_t len) {
+  if (!schedulerRunning()) {
+    return finish(HAL_I2C_Master_Receive(&handle_, addr << 1, data, len,
+                                         kBlockingTimeoutMs));
+  }
+  armTransfer();
+  return finish(HAL_I2C_Master_Receive_IT(&handle_, addr << 1, data, len)) &&
+         awaitTransfer(kBlockingTimeoutMs);
+}
+
+// Before every IT/DMA start: the ISR may complete before the caller waits.
+void I2c::armTransfer() {
+  xSemaphoreTake(done_, 0);  // drop a completion left by an earlier timeout
+  xfer_ok_ = false;
 }
 
 bool I2c::probe(uint8_t addr) {
@@ -239,15 +280,14 @@ bool I2c::readRegDma(uint8_t addr, uint8_t reg, uint8_t* data, size_t len,
                      uint32_t timeout_ms) {
   if (!schedulerRunning()) return readReg(addr, reg, data, len);
   Lock lock(mutex_);
-  xSemaphoreTake(done_, 0);  // drop a completion left by an earlier timeout
   reg_ = reg;
-  xfer_ok_ = false;  // before the start: the ISR may finish first
+  armTransfer();
   if (!finish(HAL_I2C_Master_Seq_Transmit_IT(&handle_, addr << 1, &reg_, 1,
                                              I2C_FIRST_FRAME)) ||
       !awaitTransfer(timeout_ms)) {
     return false;
   }
-  xfer_ok_ = false;
+  armTransfer();
   return finish(HAL_I2C_Master_Seq_Receive_DMA(&handle_, addr << 1, data, len,
                                                I2C_LAST_FRAME)) &&
          awaitTransfer(timeout_ms);
@@ -286,6 +326,12 @@ extern "C" void HAL_I2C_MasterTxCpltCallback(I2C_HandleTypeDef* h) {
   if (auto* bus = platform::ownerOf(h)) bus->onTransferDone(true);
 }
 extern "C" void HAL_I2C_MasterRxCpltCallback(I2C_HandleTypeDef* h) {
+  if (auto* bus = platform::ownerOf(h)) bus->onTransferDone(true);
+}
+extern "C" void HAL_I2C_MemTxCpltCallback(I2C_HandleTypeDef* h) {
+  if (auto* bus = platform::ownerOf(h)) bus->onTransferDone(true);
+}
+extern "C" void HAL_I2C_MemRxCpltCallback(I2C_HandleTypeDef* h) {
   if (auto* bus = platform::ownerOf(h)) bus->onTransferDone(true);
 }
 extern "C" void HAL_I2C_ErrorCallback(I2C_HandleTypeDef* h) {

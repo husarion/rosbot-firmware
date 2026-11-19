@@ -48,8 +48,12 @@ void RangeVl53l0x::update() {
   }
 
   uint16_t range_mm = driver_.readRangeContinuousMillimeters();
-  data_.range =
-      driver_.timeoutOccurred() ? NAN : static_cast<float>(range_mm) / 1000.0f;
+  if (driver_.timeoutOccurred()) {
+    ++timeouts_;
+    data_.range = NAN;
+  } else {
+    data_.range = static_cast<float>(range_mm) / 1000.0f;
+  }
 }
 
 void RangeVl53l0x::powerOff() {
