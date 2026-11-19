@@ -21,7 +21,8 @@
 PowerBoard::PowerBoard(const PowerBoardConfig& config)
     : cfg_(config),
       soc_(SocEstimatorConfig{.num_cells = config.num_cells,
-                              .capacity_ah = config.capacity_ah}) {}
+                              .capacity_ah = config.capacity_ah,
+                              .ocv = &ocv_curves::kRosbotXl}) {}
 
 // ═══════════════════════════════════════════════════════════════════
 //  init() — configures UART, call after HAL/clock init
