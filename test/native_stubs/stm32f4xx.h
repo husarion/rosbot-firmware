@@ -93,6 +93,17 @@ typedef struct {
   __IO uint32_t OR;
 } TIM_TypeDef;
 
+// Layout only; no test drives a USART.
+typedef struct {
+  __IO uint32_t SR;
+  __IO uint32_t DR;
+  __IO uint32_t BRR;
+  __IO uint32_t CR1;
+  __IO uint32_t CR2;
+  __IO uint32_t CR3;
+  __IO uint32_t GTPR;
+} USART_TypeDef;
+
 inline RCC_TypeDef fake_rcc;
 alignas(GPIO_TypeDef) inline uint8_t fake_gpio_memory[9 * 0x400];
 inline uint32_t fake_primask = 0;

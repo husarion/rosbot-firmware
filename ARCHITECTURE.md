@@ -755,13 +755,17 @@ just test                     # host unit tests (CTest)
   bumps it before tagging and publishes `rosbot-<tag>.bin` /
   `rosbot_xl-<tag>.bin` from `build/release/`.
 - Host unit tests: `test/CMakeLists.txt` (CTest + Unity 2.6.1, host
-  compiler; `just test`, CI job `test-native`) for hardware-free code: PID,
-  `time_base`, encoder counter delta, NTC conversion, and `lib/platform`
-  drivers against fake register blocks. `test/native_stubs/` stands in for
-  the CMSIS device header and the FreeRTOS headers; its critical-section
-  hook lets a test simulate preemption. Code that touches HAL, FreeRTOS or a
-  peripheral needs a seam before it can be tested here (PowerBoard parser,
-  `persistent_config`, `MavlinkNode`).
+  compiler; `just test`, CI job `test-native`): PID, `time_base`, encoder
+  counter delta, NTC, battery SoC and thresholds, the power board protocol
+  (fake `platform::Uart` defined in the test), LED indicator patterns, boot
+  gestures, fan control, and `lib/platform` drivers against fake register
+  blocks. `test/native_stubs/` stands in for the CMSIS device header, the
+  FreeRTOS headers and the HAL TIM calls `lib/fan` makes; `fake_gpio.hpp`
+  latches BSRR writes into ODR, and the critical-section hook lets a test
+  simulate preemption. A test that needs a driver's `.cpp` includes it and
+  defines whatever that file calls (`time_boot_us()`, `clock::delayMs()`,
+  `Uart` methods). Still untested: `persistent_config`, `MavlinkNode`,
+  the comm manager handshake, the I2C/IMU path.
 
 ### Startup and memory
 

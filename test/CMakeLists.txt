@@ -33,7 +33,13 @@ FetchContent_Declare(unity
   GIT_TAG v2.6.1
   GIT_SHALLOW TRUE
   SOURCE_SUBDIR do-not-add)
-FetchContent_MakeAvailable(unity)
+# Same pin as cmake/dependencies.cmake.
+FetchContent_Declare(etl
+  GIT_REPOSITORY https://github.com/ETLCPP/etl
+  GIT_TAG 20.49.0
+  GIT_SHALLOW TRUE
+  SOURCE_SUBDIR do-not-add)
+FetchContent_MakeAvailable(unity etl)
 
 add_library(unity STATIC ${unity_SOURCE_DIR}/src/unity.c)
 target_include_directories(unity SYSTEM PUBLIC ${unity_SOURCE_DIR}/src)
@@ -44,8 +50,10 @@ set(WARNINGS -Wall -Wextra -Wdouble-promotion -Wshadow)
 set(TEST_INCLUDES
   ${CMAKE_CURRENT_SOURCE_DIR}/native_stubs
   ${REPO_ROOT}/lib/battery
+  ${REPO_ROOT}/lib/boot_option
   ${REPO_ROOT}/lib/encoder
   ${REPO_ROOT}/lib/fan
+  ${REPO_ROOT}/lib/indicator
   ${REPO_ROOT}/lib/pid
   ${REPO_ROOT}/lib/platform
   ${REPO_ROOT}/lib/power_board
@@ -57,6 +65,7 @@ add_library(host_libs STATIC
   ${REPO_ROOT}/lib/pid/pid.cpp
   ${REPO_ROOT}/lib/time_base/time_base.cpp)
 target_include_directories(host_libs PUBLIC ${TEST_INCLUDES})
+target_include_directories(host_libs SYSTEM PUBLIC ${etl_SOURCE_DIR}/include)
 target_compile_options(host_libs PRIVATE ${WARNINGS})
 
 enable_testing()

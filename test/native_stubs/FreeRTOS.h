@@ -23,6 +23,7 @@
 #define configASSERT(x) assert(x)
 
 typedef uint32_t UBaseType_t;
+typedef struct StreamBufferDef_t* StreamBufferHandle_t;
 
 // Defined by the test that needs them.
 UBaseType_t testEnterCritical();
