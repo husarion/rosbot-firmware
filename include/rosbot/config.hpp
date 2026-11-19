@@ -107,17 +107,16 @@ inline constexpr Pin IMU_POWER_ON{Port::G, 4};
 // BNO055 COM3 (address select) is an MCU GPIO here with no pull resistor;
 // drive HIGH → 0x29. rosbot_xl hard-wires this line to 3V3 instead.
 inline constexpr Pin IMU_ADDR_SEL{Port::C, 8};
-inline constexpr uint8_t IMU_I2C_SDA = PC9;
-inline constexpr uint8_t IMU_I2C_SCL = PA8;
-
-inline TwoWire imu_i2c(IMU_I2C_SDA, IMU_I2C_SCL);
+inline platform::I2c imu_i2c({.instance = I2C3,
+                              .scl = Pin{Port::A, 8},
+                              .sda = Pin{Port::C, 9},
+                              .af = GPIO_AF4_I2C3});
 inline constexpr ImuBno055Config imu_bno055_config = {
     .bus = &imu_i2c,
     .i2c_addr = 0x29,
-    .sensor_id = 0xA0,
-    .int_pin = PA6,
-    .axis_config = Adafruit_BNO055::REMAP_CONFIG_P0,
-    .axis_sign = Adafruit_BNO055::REMAP_SIGN_P3,
+    .int_pin = Pin{Port::A, 6},
+    .axis_config = bno055::kRemapConfigP0,
+    .axis_sign = bno055::kRemapSignP3,
 };
 
 // ───────── LEDs ─────────
@@ -249,10 +248,10 @@ inline constexpr PIDConfig pid_config = {
 };
 
 // ───────── Ranges ─────────
-inline constexpr uint8_t RANGE_I2C_SDA = PB9;
-inline constexpr uint8_t RANGE_I2C_SCL = PB8;
-
-inline TwoWire range_i2c(RANGE_I2C_SDA, RANGE_I2C_SCL);
+inline platform::I2c range_i2c({.instance = I2C1,
+                                .scl = Pin{Port::B, 8},
+                                .sda = Pin{Port::B, 9},
+                                .af = GPIO_AF4_I2C1});
 inline constexpr RangeVl53l0xConfig range_fl_config = {
     .bus = &range_i2c,
     .xshut_pin = Pin{Port::D, 8},

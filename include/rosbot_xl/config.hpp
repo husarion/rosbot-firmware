@@ -46,9 +46,11 @@ inline constexpr uint8_t AUDIO_DAC_OUT = PA4;
 inline constexpr Pin EN_LOC_5V{Port::F, 13};
 inline constexpr Pin GPIO_HUB_NRST{Port::E, 1};
 
-inline constexpr uint8_t I2C_SDA = PF0;
-inline constexpr uint8_t I2C_SCL = PF1;
-inline TwoWire i2c(I2C_SDA, I2C_SCL);
+// Shared by the IMU and the EEPROM.
+inline platform::I2c i2c({.instance = I2C2,
+                          .scl = Pin{Port::F, 1},
+                          .sda = Pin{Port::F, 0},
+                          .af = GPIO_AF4_I2C2});
 
 inline platform::Uart pb_uart({.usart = USART2,
                                .tx = Pin{Port::D, 5},
@@ -186,10 +188,9 @@ inline constexpr FanConfig rev1_1_fan_config{.pin = FAN_PP_PIN,
 inline constexpr ImuBno055Config imu_bno055_config = {
     .bus = &i2c,
     .i2c_addr = 0x29,
-    .sensor_id = 0x37,
-    .int_pin = PF2,
-    .axis_config = Adafruit_BNO055::REMAP_CONFIG_P1,
-    .axis_sign = Adafruit_BNO055::REMAP_SIGN_P2,
+    .int_pin = Pin{Port::F, 2},
+    .axis_config = bno055::kRemapConfigP1,
+    .axis_sign = bno055::kRemapSignP2,
 };
 
 // ───────── LEDs ─────────

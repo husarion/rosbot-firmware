@@ -23,7 +23,6 @@
 #include "communication_manager.hpp"
 #include "fault.hpp"
 #include "hardware_encoder.hpp"
-#include "i2c_fast_mode.hpp"
 #include "imu_bno055.hpp"
 #include "imu_calibration_boot.hpp"
 #include "led_indicator.hpp"
@@ -109,10 +108,8 @@ void boardPeripheralsInit() {
   IMU_POWER_ON.setAsOutput(true);
 
   // Initialize I2C
-  imu_i2c.begin();
-  setI2cFastMode(imu_i2c);
-  range_i2c.begin();
-  setI2cFastMode(range_i2c);
+  imu_i2c.init();
+  range_i2c.init();
 
   platform::clock::delayMs(20);
 }
@@ -204,12 +201,6 @@ void setup() {
     g_mavlink_node.setBootNotice("MCU reset after a firmware fault");
   }
   g_mavlink_node.begin();
-
-  // Must run after any boot-time IMU calibration and before the
-  // scheduler starts — see enableDmaReads()'s doc comment.
-  if (imu_ready) {
-    imu_bno055.enableDmaReads();
-  }
 
   // RTOS
   createQueues();

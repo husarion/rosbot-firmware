@@ -14,7 +14,7 @@
 
 #include "range_vl53l0.hpp"
 
-#include <Arduino.h>
+#include <cmath>
 
 #include "clock.hpp"
 

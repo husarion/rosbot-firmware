@@ -59,6 +59,11 @@ class Pin {
     configure(kModeAlternate, pull, speed, af);
   }
 
+  void setAsAlternateOpenDrain(uint8_t af, Pull pull = Pull::kNone,
+                               Speed speed = Speed::kVeryHigh) const {
+    configure(kModeAlternate, pull, speed, af, /*open_drain=*/true);
+  }
+
   void write(bool high) const { port()->BSRR = high ? mask() : (mask() << 16); }
   void set() const { write(true); }
   void reset() const { write(false); }
@@ -92,7 +97,7 @@ class Pin {
   // registers; MotorHiZ reconfigures pins at runtime from the control task,
   // so every update runs with interrupts masked (a few cycles).
   void configure(uint32_t mode, Pull pull, Speed speed = Speed::kVeryHigh,
-                 uint8_t af = 0) const {
+                 uint8_t af = 0, bool open_drain = false) const {
     const uint32_t shift2 = 2U * index_;
     const uint32_t clear2 = ~(0b11UL << shift2);
     const uint32_t primask = __get_PRIMASK();
@@ -103,7 +108,11 @@ class Pin {
     // core's pinMode() set, so replacing it does not change edge rates.
     gpio->OSPEEDR =
         (gpio->OSPEEDR & clear2) | (static_cast<uint32_t>(speed) << shift2);
-    gpio->OTYPER &= ~mask();
+    if (open_drain) {
+      gpio->OTYPER |= mask();
+    } else {
+      gpio->OTYPER &= ~mask();
+    }
     gpio->PUPDR =
         (gpio->PUPDR & clear2) | (static_cast<uint32_t>(pull) << shift2);
     if (mode == kModeAlternate) {

@@ -75,15 +75,16 @@ bool run(ImuBno055& imu, platform::Pin red_led,
     if ((debug_serial != nullptr || link_serial != nullptr) &&
         now - last_log >= kLogIntervalMs) {
       uint8_t raw_byte = 0;
-      uint8_t wire_error = 0;
-      const bool i2c_ok = imu.probeCalibStatRaw(raw_byte, wire_error);
+      uint32_t i2c_error = 0;
+      const bool i2c_ok = imu.probeCalibStatRaw(raw_byte, i2c_error);
       logLine(debug_serial, link_serial,
               "IMU calibration: sys=%u gyro=%u accel=%u mag=%u (%lus "
               "elapsed) | raw I2C probe: %s (CALIB_STAT=0x%02X, "
-              "wire_error=%u)\r\n",
+              "i2c_error=0x%lX)\r\n",
               status.system, status.gyro, status.accel, status.mag,
               static_cast<unsigned long>((now - start) / 1000),
-              i2c_ok ? "ok" : "FAILED", raw_byte, wire_error);
+              i2c_ok ? "ok" : "FAILED", raw_byte,
+              static_cast<unsigned long>(i2c_error));
       last_log = now;
     }
     platform::clock::delayMs(20);

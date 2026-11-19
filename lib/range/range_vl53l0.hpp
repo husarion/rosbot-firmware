@@ -14,14 +14,13 @@
 
 #pragma once
 
-#include <VL53L0X.h>
-#include <Wire.h>
-
+#include "VL53L0X.h"
+#include "i2c.hpp"
 #include "pin.hpp"
 #include "range_interface.hpp"
 
 struct RangeVl53l0xConfig {
-  TwoWire* bus;
+  platform::I2c* bus;
   platform::Pin xshut_pin;
   uint8_t i2c_address;
   const char* frame_id = "range";

@@ -29,13 +29,9 @@ Eeprom::Eeprom(const EepromConfig& cfg)
 // ─── Write single byte ──────────────────────────────────
 
 EepromStatus Eeprom::writeByte(uint8_t block, uint8_t addr, uint8_t value) {
-  const uint8_t payload[] = {addr, value};
-
-  i2c_bus_.beginTransmission(controlByte(block));
-  const bool ok = i2c_bus_.write(payload, sizeof(payload)) == sizeof(payload);
-  i2c_bus_.endTransmission();
-
-  if (!ok) return EepromStatus::WriteError;
+  if (!i2c_bus_.writeReg(controlByte(block), addr, &value, 1)) {
+    return EepromStatus::WriteError;
+  }
 
   platform::clock::delayMs(write_delay_ms_);
   return EepromStatus::Ok;
@@ -44,19 +40,9 @@ EepromStatus Eeprom::writeByte(uint8_t block, uint8_t addr, uint8_t value) {
 // ─── Read single byte ───────────────────────────────────
 
 EepromStatus Eeprom::readByte(uint8_t block, uint8_t addr, uint8_t& value) {
-  i2c_bus_.beginTransmission(controlByte(block));
-  i2c_bus_.write(addr);
-  i2c_bus_.endTransmission();
-
-  i2c_bus_.requestFrom(controlByte(block), static_cast<uint8_t>(1));
-
-  if (!i2c_bus_.available()) return EepromStatus::ReadError;
-
-  const int raw = i2c_bus_.read();
-  if (raw < 0) return EepromStatus::ReadError;
-
-  value = static_cast<uint8_t>(raw);
-  return EepromStatus::Ok;
+  return i2c_bus_.writeThenRead(controlByte(block), &addr, 1, &value, 1)
+             ? EepromStatus::Ok
+             : EepromStatus::ReadError;
 }
 
 // ─── Write page ──────────────────────────────────────────
@@ -67,16 +53,9 @@ EepromStatus Eeprom::writePage(uint8_t block, uint8_t addr, const uint8_t* data,
     return EepromStatus::InvalidArg;
   }
 
-  const uint8_t total = size + 1;
-  uint8_t payload[total];
-  payload[0] = addr;
-  std::memcpy(payload + 1, data, size);
-
-  i2c_bus_.beginTransmission(controlByte(block));
-  const bool ok = i2c_bus_.write(payload, total) == total;
-  i2c_bus_.endTransmission();
-
-  if (!ok) return EepromStatus::WriteError;
+  if (!i2c_bus_.writeReg(controlByte(block), addr, data, size)) {
+    return EepromStatus::WriteError;
+  }
 
   platform::clock::delayMs(write_delay_ms_);
   return EepromStatus::Ok;
@@ -90,16 +69,9 @@ EepromStatus Eeprom::readPage(uint8_t block, uint8_t addr, uint8_t* data,
     return EepromStatus::InvalidArg;
   }
 
-  i2c_bus_.beginTransmission(controlByte(block));
-  i2c_bus_.write(addr);
-  i2c_bus_.endTransmission();
-
-  i2c_bus_.requestFrom(controlByte(block), static_cast<uint8_t>(size));
-
-  if (!i2c_bus_.available()) return EepromStatus::ReadError;
-
-  return (i2c_bus_.readBytes(data, size) == size) ? EepromStatus::Ok
-                                                  : EepromStatus::ReadError;
+  return i2c_bus_.writeThenRead(controlByte(block), &addr, 1, data, size)
+             ? EepromStatus::Ok
+             : EepromStatus::ReadError;
 }
 
 // ── BoardRevision ───────────────────────────────────────

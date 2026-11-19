@@ -1,0 +1,84 @@
+// Copyright 2026 Husarion sp. z o.o.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+
+#pragma once
+
+#include <STM32FreeRTOS.h>
+
+#include <cstddef>
+#include <cstdint>
+
+#include "pin.hpp"
+
+namespace platform {
+
+struct I2cDmaStream;
+
+struct I2cConfig {
+  I2C_TypeDef* instance;  // I2C1, I2C2 or I2C3
+  Pin scl;
+  Pin sda;
+  uint8_t af;  // GPIO_AF4_I2Cx
+};
+
+// I2C master at 400 kHz on HAL. Every transfer holds the bus mutex once the
+// scheduler runs, so tasks sharing a bus (rosbot_xl: IMU + EEPROM) cannot
+// interleave. Addresses are 7-bit.
+class I2c {
+ public:
+  explicit I2c(const I2cConfig& cfg) : cfg_(cfg) {}
+  I2c(const I2c&) = delete;
+  I2c& operator=(const I2c&) = delete;
+
+  bool init();
+
+  bool writeReg(uint8_t addr, uint8_t reg, const uint8_t* data, size_t len);
+  // Register address, repeated start, read.
+  bool readReg(uint8_t addr, uint8_t reg, uint8_t* data, size_t len);
+  // Write, STOP, then read: the Arduino Wire sequence some drivers rely on.
+  bool writeThenRead(uint8_t addr, const uint8_t* out, size_t out_len,
+                     uint8_t* in, size_t in_len);
+  bool write(uint8_t addr, const uint8_t* data, size_t len);
+  bool probe(uint8_t addr);
+
+  // readReg() through DMA; the calling task sleeps until the transfer ends.
+  // Falls back to readReg() before the scheduler runs. The buffer must be in
+  // SRAM, not CCM (DMA1 cannot reach CCM).
+  bool readRegDma(uint8_t addr, uint8_t reg, uint8_t* data, size_t len,
+                  uint32_t timeout_ms);
+
+  // HAL error bits of the last failed transfer (HAL_I2C_ERROR_*).
+  uint32_t lastError() const { return last_error_; }
+
+  void onIrqEvent();
+  void onIrqError();
+  void onDmaRx();
+  void onTransferDone(bool ok);
+  I2C_HandleTypeDef* handle() { return &handle_; }
+
+ private:
+  class Lock;
+  bool finish(HAL_StatusTypeDef status);
+
+  I2cConfig cfg_;
+  const I2cDmaStream* dma_ = nullptr;
+  I2C_HandleTypeDef handle_ = {};
+  DMA_HandleTypeDef dma_rx_ = {};
+  SemaphoreHandle_t mutex_ = nullptr;
+  SemaphoreHandle_t done_ = nullptr;
+  volatile bool xfer_ok_ = false;
+  uint32_t last_error_ = 0;
+};
+
+}  // namespace platform
