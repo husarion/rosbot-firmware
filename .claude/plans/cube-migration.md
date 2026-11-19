@@ -1,6 +1,6 @@
 # Plan: Arduino → STM32Cube HAL + FreeRTOS + ETL
 
-Status: steps 0–2 done (local `devel`, not HW-tested), 2026-11-19.
+Status: steps 0–3 done (local `devel`, not HW-tested), 2026-11-19.
 
 Decisions (Rafał, 2026-11-19): CMake + CubeMX after step 9; steps 8–9 on
 a short-lived branch merged into `devel` after HW test on both robots;
@@ -60,6 +60,13 @@ To fix during the migration:
     build-type constant (`constexpr bool kDebugBuild`).
 13. Repo `CLAUDE.md` is stale against current practice: says working
     branch `jazzy`, "user converses in English", Opus 4.7 co-author trailer.
+14. **The MCU runs from its internal RC oscillator, not a crystal.** The
+    Arduino generic F407ZG variant's `SystemClock_Config` selects
+    `RCC_OSCILLATORTYPE_HSI` (±1 % over
+    temperature per the datasheet) → PLL 168 MHz. Every baud rate (921600
+    SBC link, power board UART) and timer inherits that tolerance. Check
+    the schematics for an HSE crystal before writing the CubeMX clock tree
+    in step 9; if one is fitted, use it.
 
 ## Variant model without `#ifdef`
 
@@ -87,7 +94,7 @@ the next step lands.
 | 0 | Remove variant macros + `config.hpp` dispatcher | none (machine code identical, verified) | no |
 | 1 | ETL (pinned) with first users (`etl::span` in `MotorArray`/`RangeArray`), `platform::Pin` + host tests, tasks get their `TaskConfig*` (finding 8). Time moves to step 3, static RTOS helpers to step 9, where their first users are | low | no |
 | 2 | GPIO: `pinMode/digitalWrite/digitalRead` → `platform::Pin` (`Pin{Port::E, 2}` in board configs). Done for every pure-GPIO pin; pins that also feed ADC or PWM (battery, NTC, current sense, fan) stay Arduino until steps 4–5 | low | yes |
-| 3 | Time: `millis/micros/delay` → `platform::time` / `vTaskDelay` | med (time_base invariants, TIMESYNC) | yes |
+| 3 | Time: `platform::clock` on TIM5 (32-bit, 1 MHz) feeds `time_boot_us()`; `millis()` → `time_boot_ms()`, `micros()` → `clock::counterUs()`, `delay()` → `clock::delayMs()` (`vTaskDelay` once the scheduler runs, busy-wait before). Arduino libraries (Adafruit, Pololu, Wire) keep the core's own clock until step 7 | med (time_base invariants, TIMESYNC) | yes |
 | 4 | PWM + encoder timers: `HardwareTimer` → HAL/LL TIM (motor_hi_z, fan) | med (motor control) | yes |
 | 5 | ADC (battery, current sense, NTC) → HAL ADC + DMA | low | yes |
 | 6 | UART: `HardwareSerial` → own DMA driver (link, debug, power board); closes finding 1 | high (link) | yes |
@@ -118,11 +125,18 @@ only become fully interrupt-driven at step 9.
   e.g. Brake briefly drove the old level); `MotorHiZ::setMode` is much
   cheaper than `pinMode()` (no pin-map search), so the control task gets
   shorter.
+- Step 3 behaviour differences: `delay()` in the core is a pure busy-wait
+  (STM32FreeRTOS does not override `yield()`), so `delayMs()` inside a task
+  now yields the CPU (`ImuBno055::captureCalibrationOffsets` from `imuTask`
+  is the only runtime caller). `time_boot_us()` counts from
+  `platform::clock::init()` (first line of `setup()`), a few ms later than
+  before; MAVLink TIMESYNC absorbs the offset. TIM5 freezes on a debugger
+  halt.
 - Left on Arduino after step 4–5: `pinMode` in `battery_adc.cpp`,
   `ntc.cpp`, `fan.cpp`, `motor_hi_z.cpp` (current sense) and `FAN_PP_PIN`
   in `src/rosbot_xl/main.cpp` (shared with `rev1_1_fan_config`).
 
-## HW smoke test for steps 1–2
+## HW smoke test for steps 1–3
 
 Both robots, same firmware build as the commit:
 
@@ -136,6 +150,11 @@ Both robots, same firmware build as the commit:
   `ROSBOT_PANEL_LEDS`, both buttons in `ROSBOT_BUTTONS`.
 - ROSbot XL: rev 1.1 / 1.2 current limit (ILIM) path, power-board shutdown
   button → shutdown request + confirm line, USB hub alive, audio amp on.
+- Timing (step 3): bridge TIMESYNC converges and stays (no clock jumps in
+  `/imu` / `/joint_states` stamps over 10+ min); wheel watchdog stops the
+  robot ~0.5 s after commands stop; runtime IMU calibration
+  (`ROSBOT_IMU_CALIBRATION` command) still saves offsets; Monitor task idle
+  % vs the 2026-10 baseline (debug build).
 
 ## Test strategy
 

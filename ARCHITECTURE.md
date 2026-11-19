@@ -182,12 +182,12 @@ upstream stack; it was removed after v2.1.0-jazzy (see git history).
 | `led_strip/` | APA102-style LED strip over SPI (rosbot_xl only) |
 | `motor/` | `MotorInterface`, `MotorHiZ`, `MotorArray` (Hi-Z PWM control) |
 | `persistent_config/` | Namespace + BNO055 calibration offsets, stored as one record appended to a log in flash sector 11. Appending is safe at runtime; only the 1-3 s sector erase (sector full) is deferred to a pre-scheduler `save()` — see "IMU calibration" |
-| `platform/` | Hardware access written on CMSIS registers / HAL, replacing the Arduino API piece by piece (see `.claude/plans/cube-migration.md`). `Pin`: constexpr GPIO (`Pin{Port::E, 2}`) with output/input/analog setup under masked IRQs, used for every pure-GPIO pin in both board configs (ADC/PWM pins are still Arduino pin numbers); host-tested against a fake register block in `test/native_stubs/stm32f4xx.h` |
+| `platform/` | Hardware access written on CMSIS registers / HAL, replacing the Arduino API piece by piece (see `.claude/plans/cube-migration.md`). `clock`: TIM5 free-running at 1 MHz (`init()` is the first line of `setup()`), `delayUs()`, `delayMs()` (blocks the task once the scheduler runs). `Pin`: constexpr GPIO (`Pin{Port::E, 2}`) with output/input/analog setup under masked IRQs, used for every pure-GPIO pin in both board configs (ADC/PWM pins are still Arduino pin numbers); host-tested against a fake register block in `test/native_stubs/stm32f4xx.h` |
 | `pid/` | PID controller with feedforward, anti-windup, dead-zone boost |
 | `power_board/` | UART protocol to rosbot_xl power board MCU (battery state) |
 | `range/` | `RangeInterface` + `RangeVl53l0x` + `RangeArray` (rosbot only) |
 | `imu_calibration/` | Runtime calibration: session flag (LED), save request serviced from `imuTask` — see "IMU calibration" |
-| `time_base/` | `time_boot_us()` — the one monotonic µs clock behind every MAVLink timestamp and TIMESYNC; safe from any task/ISR and before the scheduler. Reads `micros()` outside its critical section, because with SysTick masked `micros()` steps back ~1 ms |
+| `time_base/` | `time_boot_us()` / `time_boot_ms()` — the one monotonic clock behind every MAVLink timestamp, TIMESYNC, publisher period and watchdog; safe from any task/ISR and before the scheduler. Extends the 32-bit TIM5 counter (`platform::clock::counterUs()`) to 64 bits; the counter is read before the critical section so a preempting caller is detected by the signed delta |
 | `mavlink/` | MAVLink stack: `MavlinkNode`, publishers/subscribers, transports, `rosbot` dialect (see "MAVLink build") |
 
 Each `*Interface` is the abstract base; the implementation file follows
