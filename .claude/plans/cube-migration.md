@@ -1,6 +1,6 @@
 # Plan: Arduino → STM32Cube HAL + FreeRTOS + ETL
 
-Status: steps 0–1 done (local `devel`, not HW-tested), 2026-11-19.
+Status: steps 0–2 done (local `devel`, not HW-tested), 2026-11-19.
 
 Decisions (Rafał, 2026-11-19): CMake + CubeMX after step 9; steps 8–9 on
 a short-lived branch merged into `devel` after HW test on both robots;
@@ -86,7 +86,7 @@ the next step lands.
 |---|------|------|----|
 | 0 | Remove variant macros + `config.hpp` dispatcher | none (machine code identical, verified) | no |
 | 1 | ETL (pinned) with first users (`etl::span` in `MotorArray`/`RangeArray`), `platform::Pin` + host tests, tasks get their `TaskConfig*` (finding 8). Time moves to step 3, static RTOS helpers to step 9, where their first users are | low | no |
-| 2 | GPIO: `pinMode/digitalWrite/digitalRead` → `platform::Pin` (Arduino pin ints → `{GPIOx, GPIO_PIN_n}` in board configs) | low | yes |
+| 2 | GPIO: `pinMode/digitalWrite/digitalRead` → `platform::Pin` (`Pin{Port::E, 2}` in board configs). Done for every pure-GPIO pin; pins that also feed ADC or PWM (battery, NTC, current sense, fan) stay Arduino until steps 4–5 | low | yes |
 | 3 | Time: `millis/micros/delay` → `platform::time` / `vTaskDelay` | med (time_base invariants, TIMESYNC) | yes |
 | 4 | PWM + encoder timers: `HardwareTimer` → HAL/LL TIM (motor_hi_z, fan) | med (motor control) | yes |
 | 5 | ADC (battery, current sense, NTC) → HAL ADC + DMA | low | yes |
@@ -105,10 +105,37 @@ only become fully interrupt-driven at step 9.
 
 ## Notes for later steps
 
-- Step 2: `Pin` keeps Arduino's very-high output speed for parity; lowering
-  it (EMI) is a separate, HW-measured change.
-- Step 2: `MotorArray` now clamps to `MAX_NUM_MOTORS` (it used to overflow
+- `Pin` keeps Arduino's very-high output speed for parity; lowering it
+  (EMI) is a separate, HW-measured change.
+- `MotorArray` now clamps to `MAX_NUM_MOTORS` (it used to overflow
   `MotorsData` with more than 4 motors; both boards have exactly 4).
+- `pin.hpp` picks `stm32_def.h` via `__has_include` while the Arduino core
+  is linked (the core's headers break if CMSIS comes first). Drop at step 9.
+- Board configs use `using platform::Pin/Port` at global scope; step 9
+  moves them into `boards/<board>/` under a namespace.
+- Step 2 behaviour differences to watch on HW: outputs are set to their
+  level before the pin becomes an output (Arduino switched mode first, so
+  e.g. Brake briefly drove the old level); `MotorHiZ::setMode` is much
+  cheaper than `pinMode()` (no pin-map search), so the control task gets
+  shorter.
+- Left on Arduino after step 4–5: `pinMode` in `battery_adc.cpp`,
+  `ntc.cpp`, `fan.cpp`, `motor_hi_z.cpp` (current sense) and `FAN_PP_PIN`
+  in `src/rosbot_xl/main.cpp` (shared with `rev1_1_fan_config`).
+
+## HW smoke test for steps 1–2
+
+Both robots, same firmware build as the commit:
+
+- Boot: red LED on, then status LED behaviour as before (solid until the
+  bridge connects, off when OK).
+- Boot gestures: tap → diagnostic transport (green confirm), 3 s hold →
+  IMU calibration window (red blink, green solid on success).
+- Drive forward/back/turn and stop; brake holds; no twitch on mode changes.
+  `/joint_states` 100 Hz-class rate unchanged.
+- ROSbot: 4 range sensors publish (XSHUT sequencing), both panel LEDs follow
+  `ROSBOT_PANEL_LEDS`, both buttons in `ROSBOT_BUTTONS`.
+- ROSbot XL: rev 1.1 / 1.2 current limit (ILIM) path, power-board shutdown
+  button → shutdown request + confirm line, USB hub alive, audio amp on.
 
 ## Test strategy
 
