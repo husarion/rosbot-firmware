@@ -26,6 +26,7 @@
 #include "mavlink.h"  // NOLINT(build/include_subdir) -- mavgen's flat vendored layout
 #include "rclcpp/rclcpp.hpp"
 #include "rosbot_mavlink_bridge/boot_text.hpp"
+#include "rosbot_mavlink_bridge/diagnostics_mapper.hpp"
 #include "rosbot_mavlink_bridge/timesync_estimator.hpp"
 #include "rosbot_mavlink_bridge/transport/transport_interface.hpp"
 #include "sensor_msgs/msg/battery_state.hpp"
@@ -70,6 +71,7 @@ private:
   void onDistanceSensor(const mavlink_message_t & msg);
   void onRosbotMcuId(const mavlink_message_t & msg);
   void onRosbotPowerBoard(const mavlink_message_t & msg);
+  void onRosbotDiagnostics(const mavlink_message_t & msg);
   void onRosbotImuCalibration(const mavlink_message_t & msg);
   void onCommandAck(const mavlink_message_t & msg);
 
@@ -155,6 +157,8 @@ private:
   rclcpp::TimerBase::SharedPtr heartbeat_timer_;
   rclcpp::TimerBase::SharedPtr timesync_timer_;
   rclcpp::Publisher<sensor_msgs::msg::BatteryState>::SharedPtr battery_pub_;
+  rclcpp::Publisher<diagnostic_msgs::msg::DiagnosticArray>::SharedPtr diagnostics_pub_;
+  std::unique_ptr<DiagnosticsMapper> diagnostics_mapper_;
   rclcpp::Publisher<sensor_msgs::msg::Imu>::SharedPtr imu_pub_;
   rclcpp::Publisher<sensor_msgs::msg::JointState>::SharedPtr joint_state_pub_;
   rclcpp::Publisher<std_msgs::msg::UInt8>::SharedPtr buttons_pub_;

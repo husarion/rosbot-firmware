@@ -67,5 +67,5 @@ int _kill(int pid, int sig) {
 
 void _exit(int status) {
   (void)status;
-  fatalError();
+  fatalErrorWithCode(kFaultExit, 0, 0);
 }

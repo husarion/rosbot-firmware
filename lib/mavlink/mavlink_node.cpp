@@ -45,10 +45,15 @@ bool MavlinkNode::sendMessage(mavlink_message_t& msg) {
   if (!transport_open_) return false;
   uint8_t buf[kMaxFrame];
   uint16_t len = mavlink_msg_to_send_buffer(buf, &msg);
-  if (tx_mutex_ == nullptr) return transport_.write(buf, len) == len;
-  xSemaphoreTake(tx_mutex_, portMAX_DELAY);
-  const size_t written = transport_.write(buf, len);
-  xSemaphoreGive(tx_mutex_);
+  size_t written = 0;
+  if (tx_mutex_ == nullptr) {
+    written = transport_.write(buf, len);
+  } else {
+    xSemaphoreTake(tx_mutex_, portMAX_DELAY);
+    written = transport_.write(buf, len);
+    xSemaphoreGive(tx_mutex_);
+  }
+  if (written != len) tx_dropped_.fetch_add(1, std::memory_order_relaxed);
   return written == len;
 }
 
@@ -97,6 +102,7 @@ void MavlinkNode::loop() {
     case WAITING:
       if (peer_seen_) {
         state_ = CONNECTED;
+        ++reconnects_;
         last_timesync_ms_ = 0;
         // Once per connection: the peer is listening now, and a restarted
         // bridge gets it again without an MCU reset.
@@ -159,7 +165,13 @@ void MavlinkNode::drainRx() {
   size_t n;
   while ((n = transport_.read(buf, sizeof(buf), 0)) > 0) {
     for (size_t i = 0; i < n; ++i) {
-      if (mavlink_parse_char(kChannel, buf[i], &rx_msg_, &rx_status_)) {
+      const uint8_t got =
+          mavlink_parse_char(kChannel, buf[i], &rx_msg_, &rx_status_);
+      // Parse errors since the previous call; a bad CRC shows up here on the
+      // byte after it (this MAVLink version never fills the channel's own
+      // packet_rx_drop_count).
+      rx_errors_ += rx_status_.packet_rx_drop_count;
+      if (got) {
         dispatchMessage(rx_msg_);
       }
     }

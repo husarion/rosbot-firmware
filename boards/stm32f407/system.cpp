@@ -41,7 +41,8 @@ void systemClockConfig() {
   osc.PLL.PLLN = 168;
   osc.PLL.PLLP = RCC_PLLP_DIV2;
   osc.PLL.PLLQ = 7;
-  if (HAL_RCC_OscConfig(&osc) != HAL_OK) fatalError();
+  if (HAL_RCC_OscConfig(&osc) != HAL_OK)
+    fatalErrorWithCode(kFaultClock, 0, nullptr);
 
   clk.ClockType = RCC_CLOCKTYPE_HCLK | RCC_CLOCKTYPE_SYSCLK |
                   RCC_CLOCKTYPE_PCLK1 | RCC_CLOCKTYPE_PCLK2;
@@ -49,7 +50,9 @@ void systemClockConfig() {
   clk.AHBCLKDivider = RCC_SYSCLK_DIV1;
   clk.APB1CLKDivider = RCC_HCLK_DIV4;
   clk.APB2CLKDivider = RCC_HCLK_DIV2;
-  if (HAL_RCC_ClockConfig(&clk, FLASH_LATENCY_5) != HAL_OK) fatalError();
+  if (HAL_RCC_ClockConfig(&clk, FLASH_LATENCY_5) != HAL_OK) {
+    fatalErrorWithCode(kFaultClock, 0, nullptr);
+  }
 }
 
 }  // namespace
@@ -72,11 +75,25 @@ extern "C" void SysTick_Handler(void) {
   }
 }
 
-extern "C" void NMI_Handler(void) { fatalError(); }
-extern "C" void HardFault_Handler(void) { fatalError(); }
-extern "C" void MemManage_Handler(void) { fatalError(); }
-extern "C" void BusFault_Handler(void) { fatalError(); }
-extern "C" void UsageFault_Handler(void) { fatalError(); }
+extern "C" void NMI_Handler(void) { fatalErrorWithCode(kFaultNmi, 0, nullptr); }
+
+// Pass the stacked exception frame (MSP or PSP, by EXC_RETURN bit 2) so the
+// faulting PC survives the reset.
+#define FAULT_VECTOR(name, code)                      \
+  extern "C" __attribute__((naked)) void name(void) { \
+    __asm volatile(                                   \
+        "tst lr, #4\n"                                \
+        "ite eq\n"                                    \
+        "mrseq r0, msp\n"                             \
+        "mrsne r0, psp\n"                             \
+        "mov r1, %0\n"                                \
+        "b faultFromException\n" ::"i"(code));        \
+  }
+FAULT_VECTOR(HardFault_Handler, kFaultHardFault)
+FAULT_VECTOR(MemManage_Handler, kFaultMemManage)
+FAULT_VECTOR(BusFault_Handler, kFaultBusFault)
+FAULT_VECTOR(UsageFault_Handler, kFaultUsageFault)
+#undef FAULT_VECTOR
 
 int main() {
   setup();

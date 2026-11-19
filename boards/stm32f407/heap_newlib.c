@@ -83,6 +83,13 @@ void* pvPortMalloc(size_t size) {
 
 void vPortFree(void* p) { free(p); }
 
+// Lower bound of the free heap: the part never handed out since boot
+// (freed malloc blocks are not counted).
+size_t xPortGetMinimumEverFreeHeapSize(void) {
+  const char* const limit = &_estack - (uintptr_t)&_Min_Stack_Size;
+  return (size_t)(limit - s_heap_end);
+}
+
 size_t xPortGetFreeHeapSize(void) {
   const struct mallinfo mi = mallinfo();
   const char* const limit = &_estack - (uintptr_t)&_Min_Stack_Size;

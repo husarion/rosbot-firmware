@@ -11,6 +11,7 @@ if(CMAKE_COMPILER_IS_GNUCXX OR CMAKE_CXX_COMPILER_ID MATCHES "Clang")
 endif()
 
 find_package(ament_cmake REQUIRED)
+find_package(diagnostic_msgs REQUIRED)
 find_package(rclcpp REQUIRED)
 find_package(sensor_msgs REQUIRED)
 find_package(std_msgs REQUIRED)
@@ -29,6 +30,7 @@ endif()
 
 add_library(${PROJECT_NAME} SHARED
   src/bridge_node.cpp
+  src/diagnostics_mapper.cpp
   src/transport/udp_transport.cpp
   src/transport/serial_transport.cpp
 )
@@ -43,7 +45,8 @@ target_include_directories(${PROJECT_NAME} SYSTEM PUBLIC
   ${MAVLINK_DIALECT_DIR}
 )
 target_link_libraries(${PROJECT_NAME}
-  rclcpp::rclcpp sensor_msgs::sensor_msgs std_msgs::std_msgs std_srvs::std_srvs
+  diagnostic_msgs::diagnostic_msgs rclcpp::rclcpp sensor_msgs::sensor_msgs
+  std_msgs::std_msgs std_srvs::std_srvs
 )
 
 add_executable(bridge_node src/main.cpp)
@@ -74,6 +77,11 @@ if(BUILD_TESTING)
   target_include_directories(test_boot_text PRIVATE include)
   ament_add_gtest(test_timesync_estimator test/test_timesync_estimator.cpp)
   target_include_directories(test_timesync_estimator PRIVATE include)
+  ament_add_gtest(test_diagnostics_mapper test/test_diagnostics_mapper.cpp
+    src/diagnostics_mapper.cpp)
+  target_include_directories(test_diagnostics_mapper PRIVATE include)
+  target_include_directories(test_diagnostics_mapper SYSTEM PRIVATE ${MAVLINK_DIALECT_DIR})
+  target_link_libraries(test_diagnostics_mapper diagnostic_msgs::diagnostic_msgs)
 endif()
 
 ament_package()

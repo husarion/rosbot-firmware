@@ -107,7 +107,10 @@ bool MotorArray::updateFaultLatch(uint32_t now_ms) {
   if (checkFaults()) {
     last_fault_ms_ = now_ms;
     if (fault_cycles_ < kFaultAssertCycles) ++fault_cycles_;
-    if (fault_cycles_ >= kFaultAssertCycles) latched = true;
+    if (fault_cycles_ >= kFaultAssertCycles) {
+      if (!latched) fault_events_.fetch_add(1, std::memory_order_relaxed);
+      latched = true;
+    }
   } else {
     fault_cycles_ = 0;
     if (latched && now_ms - last_fault_ms_ >= kFaultClearMs) latched = false;

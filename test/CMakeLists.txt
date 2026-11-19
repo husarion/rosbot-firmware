@@ -51,6 +51,7 @@ set(TEST_INCLUDES
   ${CMAKE_CURRENT_SOURCE_DIR}/native_stubs
   ${REPO_ROOT}/lib/battery
   ${REPO_ROOT}/lib/boot_option
+  ${REPO_ROOT}/lib/diagnostics
   ${REPO_ROOT}/lib/encoder
   ${REPO_ROOT}/lib/fan
   ${REPO_ROOT}/lib/indicator

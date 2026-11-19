@@ -32,4 +32,7 @@ struct Config {
 // raw-API callback). Call once from setup(), before the scheduler starts.
 bool begin(const Config& cfg);
 
+// PHY link state as of the last link check (every 500 ms).
+bool linkUp();
+
 }  // namespace ethernet

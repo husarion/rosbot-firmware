@@ -143,17 +143,18 @@ See http://www.FreeRTOS.org/RTOS-Cortex-M3-M4.html. */
 
 /* Spinning here would leave the motor PWM running; fatalError() (lib/fault)
 resets the MCU instead. Declared here, not included: the kernel sources are
-built without lib/fault on their include path. */
+built without lib/fault on their include path. 1 = kFaultAssert. */
 #ifdef __cplusplus
 extern "C" {
 #endif
-void fatalError(void) __attribute__((noreturn));
+void fatalErrorWithCode(uint32_t code, uint32_t pc, const char* task)
+    __attribute__((noreturn));
 #ifdef __cplusplus
 }
 #endif
-#define configASSERT(x)         \
-  do {                          \
-    if ((x) == 0) fatalError(); \
+#define configASSERT(x)                        \
+  do {                                         \
+    if ((x) == 0) fatalErrorWithCode(1, 0, 0); \
   } while (0)
 
 /* Definitions that map the FreeRTOS port interrupt handlers to their CMSIS

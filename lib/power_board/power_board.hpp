@@ -73,6 +73,11 @@ class PowerBoard : public BatteryInterface {
   bool hasBoardInfoUpdate();
   bool hasBatteryUpdate();
 
+  // A valid frame arrived within the last `window_ms`.
+  bool answering(uint32_t now_ms, uint32_t window_ms = 3000) const {
+    return last_frame_ms_ != 0 && now_ms - last_frame_ms_ < window_ms;
+  }
+
  private:
   // ── Protocol constants ──────────────────────────────────────────
 
@@ -139,5 +144,6 @@ class PowerBoard : public BatteryInterface {
   uint32_t last_battery_ms_ = 0;
 
   bool battery_updated_ = false;
+  uint32_t last_frame_ms_ = 0;
   bool board_info_updated_ = false;
 };

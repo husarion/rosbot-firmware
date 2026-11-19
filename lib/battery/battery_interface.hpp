@@ -53,6 +53,11 @@ class BatteryInterface {
     return is_critical_;
   }
 
+  // Results of the last isLow()/isCritical() calls, without touching their
+  // hysteresis (safe to read from another task).
+  bool lowLatched() const { return is_low_; }
+  bool criticalLatched() const { return is_critical_; }
+
  protected:
   BatteryData data_ = {};
   bool is_low_{false};

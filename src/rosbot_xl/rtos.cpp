@@ -50,7 +50,6 @@ void hwMonitorTask(
     void* p);  // Bat + Fan + Indicator: Merged due limited stack size
 void imuTask(void* p);
 void ledStripTask(void* p);
-void monitorTask(void* p);
 void motorControlTask(void* p);
 void shutdownTask(void* p);
 void linkTask(void* p);
@@ -59,9 +58,6 @@ TaskConfig tasks[] = {
     {"HwMonitor", Priority::OBSERVING, Stack::S, 10, hwMonitorTask},
     {"Imu", Priority::SENSORS, Stack::M, 100, imuTask},
     {"LedStrip", Priority::OBSERVING, Stack::M, 30, ledStripTask},
-#ifndef RELEASE
-    {"Monitor", Priority::BLOCKING, Stack::XL, 1, monitorTask},
-#endif
     {"MotorControl", Priority::CONTROL, Stack::M, 200, motorControlTask},
     {"Shutdown", Priority::OBSERVING, Stack::M, 3, shutdownTask},
     {"Link", Priority::COMMUNICATION, Stack::XXL, 1000, linkTask},
@@ -190,34 +186,6 @@ void ledStripTask(void* p) {
       // return at once until the missed periods are caught up.
       wake_time = xTaskGetTickCount();
     }
-    vTaskDelayUntil(&wake_time, period);
-  }
-}
-
-void monitorTask(void* p) {
-  TickType_t period = taskGetPeriod(p);
-  TickType_t wake_time = xTaskGetTickCount();
-  char buf[768];
-
-  while (true) {
-    vTaskGetRunTimeStats(buf);
-    if (g_comm_mgr.hasDebugSerial()) {
-      DebugSerialLock lock(g_comm_mgr.debugMutex());
-      g_comm_mgr.debugSerial()->print("\r\n");
-      g_comm_mgr.debugSerial()->println(buf);
-
-      for (size_t i = 0; i < sizeof(taskHandles) / sizeof(taskHandles[0]);
-           i++) {
-        g_comm_mgr.debugSerial()->printf(
-            "%-16s %-6u B\r\n", tasks[i].name,
-            static_cast<unsigned>(
-                uxTaskGetStackHighWaterMark(taskHandles[i].handle) *
-                sizeof(StackType_t)));
-      }
-      g_comm_mgr.debugSerial()->printf("\r\nFree heap memory: %u B\r\n",
-                                       (unsigned)xPortGetFreeHeapSize());
-    }
-
     vTaskDelayUntil(&wake_time, period);
   }
 }

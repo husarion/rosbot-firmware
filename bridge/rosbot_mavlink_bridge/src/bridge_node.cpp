@@ -77,6 +77,13 @@ BridgeNode::BridgeNode(
   // Topics + QoS: see ROS_API.md.
   battery_pub_ = this->create_publisher<sensor_msgs::msg::BatteryState>(
       "battery", bestEffortDepth1());
+  // Absolute, like diagnostic_updater: aggregators listen on /diagnostics;
+  // the namespace goes into hardware_id instead.
+  diagnostics_pub_ = this->create_publisher<diagnostic_msgs::msg::DiagnosticArray>(
+      "/diagnostics", 10);
+  const std::string ns = this->get_namespace();
+  diagnostics_mapper_ = std::make_unique<DiagnosticsMapper>(
+      ns == "/" ? std::string("rosbot_mcu") : "rosbot_mcu " + ns);
   imu_pub_ = this->create_publisher<sensor_msgs::msg::Imu>("_imu/data",
                                                            bestEffortDepth1());
   joint_state_pub_ = this->create_publisher<sensor_msgs::msg::JointState>(
@@ -292,6 +299,9 @@ void BridgeNode::onMavlinkMessage(const mavlink_message_t & msg)
       break;
     case MAVLINK_MSG_ID_ROSBOT_POWER_BOARD:
       onRosbotPowerBoard(msg);
+      break;
+    case MAVLINK_MSG_ID_ROSBOT_DIAGNOSTICS:
+      onRosbotDiagnostics(msg);
       break;
     case MAVLINK_MSG_ID_ROSBOT_IMU_CALIBRATION:
       onRosbotImuCalibration(msg);
@@ -576,6 +586,16 @@ void BridgeNode::onRosbotPowerBoard(const mavlink_message_t & msg)
     power_board_received_ = true;
   }
   power_board_cv_.notify_all();
+}
+
+void BridgeNode::onRosbotDiagnostics(const mavlink_message_t & msg)
+{
+  mavlink_rosbot_diagnostics_t d;
+  mavlink_msg_rosbot_diagnostics_decode(&msg, &d);
+  const rclcpp::Time now = this->now();
+  auto out = diagnostics_mapper_->map(d, now.nanoseconds());
+  out.header.stamp = now;
+  diagnostics_pub_->publish(out);
 }
 
 void BridgeNode::onCommandAck(const mavlink_message_t & msg)

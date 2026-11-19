@@ -80,4 +80,6 @@ bool begin(const Config& cfg) {
                      kTaskPriority, nullptr) == pdPASS;
 }
 
+bool linkUp() { return netif_is_link_up(&s_netif); }
+
 }  // namespace ethernet

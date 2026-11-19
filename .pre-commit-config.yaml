@@ -66,6 +66,8 @@ repos:
         entry: codespell  *
         language: python
         types: [text]
+        # Plans and specs for Rafał are written in Polish.
+        exclude: ^\.claude/
 
   # -------------------------
   # YAML formatting

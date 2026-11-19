@@ -105,8 +105,7 @@ target_include_directories(fw_common PUBLIC
 target_include_directories(fw_common SYSTEM PUBLIC
   ${REPO_ROOT}/bridge/rosbot_mavlink_bridge/mavlink_dialect/rosbot)
 target_compile_definitions(fw_common PUBLIC
-  FW_VERSION="${FW_VERSION}"
-  $<$<CONFIG:Release>:RELEASE>)
+  FW_VERSION="${FW_VERSION}")
 target_link_libraries(fw_common PUBLIC stm32f4_hal freertos lwip etl)
 target_compile_options(fw_common PRIVATE ${WARNINGS})
 

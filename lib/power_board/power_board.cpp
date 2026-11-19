@@ -223,6 +223,7 @@ bool PowerBoard::parseNextFrame(const uint8_t* data, size_t len, size_t& pos,
 // ═══════════════════════════════════════════════════════════════════
 
 void PowerBoard::dispatch(const Frame& frame) {
+  last_frame_ms_ = time_boot_ms();
   switch (frame.cmd) {
     case CMD_BOARD_INFO:
       handleBoardInfo(frame);

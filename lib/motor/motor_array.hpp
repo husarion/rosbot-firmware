@@ -63,6 +63,11 @@ class MotorArray {
   bool checkFaults() const;
   /// Latched nFAULT: set after kFaultAssertCycles consecutive control cycles,
   /// cleared kFaultClearMs after the pin releases.
+  // Times the fault latch was set since boot.
+  uint32_t faultEvents() const {
+    return fault_events_.load(std::memory_order_relaxed);
+  }
+
   bool hasFault() const {
     return fault_latched_.load(std::memory_order_relaxed);
   }
@@ -114,6 +119,7 @@ class MotorArray {
   uint8_t fault_cycles_ = 0;
   uint32_t last_fault_ms_ = 0;
   std::atomic<bool> fault_latched_{false};
+  std::atomic<uint32_t> fault_events_{0};
 
   // FreeRTOS
   SemaphoreHandle_t mutex_ = nullptr;

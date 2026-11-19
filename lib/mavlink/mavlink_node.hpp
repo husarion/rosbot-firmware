@@ -14,6 +14,7 @@
 
 #pragma once
 
+#include <atomic>
 #include <cstddef>
 #include <cstdint>
 
@@ -72,6 +73,14 @@ class MavlinkNode {
   State state() const { return state_; }
   const char* nsName() const { return ns_; }
 
+  // Since boot: frames the transport did not take (TX queue full), frames
+  // the parser dropped (CRC/framing), connections established.
+  uint32_t txDropped() const {
+    return tx_dropped_.load(std::memory_order_relaxed);
+  }
+  uint32_t rxErrors() const { return rx_errors_; }
+  uint32_t reconnects() const { return reconnects_; }
+
  private:
   void emitHeartbeatIfDue(uint32_t now_ms);
   void emitTimesyncIfDue(uint32_t now_ms);
@@ -94,6 +103,9 @@ class MavlinkNode {
   bool critical_ = false;
   State state_ = WAITING;
   SemaphoreHandle_t tx_mutex_ = nullptr;
+  std::atomic<uint32_t> tx_dropped_{0};
+  uint32_t reconnects_ = 0;
+  uint32_t rx_errors_ = 0;  // link task only
 };
 
 extern MavlinkNode g_mavlink_node;

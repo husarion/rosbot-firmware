@@ -16,6 +16,7 @@ wire side.
 
 ## Topics
 
+[diagnostic_msgs/DiagnosticArray]: https://docs.ros.org/en/jazzy/p/diagnostic_msgs/msg/DiagnosticArray.html
 [sensor_msgs/BatteryState]: https://docs.ros.org/en/jazzy/p/sensor_msgs/msg/BatteryState.html
 [sensor_msgs/Image]: https://docs.ros.org/en/jazzy/p/sensor_msgs/msg/Image.html
 [sensor_msgs/Imu]: https://docs.ros.org/en/jazzy/p/sensor_msgs/msg/Imu.html
@@ -29,6 +30,7 @@ wire side.
 | --- | ----- | ---------------------- | ----------------------------------------------------------- |
 | ✅  | ✅    | **`battery`**          | Battery status. <br /> _[sensor_msgs/BatteryState]_         |
 | ✅  | ✅    | **`buttons`**          | Button states. <br /> _[std_msgs/UInt8]_                    |
+| ✅  | ✅    | **`/diagnostics`**     | MCU and hardware health, 1 Hz — see below. Absolute name (like `diagnostic_updater`); the namespace is in `hardware_id`. <br /> _[diagnostic_msgs/DiagnosticArray]_ |
 | ❌  | ✅    | **`led_strip`**        | LED strip command. <br /> _[sensor_msgs/Image]_             |
 | ✅  | ✅    | **`leds`**             | Rear panel LEDs command. <br /> _[std_msgs/UInt8]_          |
 | ✅  | ❌    | **`ranges`**           | Range sensor data. <br /> _[sensor_msgs/Range]_             |
@@ -48,6 +50,24 @@ wire side.
 | **`_imu/start_calibration`**  | Start a calibration session (red LED fast blink, 180 s). <br /> _[std_srvs/Trigger]_ |
 | **`_imu/stop_calibration`**   | End the session early. <br /> _[std_srvs/Trigger]_             |
 | **`_imu/save_calibration`**   | Persist the chip's current offsets to flash. <br /> _[std_srvs/Trigger]_ |
+
+## Diagnostics
+
+The MCU sends its health once a second and the bridge publishes it on
+`/diagnostics`, readable with `rqt_robot_monitor` or a
+`diagnostic_aggregator`. Every status is named `rosbot_mcu: <part>` and
+carries `hardware_id` `rosbot_mcu` (or `rosbot_mcu <namespace>`). Counters
+are since the MCU booted; "recent" means the counter grew within the last
+10 s (an MCU reboot starts the history over).
+
+| Status | ERROR | WARN | Values |
+| --- | --- | --- | --- |
+| `MCU` | smallest stack headroom < 64 B | headroom < 128 B, heap never used < 4 KB, CPU idle < 20 %, last reset was a firmware fault | uptime, last reset cause, CPU idle %, heap, stack headroom and its task |
+| `IMU` | IMU not initialised or last read failed | recent read errors or bus resets | read errors, bus resets |
+| `Range sensors` (ROSbot) | a sensor did not initialise | a sensor recently timing out, recent bus resets | timeouts per sensor, bus resets |
+| `Motors` | driver fault active | recent driver faults | fault events |
+| `Link` | — | MCU recently dropped telemetry (TX queue full) or got corrupted frames | dropped frames both ways, connections |
+| `Power` | battery critical, power board not answering (XL) | battery low | power board answering, Ethernet link (XL) |
 
 ## Battery
 

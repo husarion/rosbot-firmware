@@ -242,7 +242,6 @@ CONTROL = 5    (highest)
 | Battery | SENSORS | 10 | ADC sample + queue |
 | Imu | SENSORS | 100 | DMA-read BNO055, queue `ImuStamped` |
 | LedIndicator | OBSERVING | 20 | Status LED blink/solid logic |
-| Monitor | BLOCKING | 1 | `vTaskGetRunTimeStats` to debug serial (debug builds only) |
 | MotorControl | CONTROL | 200 | Encoder + PID + PWM + current/back-EMF estimation |
 | Range | SENSORS | 10 | Read 4× VL53L0X |
 | Link | COMMUNICATION | 1000 | `g_mavlink_node.loop()` — MAVLink RX/TX, heartbeat, publishers |
@@ -254,7 +253,6 @@ CONTROL = 5    (highest)
 | HwMonitor | OBSERVING | 10 | Battery (via PowerBoard UART) + fan + LED status, rate-limited internally |
 | Imu | SENSORS | 100 | same as rosbot |
 | LedStrip | OBSERVING | 30 | Drain `led_strip_queue`, render via SPI; idle animation blocks for seconds |
-| Monitor | BLOCKING | 1 | Runtime stats (debug builds) |
 | MotorControl | CONTROL | 200 | same as rosbot |
 | Shutdown | OBSERVING | 3 | Detect graceful shutdown signal from power board, stop scheduler |
 | Link | COMMUNICATION | 1000 | same as rosbot |
@@ -524,12 +522,39 @@ after halting on a breakpoint if a debugger is attached. Spinning in place,
 which is what the old `configASSERT` and STM32FreeRTOS's fault handlers did,
 leaves the timers generating the last PWM duty with no watchdog running.
 
-The fault vectors point at `fatalError()` directly
-(`boards/stm32f407/system.cpp`). Before resetting, `fatalError()` leaves a marker at the top of CCM RAM, which the
-linker script never uses and the startup code never clears. On the next
-boot `consumeFaultResetFlag()` sees it and the MAVLink node reports
-"MCU reset after a firmware fault" after the boot banner on every
-connection.
+The fault vectors pass the stacked exception frame to
+`faultFromException()` (`boards/stm32f407/system.cpp`). Before resetting,
+`fatalErrorWithCode()` leaves a 32-byte marker at the top of CCM RAM
+(0x1000FFE0), which the linker script never uses and the startup code never
+clears: a `FaultCode` (assert, stack overflow, out of heap, hard / bus /
+usage / memory-management fault, NMI, clock, exit), the faulting PC for
+exceptions and the task name for a stack overflow. On the next boot
+`consumeFaultInfo()` reads it; the MAVLink node reports "MCU reset after a
+firmware fault" after the boot banner, and `/diagnostics` shows the cause
+(e.g. "hard fault at 0x08012e9e", resolve with `arm-none-eabi-addr2line`).
+
+### Diagnostics (`lib/diagnostics/`, ROSBOT_DIAGNOSTICS)
+
+Once a second the link task sends `ROSBOT_DIAGNOSTICS`; the bridge maps it
+to `/diagnostics` (see ROS_API.md for the statuses and thresholds).
+`lib/diagnostics` samples the MCU itself (CPU idle from the FreeRTOS
+run-time counters between two samples, smallest stack headroom and its
+task, heap, reset cause read from `RCC_CSR` at boot and cleared, fault
+cause); `MavlinkDiagnosticsPublisher` adds the link counters, and each
+board's `mavlink_entities.cpp` fills its hardware part through a function
+pointer (IMU, range sensors, I2C bus resets, motor faults, battery, power
+board, Ethernet). Modules expose counters only through getters
+(`I2c::recoveries()`, `RangeVl53l0x::timeouts()`, `ImuInterface::readErrors()`,
+`MotorArray::faultEvents()`, `MavlinkNode::txDropped()/rxErrors()`), so the
+library layer does not depend on diagnostics.
+
+Tested on ROSbot 3 with injected faults (test-only build flags, 2026-11-19):
+IMU unpowered → IMU ERROR; a range sensor switched off at runtime → ERROR;
+SDA shorted 30 ms → "Sensor bus was reset"; 40 B stack headroom → MCU ERROR;
+`configASSERT(0)` and an undefined instruction → reset with "assert" and
+"hard fault at <PC>" (PC resolved to the injecting line); forced battery
+low → Power WARN; garbage on RX → Link WARN; wheel reversals → Motors
+ERROR/WARN/OK as faults come and go.
 
 ### lwIP ownership (rosbot_xl)
 
@@ -631,6 +656,14 @@ then failed every later transfer on the bus until reboot (on XL also the
 EEPROM). `HAL_I2C_DeInit` also clears the handle lock that HAL's
 `IsDeviceReady` leaves taken on its `HAL_TIMEOUT` path.
 
+The bus IRQs are enabled only around IT/DMA transfers, and a transfer gets
+at most 200 IRQs: past that the ISR switches them off, fails the transfer
+and the task resets the bus. Found on ROSbot 3 with the BNO055 unpowered:
+it still answered the boot probe through its I/O pins, the first DMA read
+then left an event flag HAL never clears, and the re-entering IRQ starved
+every task (link silent, no reset). `ImuBno055` also backs off to one read
+a second after 10 failures in a row.
+
 ### I2C bus speed (400 kHz)
 
 `platform::I2c::init()` sets 400 kHz with the 2:1 fast-mode duty cycle.
@@ -683,9 +716,11 @@ asks for 4 MHz and gets 2.625 MHz (the next power-of-two divider).
 
 ### Stack and CPU measured on HW (2026-10, `devel` debug build)
 
-Minimum free stack per task (`uxTaskGetStackHighWaterMark`, Monitor
-output) while driving a test profile on a stand; IDLE from the run-time
-stats.
+Minimum free stack per task (`uxTaskGetStackHighWaterMark`, from the Monitor
+task the firmware had then) while driving a test profile on a stand; IDLE
+from the run-time stats. The same numbers now come from `/diagnostics`
+(smallest headroom and its task, CPU idle). For the 2026-11 ROSbot 3
+comparison against jazzy see `.claude/plans/cube-migration.md`.
 
 | ROSbot 3 | free | ROSbot XL rev 1.2 | free |
 |---|---:|---|---:|
@@ -778,8 +813,8 @@ just test                     # host unit tests (CTest)
 
 - Presets (`cmake/CMakePresets.json`): `debug` → `build/debug/`,
   `release` → `build/release/`. Each builds `rosbot.{elf,bin,map}` and
-  `rosbot_xl.{elf,bin,map}`. Release adds `-D RELEASE` (drops the Monitor
-  task) and `-funroll-loops`.
+  `rosbot_xl.{elf,bin,map}`. Both behave the same (there is no debug-only
+  task any more); release adds `-funroll-loops`.
 - `scripts/build.sh <rosbot|rosbot_xl>[_release]` is the one place that maps
   the target names `just`, `flash.sh` and the VS Code tasks use onto a
   preset and a board, and prints the `.bin` path.

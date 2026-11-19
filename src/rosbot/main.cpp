@@ -25,6 +25,7 @@
 #include "imu_calibration_boot.hpp"
 #include "led_indicator.hpp"
 #include "mavlink_node.hpp"
+#include "mcu_health.hpp"
 #include "motor_array.hpp"
 #include "motor_hi_z.hpp"
 #include "persistent_config.hpp"
@@ -119,6 +120,10 @@ static persistent_config::Config s_persistent;
 // Called from main() (boards/stm32f407/system.cpp).
 extern "C" void setup() {
   platform::clock::init();
+  const FaultInfo fault = consumeFaultInfo();
+  const bool fault_reset = fault.fault_reset;
+  diagnostics::captureResetCause(fault.fault_reset, fault.code, fault.pc,
+                                 fault.task);
   boardPeripheralsInit();
 
   // Resolve the boot gesture before anything else touches the buttons —
@@ -195,7 +200,7 @@ extern "C" void setup() {
   g_mavlink_node.setNamespace(g_comm_mgr.getNamespace());
   g_mavlink_node.setDiagnosticSerial(g_comm_mgr.debugSerial(),
                                      g_comm_mgr.debugMutex());
-  if (consumeFaultResetFlag()) {
+  if (fault_reset) {
     g_mavlink_node.setBootNotice("MCU reset after a firmware fault");
   }
   g_mavlink_node.begin();

@@ -14,6 +14,8 @@
 
 #include "fault.hpp"
 
+#include <cstddef>
+
 #include "device.hpp"
 #include "freertos.hpp"
 
@@ -25,8 +27,12 @@ namespace {
 struct ResetMarker {
   uint32_t magic;
   uint32_t magic_inv;
+  uint32_t code;
+  uint32_t pc;
+  char task[16];
 };
-ResetMarker* const s_marker = reinterpret_cast<ResetMarker*>(0x1000FFF8);
+static_assert(sizeof(ResetMarker) == 32, "marker layout");
+ResetMarker* const s_marker = reinterpret_cast<ResetMarker*>(0x1000FFE0);
 constexpr uint32_t kMagic = 0xFA17C0DE;
 
 // Holding every timer in reset stops all PWM (motors, fan) before a possible
@@ -43,28 +49,50 @@ void stopAllTimers() {
 
 }  // namespace
 
-extern "C" void fatalError(void) {
+extern "C" void fatalErrorWithCode(uint32_t code, uint32_t pc,
+                                   const char* task) {
   __disable_irq();
   stopAllTimers();
   // C_DEBUGEN survives a system reset (only power-on clears it), so after an
   // ST-Link session this can halt with no debugger attached — hence the
   // timers are stopped first.
   if (CoreDebug->DHCSR & CoreDebug_DHCSR_C_DEBUGEN_Msk) __BKPT(0);
+  s_marker->code = code;
+  s_marker->pc = pc;
+  size_t i = 0;
+  for (; task != nullptr && i + 1 < sizeof(s_marker->task) && task[i]; ++i) {
+    s_marker->task[i] = task[i];
+  }
+  for (; i < sizeof(s_marker->task); ++i) s_marker->task[i] = '\0';
   s_marker->magic = kMagic;
   s_marker->magic_inv = ~kMagic;
   NVIC_SystemReset();
 }
 
-extern "C" void vApplicationStackOverflowHook(TaskHandle_t /*task*/,
-                                              char* /*name*/) {
-  fatalError();
+// Exception frame: r0 r1 r2 r3 r12 lr pc xpsr.
+extern "C" void faultFromException(const uint32_t* frame, uint32_t code) {
+  fatalErrorWithCode(code, frame[6], nullptr);
 }
 
-extern "C" void vApplicationMallocFailedHook(void) { fatalError(); }
+extern "C" void vApplicationStackOverflowHook(TaskHandle_t /*task*/,
+                                              char* name) {
+  fatalErrorWithCode(kFaultStackOverflow, 0, name);
+}
 
-bool consumeFaultResetFlag() {
-  const bool set = s_marker->magic == kMagic && s_marker->magic_inv == ~kMagic;
+extern "C" void vApplicationMallocFailedHook(void) {
+  fatalErrorWithCode(kFaultMallocFailed, 0, nullptr);
+}
+
+FaultInfo consumeFaultInfo() {
+  FaultInfo out{};
+  out.fault_reset = s_marker->magic == kMagic && s_marker->magic_inv == ~kMagic;
+  if (out.fault_reset) {
+    out.code = static_cast<uint8_t>(s_marker->code);
+    out.pc = s_marker->pc;
+    for (size_t i = 0; i + 1 < sizeof(out.task); ++i)
+      out.task[i] = s_marker->task[i];
+  }
   s_marker->magic = 0;
   s_marker->magic_inv = 0;
-  return set;
+  return out;
 }
