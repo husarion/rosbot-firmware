@@ -173,7 +173,7 @@ Layers, bottom-up:
 
 | dir | role |
 |---|---|
-| `battery/` | `BatteryInterface` + `BatteryAdc` (rosbot battery via ADC) + `SocEstimator` (rosbot_xl: coulomb counting corrected by load-compensated OCV, so percentage does not jump under load; rosbot: rest-voltage curve through a low-pass filter, as there is no current measurement) |
+| `battery/` | `BatteryInterface` + `BatteryAdc` (rosbot battery via ADC) + `SocEstimator` (rosbot_xl: coulomb counting corrected by load-compensated OCV with a curve measured on the XL pack, so percentage does not jump under load; rosbot: rest-voltage curve through a low-pass filter, as there is no current measurement) |
 | `boot_option/` | `resolveBootAction()` — classifies the power-on button gesture (tap vs 3 s hold) into "change transport" / "calibrate IMU" / nothing, owns the confirmation LEDs — see "IMU calibration" under "Patterns" |
 | `comm_manager/` | `CommunicationManager` — chooses primary vs diagnostic transport at boot, driven by `boot_option`'s decision |
 | `ethernet/` | rosbot_xl network bring-up: `ethernet::begin()` (static IP, lwIP task, link checks) + vendored `ethernetif` (ST/Husarion, LAN9303); `include/lwipopts.h` holds the lwIP options |
