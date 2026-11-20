@@ -101,4 +101,18 @@ inline uint16_t decodeResetCause(uint32_t csr, bool firmware_fault) {
   return out;
 }
 
+// ROSBOT_DIAGNOSTICS.clock_source.
+enum ClockSource : uint8_t {
+  kClockUnknown = 0,
+  kClockCrystal = 1,
+  kClockInternal = 2,
+};
+
+// RCC_PLLCFGR PLLSRC (RM0090 7.3.2): set when the PLL runs from HSE.
+inline constexpr uint32_t kPllCfgrPllSrcHse = 1UL << 22;
+
+inline ClockSource decodeClockSource(uint32_t pllcfgr) {
+  return (pllcfgr & kPllCfgrPllSrcHse) ? kClockCrystal : kClockInternal;
+}
+
 }  // namespace diagnostics

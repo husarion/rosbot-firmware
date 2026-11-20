@@ -66,6 +66,7 @@ class MavlinkDiagnosticsPublisher : public MavlinkPublisherInterface {
     d.fault_code = h.fault_code;
     d.fault_pc = h.fault_pc;
     std::memcpy(d.fault_task, h.fault_task, sizeof(d.fault_task));
+    d.clock_source = h.clock_source;
     d.link_tx_dropped = node.txDropped();
     d.link_rx_errors = node.rxErrors();
     d.link_reconnects = static_cast<uint16_t>(node.reconnects());

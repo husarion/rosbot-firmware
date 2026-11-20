@@ -880,10 +880,19 @@ constructor (`boardInit`, priority 101) sets NVIC priority grouping 4, runs
 HAL and 168 MHz, the order the Arduino core used. `main()` calls `setup()`
 (`src/<variant>/main.cpp`), which ends in `vTaskStartScheduler()`.
 
-Clock: internal 16 MHz RC → PLL → SYSCLK 168 MHz, APB1 42 MHz, APB2 84 MHz.
-Both boards have a crystal on PH0/PH1 (Digital Board v1.2: Q1 24 MHz; CORE2
-v1.3+: Q1, value not printed on the schematic) that no firmware uses yet;
-the RC oscillator's drift is what TIMESYNC re-seeds for.
+Clock: crystal (HSE) → PLL (2 MHz VCO input) → SYSCLK 168 MHz, APB1 42 MHz,
+APB2 84 MHz. CORE2 v1.3+ has an 8 MHz crystal (Q1, value not printed on the
+schematic, measured with TIM11 on HSE/16), the Digital Board v1.1/v1.2 a
+24 MHz one (Q1); `add_firmware(... HSE_HZ ...)` passes it as `HSE_VALUE`
+to the only sources that read it (`system.cpp`, `system_stm32f4xx.c`,
+`stm32f4xx_hal_rcc*.c`, compiled per board); `stm32f4xx_hal_conf.h` has no
+default, so a shared source that used it would not compile. If the crystal
+does not start within `HSE_STARTUP_TIMEOUT` (100 ms) the clock falls back
+to the internal 16 MHz RC with the same output frequencies, and
+`ROSBOT_DIAGNOSTICS.clock_source` reports it (MCU WARN). The clock security
+system is on while the crystal runs: if it stops, the NMI resets with
+`kFaultClock`. Jazzy and the first Cube builds ran on the RC, which drifted
+~2000 ppm (see "Time synchronization").
 `SysTick_Handler` increments `HAL_GetTick()` and, once the scheduler runs,
 calls the FreeRTOS tick.
 
@@ -1065,12 +1074,12 @@ The bridge turns `time_boot_us` into ROS time with `wall = mcu + offset`
   two-way sample replaces that estimate outright. This keeps any firmware
   and any bridge version interoperable.
 - Not modelled: MCU clock drift and the MCU's TX queueing ahead of the
-  reply, which the RTT filter only partly absorbs. The MCU runs on the
-  internal RC oscillator (see "Startup and memory"), which drifts ~1500–2000
-  ppm against the host: on ROSbot XL the offset moves past the 50 ms
-  re-seed threshold every 30–40 s, and the bridge logs "TIMESYNC: offset
-  stepped by ~57 ms" each time (jazzy release and this firmware alike, HW
-  2026-11-20). Stamps never go backwards, they jump ~57 ms forward.
+  reply, which the RTT filter only partly absorbs. On the crystal the MCU
+  is within ~10 ppm of the host (XL: −9 ppm over 2 min, DWT vs host clock):
+  10 min with no re-seed, stamp gaps exactly 10 / 5 ms, 0.2–2.6 ms total
+  drift (HW 2026-11-20). On the internal RC (jazzy, or the fallback) it
+  drifted ~1500–2000 ppm: the offset passed the 50 ms re-seed threshold
+  every 30–40 s and stamps jumped ~57 ms forward each time.
 
 ### Telemetry rates and topic mapping
 

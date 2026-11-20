@@ -22,14 +22,15 @@ typedef struct __mavlink_rosbot_diagnostics_t {
  char stack_min_task[16]; /*<  Name of the task with the smallest stack headroom.*/
  uint8_t imu_ok; /*<  1 when the IMU initialised and its last read succeeded.*/
  uint8_t range_ok; /*<  Bitmask of range sensors that initialised, bit 0 = FL.*/
- uint8_t fault_code; /*<  Why the last firmware fault reset happened: 0 none or unknown, 1 assert, 2 stack overflow, 3 out of heap, 4 hard fault, 5 memory-management fault, 6 bus fault, 7 usage fault, 8 NMI, 9 clock start failure, 10 libc exit.*/
+ uint8_t fault_code; /*<  Why the last firmware fault reset happened: 0 none or unknown, 1 assert, 2 stack overflow, 3 out of heap, 4 hard fault, 5 memory-management fault, 6 bus fault, 7 usage fault, 8 NMI, 9 clock failure (did not start, or the crystal stopped), 10 libc exit.*/
  char fault_task[16]; /*<  Task whose stack overflowed (fault_code 2).*/
  uint8_t flags; /*<  Bitmask: 1 battery low, 2 battery critical, 4 motor fault active, 8 power board answering, 16 Ethernet link up, 32 board has range sensors, 64 board has a power board, 128 board has Ethernet.*/
+ uint8_t clock_source; /*<  What clocks the MCU: 0 unknown (older firmware), 1 crystal, 2 internal RC oscillator because the crystal did not start.*/
 } mavlink_rosbot_diagnostics_t;
 
-#define MAVLINK_MSG_ID_ROSBOT_DIAGNOSTICS_LEN 86
+#define MAVLINK_MSG_ID_ROSBOT_DIAGNOSTICS_LEN 87
 #define MAVLINK_MSG_ID_ROSBOT_DIAGNOSTICS_MIN_LEN 86
-#define MAVLINK_MSG_ID_11030_LEN 86
+#define MAVLINK_MSG_ID_11030_LEN 87
 #define MAVLINK_MSG_ID_11030_MIN_LEN 86
 
 #define MAVLINK_MSG_ID_ROSBOT_DIAGNOSTICS_CRC 190
@@ -44,7 +45,7 @@ typedef struct __mavlink_rosbot_diagnostics_t {
 #define MAVLINK_MESSAGE_INFO_ROSBOT_DIAGNOSTICS { \
     11030, \
     "ROSBOT_DIAGNOSTICS", \
-    20, \
+    21, \
     {  { "uptime_ms", NULL, MAVLINK_TYPE_UINT32_T, 0, 0, offsetof(mavlink_rosbot_diagnostics_t, uptime_ms) }, \
          { "heap_free", NULL, MAVLINK_TYPE_UINT32_T, 0, 4, offsetof(mavlink_rosbot_diagnostics_t, heap_free) }, \
          { "heap_min_free", NULL, MAVLINK_TYPE_UINT32_T, 0, 8, offsetof(mavlink_rosbot_diagnostics_t, heap_min_free) }, \
@@ -65,12 +66,13 @@ typedef struct __mavlink_rosbot_diagnostics_t {
          { "fault_code", NULL, MAVLINK_TYPE_UINT8_T, 0, 68, offsetof(mavlink_rosbot_diagnostics_t, fault_code) }, \
          { "fault_task", NULL, MAVLINK_TYPE_CHAR, 16, 69, offsetof(mavlink_rosbot_diagnostics_t, fault_task) }, \
          { "flags", NULL, MAVLINK_TYPE_UINT8_T, 0, 85, offsetof(mavlink_rosbot_diagnostics_t, flags) }, \
+         { "clock_source", NULL, MAVLINK_TYPE_UINT8_T, 0, 86, offsetof(mavlink_rosbot_diagnostics_t, clock_source) }, \
          } \
 }
 #else
 #define MAVLINK_MESSAGE_INFO_ROSBOT_DIAGNOSTICS { \
     "ROSBOT_DIAGNOSTICS", \
-    20, \
+    21, \
     {  { "uptime_ms", NULL, MAVLINK_TYPE_UINT32_T, 0, 0, offsetof(mavlink_rosbot_diagnostics_t, uptime_ms) }, \
          { "heap_free", NULL, MAVLINK_TYPE_UINT32_T, 0, 4, offsetof(mavlink_rosbot_diagnostics_t, heap_free) }, \
          { "heap_min_free", NULL, MAVLINK_TYPE_UINT32_T, 0, 8, offsetof(mavlink_rosbot_diagnostics_t, heap_min_free) }, \
@@ -91,6 +93,7 @@ typedef struct __mavlink_rosbot_diagnostics_t {
          { "fault_code", NULL, MAVLINK_TYPE_UINT8_T, 0, 68, offsetof(mavlink_rosbot_diagnostics_t, fault_code) }, \
          { "fault_task", NULL, MAVLINK_TYPE_CHAR, 16, 69, offsetof(mavlink_rosbot_diagnostics_t, fault_task) }, \
          { "flags", NULL, MAVLINK_TYPE_UINT8_T, 0, 85, offsetof(mavlink_rosbot_diagnostics_t, flags) }, \
+         { "clock_source", NULL, MAVLINK_TYPE_UINT8_T, 0, 86, offsetof(mavlink_rosbot_diagnostics_t, clock_source) }, \
          } \
 }
 #endif
@@ -118,13 +121,14 @@ typedef struct __mavlink_rosbot_diagnostics_t {
  * @param imu_ok  1 when the IMU initialised and its last read succeeded.
  * @param range_ok  Bitmask of range sensors that initialised, bit 0 = FL.
  * @param fault_pc  Program counter of the exception that caused the last firmware fault, 0 if not an exception.
- * @param fault_code  Why the last firmware fault reset happened: 0 none or unknown, 1 assert, 2 stack overflow, 3 out of heap, 4 hard fault, 5 memory-management fault, 6 bus fault, 7 usage fault, 8 NMI, 9 clock start failure, 10 libc exit.
+ * @param fault_code  Why the last firmware fault reset happened: 0 none or unknown, 1 assert, 2 stack overflow, 3 out of heap, 4 hard fault, 5 memory-management fault, 6 bus fault, 7 usage fault, 8 NMI, 9 clock failure (did not start, or the crystal stopped), 10 libc exit.
  * @param fault_task  Task whose stack overflowed (fault_code 2).
  * @param flags  Bitmask: 1 battery low, 2 battery critical, 4 motor fault active, 8 power board answering, 16 Ethernet link up, 32 board has range sensors, 64 board has a power board, 128 board has Ethernet.
+ * @param clock_source  What clocks the MCU: 0 unknown (older firmware), 1 crystal, 2 internal RC oscillator because the crystal did not start.
  * @return length of the message in bytes (excluding serial stream start sign)
  */
 static inline uint16_t mavlink_msg_rosbot_diagnostics_pack(uint8_t system_id, uint8_t component_id, mavlink_message_t* msg,
-                               uint32_t uptime_ms, uint32_t heap_free, uint32_t heap_min_free, uint32_t imu_errors, uint32_t link_tx_dropped, uint32_t link_rx_errors, uint16_t reset_cause, uint16_t cpu_idle, uint16_t stack_min_free, const uint16_t *range_timeouts, const uint16_t *i2c_recoveries, uint16_t motor_faults, uint16_t link_reconnects, const char *stack_min_task, uint8_t imu_ok, uint8_t range_ok, uint32_t fault_pc, uint8_t fault_code, const char *fault_task, uint8_t flags)
+                               uint32_t uptime_ms, uint32_t heap_free, uint32_t heap_min_free, uint32_t imu_errors, uint32_t link_tx_dropped, uint32_t link_rx_errors, uint16_t reset_cause, uint16_t cpu_idle, uint16_t stack_min_free, const uint16_t *range_timeouts, const uint16_t *i2c_recoveries, uint16_t motor_faults, uint16_t link_reconnects, const char *stack_min_task, uint8_t imu_ok, uint8_t range_ok, uint32_t fault_pc, uint8_t fault_code, const char *fault_task, uint8_t flags, uint8_t clock_source)
 {
 #if MAVLINK_NEED_BYTE_SWAP || !MAVLINK_ALIGNED_FIELDS
     char buf[MAVLINK_MSG_ID_ROSBOT_DIAGNOSTICS_LEN];
@@ -144,6 +148,7 @@ static inline uint16_t mavlink_msg_rosbot_diagnostics_pack(uint8_t system_id, ui
     _mav_put_uint8_t(buf, 67, range_ok);
     _mav_put_uint8_t(buf, 68, fault_code);
     _mav_put_uint8_t(buf, 85, flags);
+    _mav_put_uint8_t(buf, 86, clock_source);
     _mav_put_uint16_t_array(buf, 34, range_timeouts, 4);
     _mav_put_uint16_t_array(buf, 42, i2c_recoveries, 2);
     _mav_put_char_array(buf, 50, stack_min_task, 16);
@@ -167,6 +172,7 @@ static inline uint16_t mavlink_msg_rosbot_diagnostics_pack(uint8_t system_id, ui
     packet.range_ok = range_ok;
     packet.fault_code = fault_code;
     packet.flags = flags;
+    packet.clock_source = clock_source;
     mav_array_assign_uint16_t(packet.range_timeouts, range_timeouts, 4);
     mav_array_assign_uint16_t(packet.i2c_recoveries, i2c_recoveries, 2);
     mav_array_assign_char(packet.stack_min_task, stack_min_task, 16);
@@ -202,13 +208,14 @@ static inline uint16_t mavlink_msg_rosbot_diagnostics_pack(uint8_t system_id, ui
  * @param imu_ok  1 when the IMU initialised and its last read succeeded.
  * @param range_ok  Bitmask of range sensors that initialised, bit 0 = FL.
  * @param fault_pc  Program counter of the exception that caused the last firmware fault, 0 if not an exception.
- * @param fault_code  Why the last firmware fault reset happened: 0 none or unknown, 1 assert, 2 stack overflow, 3 out of heap, 4 hard fault, 5 memory-management fault, 6 bus fault, 7 usage fault, 8 NMI, 9 clock start failure, 10 libc exit.
+ * @param fault_code  Why the last firmware fault reset happened: 0 none or unknown, 1 assert, 2 stack overflow, 3 out of heap, 4 hard fault, 5 memory-management fault, 6 bus fault, 7 usage fault, 8 NMI, 9 clock failure (did not start, or the crystal stopped), 10 libc exit.
  * @param fault_task  Task whose stack overflowed (fault_code 2).
  * @param flags  Bitmask: 1 battery low, 2 battery critical, 4 motor fault active, 8 power board answering, 16 Ethernet link up, 32 board has range sensors, 64 board has a power board, 128 board has Ethernet.
+ * @param clock_source  What clocks the MCU: 0 unknown (older firmware), 1 crystal, 2 internal RC oscillator because the crystal did not start.
  * @return length of the message in bytes (excluding serial stream start sign)
  */
 static inline uint16_t mavlink_msg_rosbot_diagnostics_pack_status(uint8_t system_id, uint8_t component_id, mavlink_status_t *_status, mavlink_message_t* msg,
-                               uint32_t uptime_ms, uint32_t heap_free, uint32_t heap_min_free, uint32_t imu_errors, uint32_t link_tx_dropped, uint32_t link_rx_errors, uint16_t reset_cause, uint16_t cpu_idle, uint16_t stack_min_free, const uint16_t *range_timeouts, const uint16_t *i2c_recoveries, uint16_t motor_faults, uint16_t link_reconnects, const char *stack_min_task, uint8_t imu_ok, uint8_t range_ok, uint32_t fault_pc, uint8_t fault_code, const char *fault_task, uint8_t flags)
+                               uint32_t uptime_ms, uint32_t heap_free, uint32_t heap_min_free, uint32_t imu_errors, uint32_t link_tx_dropped, uint32_t link_rx_errors, uint16_t reset_cause, uint16_t cpu_idle, uint16_t stack_min_free, const uint16_t *range_timeouts, const uint16_t *i2c_recoveries, uint16_t motor_faults, uint16_t link_reconnects, const char *stack_min_task, uint8_t imu_ok, uint8_t range_ok, uint32_t fault_pc, uint8_t fault_code, const char *fault_task, uint8_t flags, uint8_t clock_source)
 {
 #if MAVLINK_NEED_BYTE_SWAP || !MAVLINK_ALIGNED_FIELDS
     char buf[MAVLINK_MSG_ID_ROSBOT_DIAGNOSTICS_LEN];
@@ -228,6 +235,7 @@ static inline uint16_t mavlink_msg_rosbot_diagnostics_pack_status(uint8_t system
     _mav_put_uint8_t(buf, 67, range_ok);
     _mav_put_uint8_t(buf, 68, fault_code);
     _mav_put_uint8_t(buf, 85, flags);
+    _mav_put_uint8_t(buf, 86, clock_source);
     _mav_put_uint16_t_array(buf, 34, range_timeouts, 4);
     _mav_put_uint16_t_array(buf, 42, i2c_recoveries, 2);
     _mav_put_char_array(buf, 50, stack_min_task, 16);
@@ -251,6 +259,7 @@ static inline uint16_t mavlink_msg_rosbot_diagnostics_pack_status(uint8_t system
     packet.range_ok = range_ok;
     packet.fault_code = fault_code;
     packet.flags = flags;
+    packet.clock_source = clock_source;
     mav_array_memcpy(packet.range_timeouts, range_timeouts, sizeof(uint16_t)*4);
     mav_array_memcpy(packet.i2c_recoveries, i2c_recoveries, sizeof(uint16_t)*2);
     mav_array_memcpy(packet.stack_min_task, stack_min_task, sizeof(char)*16);
@@ -289,14 +298,15 @@ static inline uint16_t mavlink_msg_rosbot_diagnostics_pack_status(uint8_t system
  * @param imu_ok  1 when the IMU initialised and its last read succeeded.
  * @param range_ok  Bitmask of range sensors that initialised, bit 0 = FL.
  * @param fault_pc  Program counter of the exception that caused the last firmware fault, 0 if not an exception.
- * @param fault_code  Why the last firmware fault reset happened: 0 none or unknown, 1 assert, 2 stack overflow, 3 out of heap, 4 hard fault, 5 memory-management fault, 6 bus fault, 7 usage fault, 8 NMI, 9 clock start failure, 10 libc exit.
+ * @param fault_code  Why the last firmware fault reset happened: 0 none or unknown, 1 assert, 2 stack overflow, 3 out of heap, 4 hard fault, 5 memory-management fault, 6 bus fault, 7 usage fault, 8 NMI, 9 clock failure (did not start, or the crystal stopped), 10 libc exit.
  * @param fault_task  Task whose stack overflowed (fault_code 2).
  * @param flags  Bitmask: 1 battery low, 2 battery critical, 4 motor fault active, 8 power board answering, 16 Ethernet link up, 32 board has range sensors, 64 board has a power board, 128 board has Ethernet.
+ * @param clock_source  What clocks the MCU: 0 unknown (older firmware), 1 crystal, 2 internal RC oscillator because the crystal did not start.
  * @return length of the message in bytes (excluding serial stream start sign)
  */
 static inline uint16_t mavlink_msg_rosbot_diagnostics_pack_chan(uint8_t system_id, uint8_t component_id, uint8_t chan,
                                mavlink_message_t* msg,
-                                   uint32_t uptime_ms,uint32_t heap_free,uint32_t heap_min_free,uint32_t imu_errors,uint32_t link_tx_dropped,uint32_t link_rx_errors,uint16_t reset_cause,uint16_t cpu_idle,uint16_t stack_min_free,const uint16_t *range_timeouts,const uint16_t *i2c_recoveries,uint16_t motor_faults,uint16_t link_reconnects,const char *stack_min_task,uint8_t imu_ok,uint8_t range_ok,uint32_t fault_pc,uint8_t fault_code,const char *fault_task,uint8_t flags)
+                                   uint32_t uptime_ms,uint32_t heap_free,uint32_t heap_min_free,uint32_t imu_errors,uint32_t link_tx_dropped,uint32_t link_rx_errors,uint16_t reset_cause,uint16_t cpu_idle,uint16_t stack_min_free,const uint16_t *range_timeouts,const uint16_t *i2c_recoveries,uint16_t motor_faults,uint16_t link_reconnects,const char *stack_min_task,uint8_t imu_ok,uint8_t range_ok,uint32_t fault_pc,uint8_t fault_code,const char *fault_task,uint8_t flags,uint8_t clock_source)
 {
 #if MAVLINK_NEED_BYTE_SWAP || !MAVLINK_ALIGNED_FIELDS
     char buf[MAVLINK_MSG_ID_ROSBOT_DIAGNOSTICS_LEN];
@@ -316,6 +326,7 @@ static inline uint16_t mavlink_msg_rosbot_diagnostics_pack_chan(uint8_t system_i
     _mav_put_uint8_t(buf, 67, range_ok);
     _mav_put_uint8_t(buf, 68, fault_code);
     _mav_put_uint8_t(buf, 85, flags);
+    _mav_put_uint8_t(buf, 86, clock_source);
     _mav_put_uint16_t_array(buf, 34, range_timeouts, 4);
     _mav_put_uint16_t_array(buf, 42, i2c_recoveries, 2);
     _mav_put_char_array(buf, 50, stack_min_task, 16);
@@ -339,6 +350,7 @@ static inline uint16_t mavlink_msg_rosbot_diagnostics_pack_chan(uint8_t system_i
     packet.range_ok = range_ok;
     packet.fault_code = fault_code;
     packet.flags = flags;
+    packet.clock_source = clock_source;
     mav_array_assign_uint16_t(packet.range_timeouts, range_timeouts, 4);
     mav_array_assign_uint16_t(packet.i2c_recoveries, i2c_recoveries, 2);
     mav_array_assign_char(packet.stack_min_task, stack_min_task, 16);
@@ -360,7 +372,7 @@ static inline uint16_t mavlink_msg_rosbot_diagnostics_pack_chan(uint8_t system_i
  */
 static inline uint16_t mavlink_msg_rosbot_diagnostics_encode(uint8_t system_id, uint8_t component_id, mavlink_message_t* msg, const mavlink_rosbot_diagnostics_t* rosbot_diagnostics)
 {
-    return mavlink_msg_rosbot_diagnostics_pack(system_id, component_id, msg, rosbot_diagnostics->uptime_ms, rosbot_diagnostics->heap_free, rosbot_diagnostics->heap_min_free, rosbot_diagnostics->imu_errors, rosbot_diagnostics->link_tx_dropped, rosbot_diagnostics->link_rx_errors, rosbot_diagnostics->reset_cause, rosbot_diagnostics->cpu_idle, rosbot_diagnostics->stack_min_free, rosbot_diagnostics->range_timeouts, rosbot_diagnostics->i2c_recoveries, rosbot_diagnostics->motor_faults, rosbot_diagnostics->link_reconnects, rosbot_diagnostics->stack_min_task, rosbot_diagnostics->imu_ok, rosbot_diagnostics->range_ok, rosbot_diagnostics->fault_pc, rosbot_diagnostics->fault_code, rosbot_diagnostics->fault_task, rosbot_diagnostics->flags);
+    return mavlink_msg_rosbot_diagnostics_pack(system_id, component_id, msg, rosbot_diagnostics->uptime_ms, rosbot_diagnostics->heap_free, rosbot_diagnostics->heap_min_free, rosbot_diagnostics->imu_errors, rosbot_diagnostics->link_tx_dropped, rosbot_diagnostics->link_rx_errors, rosbot_diagnostics->reset_cause, rosbot_diagnostics->cpu_idle, rosbot_diagnostics->stack_min_free, rosbot_diagnostics->range_timeouts, rosbot_diagnostics->i2c_recoveries, rosbot_diagnostics->motor_faults, rosbot_diagnostics->link_reconnects, rosbot_diagnostics->stack_min_task, rosbot_diagnostics->imu_ok, rosbot_diagnostics->range_ok, rosbot_diagnostics->fault_pc, rosbot_diagnostics->fault_code, rosbot_diagnostics->fault_task, rosbot_diagnostics->flags, rosbot_diagnostics->clock_source);
 }
 
 /**
@@ -374,7 +386,7 @@ static inline uint16_t mavlink_msg_rosbot_diagnostics_encode(uint8_t system_id, 
  */
 static inline uint16_t mavlink_msg_rosbot_diagnostics_encode_chan(uint8_t system_id, uint8_t component_id, uint8_t chan, mavlink_message_t* msg, const mavlink_rosbot_diagnostics_t* rosbot_diagnostics)
 {
-    return mavlink_msg_rosbot_diagnostics_pack_chan(system_id, component_id, chan, msg, rosbot_diagnostics->uptime_ms, rosbot_diagnostics->heap_free, rosbot_diagnostics->heap_min_free, rosbot_diagnostics->imu_errors, rosbot_diagnostics->link_tx_dropped, rosbot_diagnostics->link_rx_errors, rosbot_diagnostics->reset_cause, rosbot_diagnostics->cpu_idle, rosbot_diagnostics->stack_min_free, rosbot_diagnostics->range_timeouts, rosbot_diagnostics->i2c_recoveries, rosbot_diagnostics->motor_faults, rosbot_diagnostics->link_reconnects, rosbot_diagnostics->stack_min_task, rosbot_diagnostics->imu_ok, rosbot_diagnostics->range_ok, rosbot_diagnostics->fault_pc, rosbot_diagnostics->fault_code, rosbot_diagnostics->fault_task, rosbot_diagnostics->flags);
+    return mavlink_msg_rosbot_diagnostics_pack_chan(system_id, component_id, chan, msg, rosbot_diagnostics->uptime_ms, rosbot_diagnostics->heap_free, rosbot_diagnostics->heap_min_free, rosbot_diagnostics->imu_errors, rosbot_diagnostics->link_tx_dropped, rosbot_diagnostics->link_rx_errors, rosbot_diagnostics->reset_cause, rosbot_diagnostics->cpu_idle, rosbot_diagnostics->stack_min_free, rosbot_diagnostics->range_timeouts, rosbot_diagnostics->i2c_recoveries, rosbot_diagnostics->motor_faults, rosbot_diagnostics->link_reconnects, rosbot_diagnostics->stack_min_task, rosbot_diagnostics->imu_ok, rosbot_diagnostics->range_ok, rosbot_diagnostics->fault_pc, rosbot_diagnostics->fault_code, rosbot_diagnostics->fault_task, rosbot_diagnostics->flags, rosbot_diagnostics->clock_source);
 }
 
 /**
@@ -388,7 +400,7 @@ static inline uint16_t mavlink_msg_rosbot_diagnostics_encode_chan(uint8_t system
  */
 static inline uint16_t mavlink_msg_rosbot_diagnostics_encode_status(uint8_t system_id, uint8_t component_id, mavlink_status_t* _status, mavlink_message_t* msg, const mavlink_rosbot_diagnostics_t* rosbot_diagnostics)
 {
-    return mavlink_msg_rosbot_diagnostics_pack_status(system_id, component_id, _status, msg,  rosbot_diagnostics->uptime_ms, rosbot_diagnostics->heap_free, rosbot_diagnostics->heap_min_free, rosbot_diagnostics->imu_errors, rosbot_diagnostics->link_tx_dropped, rosbot_diagnostics->link_rx_errors, rosbot_diagnostics->reset_cause, rosbot_diagnostics->cpu_idle, rosbot_diagnostics->stack_min_free, rosbot_diagnostics->range_timeouts, rosbot_diagnostics->i2c_recoveries, rosbot_diagnostics->motor_faults, rosbot_diagnostics->link_reconnects, rosbot_diagnostics->stack_min_task, rosbot_diagnostics->imu_ok, rosbot_diagnostics->range_ok, rosbot_diagnostics->fault_pc, rosbot_diagnostics->fault_code, rosbot_diagnostics->fault_task, rosbot_diagnostics->flags);
+    return mavlink_msg_rosbot_diagnostics_pack_status(system_id, component_id, _status, msg,  rosbot_diagnostics->uptime_ms, rosbot_diagnostics->heap_free, rosbot_diagnostics->heap_min_free, rosbot_diagnostics->imu_errors, rosbot_diagnostics->link_tx_dropped, rosbot_diagnostics->link_rx_errors, rosbot_diagnostics->reset_cause, rosbot_diagnostics->cpu_idle, rosbot_diagnostics->stack_min_free, rosbot_diagnostics->range_timeouts, rosbot_diagnostics->i2c_recoveries, rosbot_diagnostics->motor_faults, rosbot_diagnostics->link_reconnects, rosbot_diagnostics->stack_min_task, rosbot_diagnostics->imu_ok, rosbot_diagnostics->range_ok, rosbot_diagnostics->fault_pc, rosbot_diagnostics->fault_code, rosbot_diagnostics->fault_task, rosbot_diagnostics->flags, rosbot_diagnostics->clock_source);
 }
 
 /**
@@ -412,13 +424,14 @@ static inline uint16_t mavlink_msg_rosbot_diagnostics_encode_status(uint8_t syst
  * @param imu_ok  1 when the IMU initialised and its last read succeeded.
  * @param range_ok  Bitmask of range sensors that initialised, bit 0 = FL.
  * @param fault_pc  Program counter of the exception that caused the last firmware fault, 0 if not an exception.
- * @param fault_code  Why the last firmware fault reset happened: 0 none or unknown, 1 assert, 2 stack overflow, 3 out of heap, 4 hard fault, 5 memory-management fault, 6 bus fault, 7 usage fault, 8 NMI, 9 clock start failure, 10 libc exit.
+ * @param fault_code  Why the last firmware fault reset happened: 0 none or unknown, 1 assert, 2 stack overflow, 3 out of heap, 4 hard fault, 5 memory-management fault, 6 bus fault, 7 usage fault, 8 NMI, 9 clock failure (did not start, or the crystal stopped), 10 libc exit.
  * @param fault_task  Task whose stack overflowed (fault_code 2).
  * @param flags  Bitmask: 1 battery low, 2 battery critical, 4 motor fault active, 8 power board answering, 16 Ethernet link up, 32 board has range sensors, 64 board has a power board, 128 board has Ethernet.
+ * @param clock_source  What clocks the MCU: 0 unknown (older firmware), 1 crystal, 2 internal RC oscillator because the crystal did not start.
  */
 #ifdef MAVLINK_USE_CONVENIENCE_FUNCTIONS
 
-static inline void mavlink_msg_rosbot_diagnostics_send(mavlink_channel_t chan, uint32_t uptime_ms, uint32_t heap_free, uint32_t heap_min_free, uint32_t imu_errors, uint32_t link_tx_dropped, uint32_t link_rx_errors, uint16_t reset_cause, uint16_t cpu_idle, uint16_t stack_min_free, const uint16_t *range_timeouts, const uint16_t *i2c_recoveries, uint16_t motor_faults, uint16_t link_reconnects, const char *stack_min_task, uint8_t imu_ok, uint8_t range_ok, uint32_t fault_pc, uint8_t fault_code, const char *fault_task, uint8_t flags)
+static inline void mavlink_msg_rosbot_diagnostics_send(mavlink_channel_t chan, uint32_t uptime_ms, uint32_t heap_free, uint32_t heap_min_free, uint32_t imu_errors, uint32_t link_tx_dropped, uint32_t link_rx_errors, uint16_t reset_cause, uint16_t cpu_idle, uint16_t stack_min_free, const uint16_t *range_timeouts, const uint16_t *i2c_recoveries, uint16_t motor_faults, uint16_t link_reconnects, const char *stack_min_task, uint8_t imu_ok, uint8_t range_ok, uint32_t fault_pc, uint8_t fault_code, const char *fault_task, uint8_t flags, uint8_t clock_source)
 {
 #if MAVLINK_NEED_BYTE_SWAP || !MAVLINK_ALIGNED_FIELDS
     char buf[MAVLINK_MSG_ID_ROSBOT_DIAGNOSTICS_LEN];
@@ -438,6 +451,7 @@ static inline void mavlink_msg_rosbot_diagnostics_send(mavlink_channel_t chan, u
     _mav_put_uint8_t(buf, 67, range_ok);
     _mav_put_uint8_t(buf, 68, fault_code);
     _mav_put_uint8_t(buf, 85, flags);
+    _mav_put_uint8_t(buf, 86, clock_source);
     _mav_put_uint16_t_array(buf, 34, range_timeouts, 4);
     _mav_put_uint16_t_array(buf, 42, i2c_recoveries, 2);
     _mav_put_char_array(buf, 50, stack_min_task, 16);
@@ -461,6 +475,7 @@ static inline void mavlink_msg_rosbot_diagnostics_send(mavlink_channel_t chan, u
     packet.range_ok = range_ok;
     packet.fault_code = fault_code;
     packet.flags = flags;
+    packet.clock_source = clock_source;
     mav_array_assign_uint16_t(packet.range_timeouts, range_timeouts, 4);
     mav_array_assign_uint16_t(packet.i2c_recoveries, i2c_recoveries, 2);
     mav_array_assign_char(packet.stack_min_task, stack_min_task, 16);
@@ -477,7 +492,7 @@ static inline void mavlink_msg_rosbot_diagnostics_send(mavlink_channel_t chan, u
 static inline void mavlink_msg_rosbot_diagnostics_send_struct(mavlink_channel_t chan, const mavlink_rosbot_diagnostics_t* rosbot_diagnostics)
 {
 #if MAVLINK_NEED_BYTE_SWAP || !MAVLINK_ALIGNED_FIELDS
-    mavlink_msg_rosbot_diagnostics_send(chan, rosbot_diagnostics->uptime_ms, rosbot_diagnostics->heap_free, rosbot_diagnostics->heap_min_free, rosbot_diagnostics->imu_errors, rosbot_diagnostics->link_tx_dropped, rosbot_diagnostics->link_rx_errors, rosbot_diagnostics->reset_cause, rosbot_diagnostics->cpu_idle, rosbot_diagnostics->stack_min_free, rosbot_diagnostics->range_timeouts, rosbot_diagnostics->i2c_recoveries, rosbot_diagnostics->motor_faults, rosbot_diagnostics->link_reconnects, rosbot_diagnostics->stack_min_task, rosbot_diagnostics->imu_ok, rosbot_diagnostics->range_ok, rosbot_diagnostics->fault_pc, rosbot_diagnostics->fault_code, rosbot_diagnostics->fault_task, rosbot_diagnostics->flags);
+    mavlink_msg_rosbot_diagnostics_send(chan, rosbot_diagnostics->uptime_ms, rosbot_diagnostics->heap_free, rosbot_diagnostics->heap_min_free, rosbot_diagnostics->imu_errors, rosbot_diagnostics->link_tx_dropped, rosbot_diagnostics->link_rx_errors, rosbot_diagnostics->reset_cause, rosbot_diagnostics->cpu_idle, rosbot_diagnostics->stack_min_free, rosbot_diagnostics->range_timeouts, rosbot_diagnostics->i2c_recoveries, rosbot_diagnostics->motor_faults, rosbot_diagnostics->link_reconnects, rosbot_diagnostics->stack_min_task, rosbot_diagnostics->imu_ok, rosbot_diagnostics->range_ok, rosbot_diagnostics->fault_pc, rosbot_diagnostics->fault_code, rosbot_diagnostics->fault_task, rosbot_diagnostics->flags, rosbot_diagnostics->clock_source);
 #else
     _mav_finalize_message_chan_send(chan, MAVLINK_MSG_ID_ROSBOT_DIAGNOSTICS, (const char *)rosbot_diagnostics, MAVLINK_MSG_ID_ROSBOT_DIAGNOSTICS_MIN_LEN, MAVLINK_MSG_ID_ROSBOT_DIAGNOSTICS_LEN, MAVLINK_MSG_ID_ROSBOT_DIAGNOSTICS_CRC);
 #endif
@@ -491,7 +506,7 @@ static inline void mavlink_msg_rosbot_diagnostics_send_struct(mavlink_channel_t 
   is usually the receive buffer for the channel, and allows a reply to an
   incoming message with minimum stack space usage.
  */
-static inline void mavlink_msg_rosbot_diagnostics_send_buf(mavlink_message_t *msgbuf, mavlink_channel_t chan,  uint32_t uptime_ms, uint32_t heap_free, uint32_t heap_min_free, uint32_t imu_errors, uint32_t link_tx_dropped, uint32_t link_rx_errors, uint16_t reset_cause, uint16_t cpu_idle, uint16_t stack_min_free, const uint16_t *range_timeouts, const uint16_t *i2c_recoveries, uint16_t motor_faults, uint16_t link_reconnects, const char *stack_min_task, uint8_t imu_ok, uint8_t range_ok, uint32_t fault_pc, uint8_t fault_code, const char *fault_task, uint8_t flags)
+static inline void mavlink_msg_rosbot_diagnostics_send_buf(mavlink_message_t *msgbuf, mavlink_channel_t chan,  uint32_t uptime_ms, uint32_t heap_free, uint32_t heap_min_free, uint32_t imu_errors, uint32_t link_tx_dropped, uint32_t link_rx_errors, uint16_t reset_cause, uint16_t cpu_idle, uint16_t stack_min_free, const uint16_t *range_timeouts, const uint16_t *i2c_recoveries, uint16_t motor_faults, uint16_t link_reconnects, const char *stack_min_task, uint8_t imu_ok, uint8_t range_ok, uint32_t fault_pc, uint8_t fault_code, const char *fault_task, uint8_t flags, uint8_t clock_source)
 {
 #if MAVLINK_NEED_BYTE_SWAP || !MAVLINK_ALIGNED_FIELDS
     char *buf = (char *)msgbuf;
@@ -511,6 +526,7 @@ static inline void mavlink_msg_rosbot_diagnostics_send_buf(mavlink_message_t *ms
     _mav_put_uint8_t(buf, 67, range_ok);
     _mav_put_uint8_t(buf, 68, fault_code);
     _mav_put_uint8_t(buf, 85, flags);
+    _mav_put_uint8_t(buf, 86, clock_source);
     _mav_put_uint16_t_array(buf, 34, range_timeouts, 4);
     _mav_put_uint16_t_array(buf, 42, i2c_recoveries, 2);
     _mav_put_char_array(buf, 50, stack_min_task, 16);
@@ -534,6 +550,7 @@ static inline void mavlink_msg_rosbot_diagnostics_send_buf(mavlink_message_t *ms
     packet->range_ok = range_ok;
     packet->fault_code = fault_code;
     packet->flags = flags;
+    packet->clock_source = clock_source;
     mav_array_assign_uint16_t(packet->range_timeouts, range_timeouts, 4);
     mav_array_assign_uint16_t(packet->i2c_recoveries, i2c_recoveries, 2);
     mav_array_assign_char(packet->stack_min_task, stack_min_task, 16);
@@ -721,7 +738,7 @@ static inline uint32_t mavlink_msg_rosbot_diagnostics_get_fault_pc(const mavlink
 /**
  * @brief Get field fault_code from rosbot_diagnostics message
  *
- * @return  Why the last firmware fault reset happened: 0 none or unknown, 1 assert, 2 stack overflow, 3 out of heap, 4 hard fault, 5 memory-management fault, 6 bus fault, 7 usage fault, 8 NMI, 9 clock start failure, 10 libc exit.
+ * @return  Why the last firmware fault reset happened: 0 none or unknown, 1 assert, 2 stack overflow, 3 out of heap, 4 hard fault, 5 memory-management fault, 6 bus fault, 7 usage fault, 8 NMI, 9 clock failure (did not start, or the crystal stopped), 10 libc exit.
  */
 static inline uint8_t mavlink_msg_rosbot_diagnostics_get_fault_code(const mavlink_message_t* msg)
 {
@@ -746,6 +763,16 @@ static inline uint16_t mavlink_msg_rosbot_diagnostics_get_fault_task(const mavli
 static inline uint8_t mavlink_msg_rosbot_diagnostics_get_flags(const mavlink_message_t* msg)
 {
     return _MAV_RETURN_uint8_t(msg,  85);
+}
+
+/**
+ * @brief Get field clock_source from rosbot_diagnostics message
+ *
+ * @return  What clocks the MCU: 0 unknown (older firmware), 1 crystal, 2 internal RC oscillator because the crystal did not start.
+ */
+static inline uint8_t mavlink_msg_rosbot_diagnostics_get_clock_source(const mavlink_message_t* msg)
+{
+    return _MAV_RETURN_uint8_t(msg,  86);
 }
 
 /**
@@ -777,6 +804,7 @@ static inline void mavlink_msg_rosbot_diagnostics_decode(const mavlink_message_t
     rosbot_diagnostics->fault_code = mavlink_msg_rosbot_diagnostics_get_fault_code(msg);
     mavlink_msg_rosbot_diagnostics_get_fault_task(msg, rosbot_diagnostics->fault_task);
     rosbot_diagnostics->flags = mavlink_msg_rosbot_diagnostics_get_flags(msg);
+    rosbot_diagnostics->clock_source = mavlink_msg_rosbot_diagnostics_get_clock_source(msg);
 #else
         uint8_t len = msg->len < MAVLINK_MSG_ID_ROSBOT_DIAGNOSTICS_LEN? msg->len : MAVLINK_MSG_ID_ROSBOT_DIAGNOSTICS_LEN;
         memset(rosbot_diagnostics, 0, MAVLINK_MSG_ID_ROSBOT_DIAGNOSTICS_LEN);

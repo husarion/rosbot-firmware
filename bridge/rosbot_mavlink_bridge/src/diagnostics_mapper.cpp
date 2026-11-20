@@ -63,7 +63,7 @@ std::string faultText(const mavlink_rosbot_diagnostics_t & d)
   static const char * const kNames[] = {
     "unknown", "assert", "stack overflow", "out of heap", "hard fault",
     "memory-management fault", "bus fault", "usage fault", "NMI",
-    "clock start failure", "libc exit"};
+    "clock failure", "libc exit"};
   std::string out = d.fault_code < sizeof(kNames) / sizeof(kNames[0]) ?
     kNames[d.fault_code] : "code " + std::to_string(d.fault_code);
   if (d.fault_code == 2) {
@@ -167,6 +167,13 @@ diagnostic_msgs::msg::DiagnosticArray DiagnosticsMapper::map(
     mcu.raise(DiagnosticStatus::WARN, "Last reset was a firmware fault: " + faultText(d));
     mcu.add("Last fault", faultText(d));
   }
+  // clock_source is a MAVLink extension: 0 from firmware without it.
+  if (d.clock_source == 2) {
+    mcu.raise(
+      DiagnosticStatus::WARN, "Crystal did not start, running on the internal oscillator");
+  }
+  static const char * const kClock[] = {"unknown", "crystal", "internal RC"};
+  mcu.add("Clock source", std::string(d.clock_source < 3 ? kClock[d.clock_source] : "unknown"));
   mcu.add("Uptime [s]", d.uptime_ms / 1000);
   mcu.add("Last reset", resetCauseText(d.reset_cause));
   if (idle_known) {

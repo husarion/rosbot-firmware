@@ -87,9 +87,11 @@
       <field type="uint8_t" name="imu_ok">1 when the IMU initialised and its last read succeeded.</field>
       <field type="uint8_t" name="range_ok">Bitmask of range sensors that initialised, bit 0 = FL.</field>
       <field type="uint32_t" name="fault_pc">Program counter of the exception that caused the last firmware fault, 0 if not an exception.</field>
-      <field type="uint8_t" name="fault_code">Why the last firmware fault reset happened: 0 none or unknown, 1 assert, 2 stack overflow, 3 out of heap, 4 hard fault, 5 memory-management fault, 6 bus fault, 7 usage fault, 8 NMI, 9 clock start failure, 10 libc exit.</field>
+      <field type="uint8_t" name="fault_code">Why the last firmware fault reset happened: 0 none or unknown, 1 assert, 2 stack overflow, 3 out of heap, 4 hard fault, 5 memory-management fault, 6 bus fault, 7 usage fault, 8 NMI, 9 clock failure (did not start, or the crystal stopped), 10 libc exit.</field>
       <field type="char[16]" name="fault_task">Task whose stack overflowed (fault_code 2).</field>
       <field type="uint8_t" name="flags">Bitmask: 1 battery low, 2 battery critical, 4 motor fault active, 8 power board answering, 16 Ethernet link up, 32 board has range sensors, 64 board has a power board, 128 board has Ethernet.</field>
+      <extensions/>
+      <field type="uint8_t" name="clock_source">What clocks the MCU: 0 unknown (older firmware), 1 crystal, 2 internal RC oscillator because the crystal did not start.</field>
     </message>
   </messages>
 </mavlink>

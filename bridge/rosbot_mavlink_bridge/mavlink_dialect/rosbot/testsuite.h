@@ -586,7 +586,7 @@ static void mavlink_test_rosbot_diagnostics(uint8_t system_id, uint8_t component
         uint8_t buffer[MAVLINK_MAX_PACKET_LEN];
         uint16_t i;
     mavlink_rosbot_diagnostics_t packet_in = {
-        963497464,963497672,963497880,963498088,963498296,963498504,963498712,18691,18795,18899,{ 19003, 19004, 19005, 19006 },{ 19419, 19420 },19627,19731,"YZABCDEFGHIJKLM",75,142,209,"RSTUVWXYZABCDEF",68
+        963497464,963497672,963497880,963498088,963498296,963498504,963498712,18691,18795,18899,{ 19003, 19004, 19005, 19006 },{ 19419, 19420 },19627,19731,"YZABCDEFGHIJKLM",75,142,209,"RSTUVWXYZABCDEF",68,135
     };
     mavlink_rosbot_diagnostics_t packet1, packet2;
         memset(&packet1, 0, sizeof(packet1));
@@ -606,6 +606,7 @@ static void mavlink_test_rosbot_diagnostics(uint8_t system_id, uint8_t component
         packet1.range_ok = packet_in.range_ok;
         packet1.fault_code = packet_in.fault_code;
         packet1.flags = packet_in.flags;
+        packet1.clock_source = packet_in.clock_source;
         
         mav_array_memcpy(packet1.range_timeouts, packet_in.range_timeouts, sizeof(uint16_t)*4);
         mav_array_memcpy(packet1.i2c_recoveries, packet_in.i2c_recoveries, sizeof(uint16_t)*2);
@@ -624,12 +625,12 @@ static void mavlink_test_rosbot_diagnostics(uint8_t system_id, uint8_t component
         MAVLINK_ASSERT(memcmp(&packet1, &packet2, sizeof(packet1)) == 0);
 
         memset(&packet2, 0, sizeof(packet2));
-    mavlink_msg_rosbot_diagnostics_pack(system_id, component_id, &msg , packet1.uptime_ms , packet1.heap_free , packet1.heap_min_free , packet1.imu_errors , packet1.link_tx_dropped , packet1.link_rx_errors , packet1.reset_cause , packet1.cpu_idle , packet1.stack_min_free , packet1.range_timeouts , packet1.i2c_recoveries , packet1.motor_faults , packet1.link_reconnects , packet1.stack_min_task , packet1.imu_ok , packet1.range_ok , packet1.fault_pc , packet1.fault_code , packet1.fault_task , packet1.flags );
+    mavlink_msg_rosbot_diagnostics_pack(system_id, component_id, &msg , packet1.uptime_ms , packet1.heap_free , packet1.heap_min_free , packet1.imu_errors , packet1.link_tx_dropped , packet1.link_rx_errors , packet1.reset_cause , packet1.cpu_idle , packet1.stack_min_free , packet1.range_timeouts , packet1.i2c_recoveries , packet1.motor_faults , packet1.link_reconnects , packet1.stack_min_task , packet1.imu_ok , packet1.range_ok , packet1.fault_pc , packet1.fault_code , packet1.fault_task , packet1.flags , packet1.clock_source );
     mavlink_msg_rosbot_diagnostics_decode(&msg, &packet2);
         MAVLINK_ASSERT(memcmp(&packet1, &packet2, sizeof(packet1)) == 0);
 
         memset(&packet2, 0, sizeof(packet2));
-    mavlink_msg_rosbot_diagnostics_pack_chan(system_id, component_id, MAVLINK_COMM_0, &msg , packet1.uptime_ms , packet1.heap_free , packet1.heap_min_free , packet1.imu_errors , packet1.link_tx_dropped , packet1.link_rx_errors , packet1.reset_cause , packet1.cpu_idle , packet1.stack_min_free , packet1.range_timeouts , packet1.i2c_recoveries , packet1.motor_faults , packet1.link_reconnects , packet1.stack_min_task , packet1.imu_ok , packet1.range_ok , packet1.fault_pc , packet1.fault_code , packet1.fault_task , packet1.flags );
+    mavlink_msg_rosbot_diagnostics_pack_chan(system_id, component_id, MAVLINK_COMM_0, &msg , packet1.uptime_ms , packet1.heap_free , packet1.heap_min_free , packet1.imu_errors , packet1.link_tx_dropped , packet1.link_rx_errors , packet1.reset_cause , packet1.cpu_idle , packet1.stack_min_free , packet1.range_timeouts , packet1.i2c_recoveries , packet1.motor_faults , packet1.link_reconnects , packet1.stack_min_task , packet1.imu_ok , packet1.range_ok , packet1.fault_pc , packet1.fault_code , packet1.fault_task , packet1.flags , packet1.clock_source );
     mavlink_msg_rosbot_diagnostics_decode(&msg, &packet2);
         MAVLINK_ASSERT(memcmp(&packet1, &packet2, sizeof(packet1)) == 0);
 
@@ -642,7 +643,7 @@ static void mavlink_test_rosbot_diagnostics(uint8_t system_id, uint8_t component
         MAVLINK_ASSERT(memcmp(&packet1, &packet2, sizeof(packet1)) == 0);
         
         memset(&packet2, 0, sizeof(packet2));
-    mavlink_msg_rosbot_diagnostics_send(MAVLINK_COMM_1 , packet1.uptime_ms , packet1.heap_free , packet1.heap_min_free , packet1.imu_errors , packet1.link_tx_dropped , packet1.link_rx_errors , packet1.reset_cause , packet1.cpu_idle , packet1.stack_min_free , packet1.range_timeouts , packet1.i2c_recoveries , packet1.motor_faults , packet1.link_reconnects , packet1.stack_min_task , packet1.imu_ok , packet1.range_ok , packet1.fault_pc , packet1.fault_code , packet1.fault_task , packet1.flags );
+    mavlink_msg_rosbot_diagnostics_send(MAVLINK_COMM_1 , packet1.uptime_ms , packet1.heap_free , packet1.heap_min_free , packet1.imu_errors , packet1.link_tx_dropped , packet1.link_rx_errors , packet1.reset_cause , packet1.cpu_idle , packet1.stack_min_free , packet1.range_timeouts , packet1.i2c_recoveries , packet1.motor_faults , packet1.link_reconnects , packet1.stack_min_task , packet1.imu_ok , packet1.range_ok , packet1.fault_pc , packet1.fault_code , packet1.fault_task , packet1.flags , packet1.clock_source );
     mavlink_msg_rosbot_diagnostics_decode(last_msg, &packet2);
         MAVLINK_ASSERT(memcmp(&packet1, &packet2, sizeof(packet1)) == 0);
 

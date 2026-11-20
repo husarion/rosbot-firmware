@@ -74,6 +74,7 @@ McuHealth sampleMcuHealth() {
   out.fault_code = s_fault_code;
   out.fault_pc = s_fault_pc;
   std::memcpy(out.fault_task, s_fault_task, sizeof(out.fault_task));
+  out.clock_source = decodeClockSource(RCC->PLLCFGR);
 
   // Task names live in the TCBs, which never go away: no task is deleted
   // after boot.

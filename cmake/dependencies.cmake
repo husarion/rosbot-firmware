@@ -55,13 +55,17 @@ set(BOARD_DIR ${REPO_ROOT}/boards/stm32f407)
 
 # CMSIS + HAL + startup, shared by both boards.
 set(_hal ${stm32f4_hal_SOURCE_DIR}/Src)
-# Startup and SystemInit go into the firmware's own objects (an archive
-# member is only linked when referenced, and nothing references the vector
-# table).
+# Startup goes into the firmware's own objects (an archive member is only
+# linked when referenced, and nothing references the vector table).
 set(STM32F4_STARTUP_SOURCES
-  ${cmsis_device_f4_SOURCE_DIR}/Source/Templates/gcc/startup_stm32f407xx.s
-  ${cmsis_device_f4_SOURCE_DIR}/Source/Templates/system_stm32f4xx.c)
-set_source_files_properties(${STM32F4_STARTUP_SOURCES}
+  ${cmsis_device_f4_SOURCE_DIR}/Source/Templates/gcc/startup_stm32f407xx.s)
+# The only vendor sources that read HSE_VALUE, which differs per board:
+# add_firmware() compiles them once per board.
+set(STM32F4_CLOCK_SOURCES
+  ${cmsis_device_f4_SOURCE_DIR}/Source/Templates/system_stm32f4xx.c
+  ${_hal}/stm32f4xx_hal_rcc.c
+  ${_hal}/stm32f4xx_hal_rcc_ex.c)
+set_source_files_properties(${STM32F4_STARTUP_SOURCES} ${STM32F4_CLOCK_SOURCES}
   PROPERTIES COMPILE_OPTIONS -w)
 add_library(stm32f4_hal STATIC
   ${_hal}/stm32f4xx_hal.c
@@ -77,8 +81,6 @@ add_library(stm32f4_hal STATIC
   ${_hal}/stm32f4xx_hal_i2c_ex.c
   ${_hal}/stm32f4xx_hal_pwr.c
   ${_hal}/stm32f4xx_hal_pwr_ex.c
-  ${_hal}/stm32f4xx_hal_rcc.c
-  ${_hal}/stm32f4xx_hal_rcc_ex.c
   ${_hal}/stm32f4xx_hal_tim.c
   ${_hal}/stm32f4xx_hal_tim_ex.c
   ${_hal}/Legacy/stm32f4xx_hal_eth.c)

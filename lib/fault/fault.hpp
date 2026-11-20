@@ -31,7 +31,7 @@ enum FaultCode {
   kFaultBusFault = 6,
   kFaultUsageFault = 7,
   kFaultNmi = 8,
-  kFaultClock = 9,  // clock tree did not start
+  kFaultClock = 9,  // clock tree did not start, or the crystal stopped
   kFaultExit = 10,  // libc _exit()
 };
 

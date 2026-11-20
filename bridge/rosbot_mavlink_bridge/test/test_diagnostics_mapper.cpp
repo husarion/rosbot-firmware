@@ -132,6 +132,21 @@ TEST(DiagnosticsMapper, McuRebootRestartsHistory)
   EXPECT_EQ(status(m.map(fresh, 2 * kSec), "Link").level, DiagnosticStatus::OK);
 }
 
+TEST(DiagnosticsMapper, ClockSourceWarnsOnlyOnTheInternalOscillator)
+{
+  DiagnosticsMapper m("rosbot_mcu");
+  auto d = healthyRosbot(5000);  // clock_source 0: firmware without the field
+  EXPECT_EQ(status(m.map(d, 0), "MCU").level, DiagnosticStatus::OK);
+  EXPECT_EQ(value(status(m.map(d, 0), "MCU"), "Clock source"), "unknown");
+  d.clock_source = 1;
+  EXPECT_EQ(status(m.map(d, 0), "MCU").level, DiagnosticStatus::OK);
+  EXPECT_EQ(value(status(m.map(d, 0), "MCU"), "Clock source"), "crystal");
+  d.clock_source = 2;
+  const auto a = m.map(d, 0);
+  EXPECT_EQ(status(a, "MCU").level, DiagnosticStatus::WARN);
+  EXPECT_EQ(value(status(a, "MCU"), "Clock source"), "internal RC");
+}
+
 TEST(DiagnosticsMapper, McuResourceThresholds)
 {
   DiagnosticsMapper m("rosbot_mcu");

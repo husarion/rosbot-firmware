@@ -95,7 +95,6 @@ list(FILTER _common_src EXCLUDE REGEX "/lib/ethernet/")
 add_library(fw_common OBJECT
   ${_common_src}
   ${STM32F4_STARTUP_SOURCES}
-  ${BOARD_DIR}/system.cpp
   ${BOARD_DIR}/heap_newlib.c
   ${BOARD_DIR}/syscalls.c)
 target_include_directories(fw_common PUBLIC
@@ -120,10 +119,13 @@ add_library(fw_ethernet OBJECT
 target_link_libraries(fw_ethernet PUBLIC fw_common)
 target_compile_options(fw_ethernet PRIVATE ${WARNINGS})
 
+# HSE_HZ: the board's crystal; the clock tree and HAL's clock math need it.
 function(add_firmware name)
-  cmake_parse_arguments(ARG "" "" "OBJECTS" ${ARGN})
+  cmake_parse_arguments(ARG "" "HSE_HZ" "OBJECTS" ${ARGN})
   file(GLOB _src CONFIGURE_DEPENDS ${REPO_ROOT}/src/${name}/*.cpp)
-  add_executable(${name} ${_src})
+  add_executable(${name} ${_src} ${BOARD_DIR}/system.cpp
+                 ${STM32F4_CLOCK_SOURCES})
+  target_compile_definitions(${name} PRIVATE HSE_VALUE=${ARG_HSE_HZ}U)
   set_target_properties(${name} PROPERTIES SUFFIX ".elf")
   target_link_libraries(${name} PRIVATE fw_common ${ARG_OBJECTS})
   target_compile_options(${name} PRIVATE ${WARNINGS})
@@ -139,5 +141,5 @@ function(add_firmware name)
     VERBATIM)
 endfunction()
 
-add_firmware(rosbot)
-add_firmware(rosbot_xl OBJECTS fw_ethernet)
+add_firmware(rosbot HSE_HZ 8000000)  # CORE2 v1.3+ Q1, measured on HW
+add_firmware(rosbot_xl HSE_HZ 24000000 OBJECTS fw_ethernet)  # Digital Board Q1

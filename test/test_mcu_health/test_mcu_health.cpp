@@ -17,7 +17,11 @@
 #include "mcu_health_math.hpp"
 
 using diagnostics::computeTaskLoad;
+using diagnostics::decodeClockSource;
 using diagnostics::decodeResetCause;
+using diagnostics::kClockCrystal;
+using diagnostics::kClockInternal;
+using diagnostics::kPllCfgrPllSrcHse;
 using diagnostics::TaskSample;
 
 namespace {
@@ -80,6 +84,12 @@ void test_reset_causes() {
                           decodeResetCause(kCsrLpwrRst | kCsrWwdgRst, false));
 }
 
+void test_clock_source_from_pllsrc() {
+  TEST_ASSERT_EQUAL(kClockCrystal,
+                    decodeClockSource(kPllCfgrPllSrcHse | 0x2A8));
+  TEST_ASSERT_EQUAL(kClockInternal, decodeClockSource(0x24003010));
+}
+
 int main() {
   UNITY_BEGIN();
   RUN_TEST(test_idle_share_comes_from_counter_deltas);
@@ -88,5 +98,6 @@ int main() {
   RUN_TEST(test_smallest_stack_and_its_task);
   RUN_TEST(test_no_activity_reads_as_fully_idle);
   RUN_TEST(test_reset_causes);
+  RUN_TEST(test_clock_source_from_pllsrc);
   return UNITY_END();
 }

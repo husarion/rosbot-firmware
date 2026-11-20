@@ -22,28 +22,47 @@ extern "C" void setup(void);
 
 namespace {
 
-// Internal 16 MHz RC -> PLL -> 168 MHz, APB1 42 MHz, APB2 84 MHz: the clock
-// tree of the stm32duino generic F407ZG variant this firmware ran on before.
-// The RC is +-1 % over temperature; see the plan's finding 14 (crystal).
-void systemClockConfig() {
+// 2 MHz into the VCO (RM0090 recommends it, less PLL jitter), VCO 336 MHz:
+// SYSCLK 168 MHz, 48 MHz on PLLQ; APB1 42 MHz, APB2 84 MHz, whichever source.
+constexpr uint32_t kPllInputHz = 2000000;
+static_assert(HSE_VALUE % kPllInputHz == 0, "crystal must divide to 2 MHz");
+
+bool startPll(uint32_t source) {
   RCC_OscInitTypeDef osc = {};
-  RCC_ClkInitTypeDef clk = {};
-
-  __HAL_RCC_PWR_CLK_ENABLE();
-  __HAL_PWR_VOLTAGESCALING_CONFIG(PWR_REGULATOR_VOLTAGE_SCALE1);
-
-  osc.OscillatorType = RCC_OSCILLATORTYPE_HSI;
-  osc.HSIState = RCC_HSI_ON;
-  osc.HSICalibrationValue = RCC_HSICALIBRATION_DEFAULT;
+  if (source == RCC_PLLSOURCE_HSE) {
+    osc.OscillatorType = RCC_OSCILLATORTYPE_HSE;
+    osc.HSEState = RCC_HSE_ON;
+    osc.PLL.PLLM = HSE_VALUE / kPllInputHz;
+  } else {
+    // A crystal that never started is switched off again.
+    osc.OscillatorType = RCC_OSCILLATORTYPE_HSI | RCC_OSCILLATORTYPE_HSE;
+    osc.HSIState = RCC_HSI_ON;
+    osc.HSICalibrationValue = RCC_HSICALIBRATION_DEFAULT;
+    osc.HSEState = RCC_HSE_OFF;
+    osc.PLL.PLLM = HSI_VALUE / kPllInputHz;
+  }
   osc.PLL.PLLState = RCC_PLL_ON;
-  osc.PLL.PLLSource = RCC_PLLSOURCE_HSI;
-  osc.PLL.PLLM = 8;
+  osc.PLL.PLLSource = source;
   osc.PLL.PLLN = 168;
   osc.PLL.PLLP = RCC_PLLP_DIV2;
   osc.PLL.PLLQ = 7;
-  if (HAL_RCC_OscConfig(&osc) != HAL_OK)
-    fatalErrorWithCode(kFaultClock, 0, nullptr);
+  return HAL_RCC_OscConfig(&osc) == HAL_OK;
+}
 
+// The crystal (CORE2 8 MHz, Digital Board 24 MHz) keeps MCU time within
+// tens of ppm; the internal RC drifted ~2000 ppm on HW and made the bridge
+// re-seed TIMESYNC every 30-40 s. The RC stays as the fallback when the
+// crystal does not start within HSE_STARTUP_TIMEOUT.
+void systemClockConfig() {
+  __HAL_RCC_PWR_CLK_ENABLE();
+  __HAL_PWR_VOLTAGESCALING_CONFIG(PWR_REGULATOR_VOLTAGE_SCALE1);
+
+  const bool crystal = startPll(RCC_PLLSOURCE_HSE);
+  if (!crystal && !startPll(RCC_PLLSOURCE_HSI)) {
+    fatalErrorWithCode(kFaultClock, 0, nullptr);
+  }
+
+  RCC_ClkInitTypeDef clk = {};
   clk.ClockType = RCC_CLOCKTYPE_HCLK | RCC_CLOCKTYPE_SYSCLK |
                   RCC_CLOCKTYPE_PCLK1 | RCC_CLOCKTYPE_PCLK2;
   clk.SYSCLKSource = RCC_SYSCLKSOURCE_PLLCLK;
@@ -53,6 +72,8 @@ void systemClockConfig() {
   if (HAL_RCC_ClockConfig(&clk, FLASH_LATENCY_5) != HAL_OK) {
     fatalErrorWithCode(kFaultClock, 0, nullptr);
   }
+  // A crystal that stops later raises an NMI (CSS); see NMI_Handler.
+  if (crystal) HAL_RCC_EnableCSS();
 }
 
 }  // namespace
@@ -75,7 +96,11 @@ extern "C" void SysTick_Handler(void) {
   }
 }
 
-extern "C" void NMI_Handler(void) { fatalErrorWithCode(kFaultNmi, 0, nullptr); }
+extern "C" void NMI_Handler(void) {
+  // CSS already moved SYSCLK to the RC; the reset retries the crystal.
+  if (RCC->CIR & RCC_CIR_CSSF) fatalErrorWithCode(kFaultClock, 0, nullptr);
+  fatalErrorWithCode(kFaultNmi, 0, nullptr);
+}
 
 // Pass the stacked exception frame (MSP or PSP, by EXC_RETURN bit 2) so the
 // faulting PC survives the reset.

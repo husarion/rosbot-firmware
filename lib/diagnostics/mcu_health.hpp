@@ -28,9 +28,10 @@ struct McuHealth {
   uint32_t heap_min_free;   // never handed out since boot
   uint32_t stack_min_free;  // bytes, smallest of any task
   char stack_min_task[16];
-  uint8_t fault_code;   // FaultCode of the last fatalError(), 0 if none
-  uint32_t fault_pc;    // faulting PC for exception codes
-  char fault_task[16];  // task for a stack overflow
+  uint8_t fault_code;    // FaultCode of the last fatalError(), 0 if none
+  uint32_t fault_pc;     // faulting PC for exception codes
+  char fault_task[16];   // task for a stack overflow
+  uint8_t clock_source;  // ClockSource
 };
 
 // Reads and clears the RCC reset flags. Call once at boot with what

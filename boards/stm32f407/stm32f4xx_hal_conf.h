@@ -35,7 +35,9 @@ extern "C" {
 #define HAL_RCC_MODULE_ENABLED
 #define HAL_TIM_MODULE_ENABLED
 
-#define HSE_VALUE 8000000U
+// HSE_VALUE is per board, from add_firmware() in cmake/CMakeLists.txt, and
+// defined only for the sources that read it (STM32F4_CLOCK_SOURCES,
+// system.cpp).
 #define HSE_STARTUP_TIMEOUT 100U
 #define HSI_VALUE 16000000U
 #define LSI_VALUE 32000U
