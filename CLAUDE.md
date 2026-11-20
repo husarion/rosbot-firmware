@@ -41,9 +41,11 @@ again about rewriting it in Rust.
 ## Build
 
 ```bash
+just check                    # before every commit: hooks, both boards, host tests
 just build rosbot             # build/release/rosbot.bin
-just build-all                # both boards
 just test                     # host unit tests (CTest, test/)
+just flash-swd rosbot_xl      # ST-LINK (OpenOCD, 4 MHz); `just flash` = bootloader via rosbot_utils
+just debug-server             # OpenOCD gdb server on :3333
 ```
 
 Needs `cmake ninja-build gcc-arm-none-eabi libnewlib-arm-none-eabi
@@ -53,13 +55,22 @@ compiler package). The CMake project is in
 ARCHITECTURE.md "Build". **After any change in `lib/`, `boards/` or
 `cmake/` build BOTH boards** (`just build-all`). CI does it, you should too.
 
+## Testing on hardware
+
+Changes to drivers, timing or the clock need a run on both robots, not only
+host tests. Flash with `just flash-swd` when an ST-LINK is attached, or from
+the robot's SBC with the snap: put the `.bin` in
+`/var/snap/rosbot/current/config_dir/rosbot_utils/firmware/` under the
+version name the snap expects and run `sudo rosbot.flash`; flash the factory
+image back afterwards. Check `diagnostics` (see ROS_API.md) and the topic
+rates. **Never command wheel motion while a cable or charger is attached**;
+wheels in the air unless the user says the robot is free on the floor.
+Flashing or resetting a robot needs the user's OK.
+
 ## Pre-commit and commit hygiene
 
-Pre-commit hooks (`.pre-commit-config.yaml`):
-- `trailing-whitespace`, `end-of-file-fixer`, `check-yaml`,
-  `check-added-large-files` (≤500 KB)
-- **`clang-format`** with Google style — frequently modifies files
-- `codespell`, `ament_copyright`
+Hooks are listed in `.pre-commit-config.yaml` (`just lint` runs them all).
+**`clang-format`** (Google style) often rewrites files.
 
 If `clang-format` modifies files during commit, the commit fails. Re-stage
 the modified files and commit again. **Never bypass with `--no-verify`** —
@@ -68,8 +79,6 @@ fix the underlying issue (or accept the formatter's choice).
 Commit rules:
 - **Branch `devel`** is the working branch (direct commits OK). `jazzy`
   and `main` change only through a PR.
-- **Do not stage `.vscode/launch.json`** — it is local IDE state, not
-  repo state.
 - Title under ~60 chars, present tense ("Add X", "Fix Y"). Body only when
   the *why* is not obvious from the diff.
 - No co-author trailer or "Generated with" footer in commits or PRs.
@@ -120,9 +129,3 @@ do not change the conceptual shape.
   [cmake/dependencies.cmake](cmake/dependencies.cmake) — build configuration
   and pinned third-party sources.
 - [.pre-commit-config.yaml](.pre-commit-config.yaml) — hook definitions.
-
-Project memory lives at
-`~/.claude/projects/-home-husarion-repo-rosbot-firmware/memory/`.
-Use it for facts about the user (preferences, role) and project-specific
-feedback that does not belong in the repo. Do not duplicate this CLAUDE.md
-into memory.

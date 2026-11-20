@@ -11,6 +11,7 @@
 #   just flash rosbot_xl          # build + flash one target
 #   just build-all                # build both boards
 #   just test                     # host unit tests (CTest)
+#   just check                    # lint + both boards + host tests
 #   SERIAL_PORT=/dev/ttyUSB1 just flash rosbot_xl   # override port
 
 # Default target if none is passed on the CLI.
@@ -106,6 +107,24 @@ clean:
 flash ENV=default_env:
     #!/bin/bash
     ./scripts/flash.sh {{ENV}}
+
+# Everything CI checks that runs offline: hooks, both boards, host tests.
+check: lint build-all test
+
+# Leaves flash sector 11 (saved settings) alone. OPENOCD overrides the binary.
+# Build + flash over an ST-LINK (SWD at 4 MHz, ~6 s).
+flash-swd BOARD=default_env:
+    #!/bin/bash
+    set -euo pipefail
+    bin="$(./scripts/build.sh "{{BOARD}}")"
+    "${OPENOCD:-openocd}" -f interface/stlink.cfg -f target/stm32f4x.cfg \
+      -c "adapter speed 4000" -c "program $bin 0x08000000 verify reset exit"
+
+# GDB server on :3333 over an ST-LINK, for gdb-multiarch or VS Code.
+debug-server:
+    #!/bin/bash
+    "${OPENOCD:-openocd}" -f interface/stlink.cfg -f target/stm32f4x.cfg \
+      -c "adapter speed 4000"
 
 # Build + flash both variants. Useful for release smoke-tests.
 flash-all:

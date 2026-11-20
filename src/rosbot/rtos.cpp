@@ -66,7 +66,7 @@ void batteryTask(void* p) {
 
   while (true) {
     data.timestamp_ns = rtos_timestamp_ns();
-    g_battery->update();  // TODO: DMA should be used
+    g_battery->update();
     data.data = g_battery->getData();
 
     xQueueOverwrite(battery_queue, &data);

@@ -556,7 +556,9 @@ inside `taskENTER_CRITICAL()` or with the scheduler suspended
 lwIP to make progress meanwhile: `MavlinkUdpTransport::write()` suspends
 the scheduler, `sendShutdownRequest()` in `src/rosbot_xl/rtos.cpp` uses a
 critical section. Follow-up work (send, close) belongs in the lwIP
-callbacks.
+callbacks. Both only work because every lwIP caller runs at a lower
+priority than `ethernet_scheduler` (5): a caller at 5 or above could
+preempt it inside lwIP, where neither guard helps.
 
 `ethernetif.cpp` (ST, with Husarion's LAN9303 support) is vendored in
 `lib/ethernet/`; the rest (static IP with a /24 netmask and `.1` gateway,
@@ -935,8 +937,8 @@ What is known about the power board (PB) and how this firmware talks to it.
 Facts marked *unverified* have not been checked on hardware or in a datasheet.
 
 - **MCU and code.** STM32L051C8T6 (per the PB schematic). Firmware is
-  `husarion/rosbot_xl_pb_firmware` (private, C on STM32Cube LL; its
-  `platformio.ini` names board `rhf76_052`, which is an L052 definition).
+  `husarion/rosbot_xl_pb_firmware` (private, C on STM32Cube LL, built with
+  PlatformIO there; its board `rhf76_052` is an L052 definition).
 - **Link to the digital board (DB).** UART 38400 baud, DB PD5/PD6 to PB USART1
   (PB6/PB7). Frames are ASCII hex with an XOR checksum: `<CC SS args CC>`. Two
   commands: 1 = board info (firmware version `args[1..11]`, hardware revision

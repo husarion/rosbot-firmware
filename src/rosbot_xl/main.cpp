@@ -52,7 +52,6 @@ ImuBno055 imu_bno055(imu_bno055_config);
 static SpiTransport s_transport(spi_config);
 
 // ───────── Motors (compatible with MAX22205) ─────────
-// TODO: Can be improved and used tourque control
 static MotorHiZ motor_fl(motor_fl_config, &enc_fl, PIDController(pid_config));
 static MotorHiZ motor_fr(motor_fr_config, &enc_fr, PIDController(pid_config));
 static MotorHiZ motor_rl(motor_rl_config, &enc_rl, PIDController(pid_config));

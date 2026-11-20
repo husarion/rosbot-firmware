@@ -59,7 +59,9 @@ To use these tasks, open the Command Palette (Ctrl+Shift+P) and search for "Run 
 - **Host unit tests**
 
 Each runs the matching `just` recipe; flashing goes through the bootloader
-like `just flash`, not ST-Link.
+like `just flash`. With an ST-LINK on the SWD header use `just flash-swd
+<board>`, and the "ST-LINK" launch configurations (Cortex-Debug extension,
+OpenOCD) to debug.
 
 ## Dev mode
 
