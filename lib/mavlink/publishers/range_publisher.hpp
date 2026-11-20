@@ -19,6 +19,7 @@
 #include "mavlink_types.hpp"
 #include "publisher_interface.hpp"
 #include "range_array.hpp"
+#include "range_wire.hpp"
 #include "time_base.hpp"
 
 using RangesStamped = Stamped<RangesData>;
@@ -50,16 +51,14 @@ class MavlinkRangePublisher : public MavlinkPublisherInterface {
 
     float quaternion[4] = {0.0f, 0.0f, 0.0f, 0.0f};
     for (uint8_t i = 0; i < data.data.count && i < 4; ++i) {
-      const uint16_t current_cm =
-          static_cast<uint16_t>(data.data.range[i] * 100.0f);
+      const range_wire::Reading r = range_wire::encode(data.data.range[i]);
       mavlink_message_t m;
       mavlink_msg_distance_sensor_pack(
-          node.sysid(), node.compid(), &m, t_ms, min_cm, max_cm, current_cm,
+          node.sysid(), node.compid(), &m, t_ms, min_cm, max_cm, r.current_cm,
           MAV_DISTANCE_SENSOR_LASER, /*id=*/i, MAV_SENSOR_ROTATION_NONE,
           /*covariance=*/UINT8_MAX,
           /*horizontal_fov=*/0.0f,
-          /*vertical_fov=*/0.0f, quaternion,
-          /*signal_quality=*/0);
+          /*vertical_fov=*/0.0f, quaternion, r.signal_quality);
       node.sendMessage(m);
     }
   }

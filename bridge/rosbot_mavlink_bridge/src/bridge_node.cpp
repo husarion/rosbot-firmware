@@ -18,6 +18,7 @@
 #include <cstring>
 
 #include "rclcpp/qos.hpp"
+#include "rosbot_mavlink_bridge/range_value.hpp"
 
 namespace rosbot_mavlink_bridge
 {
@@ -550,14 +551,8 @@ void BridgeNode::onDistanceSensor(const mavlink_message_t & msg)
   out.field_of_view = 0.26f;
   out.min_range = static_cast<float>(d.min_distance) * 1e-2f;
   out.max_range = static_cast<float>(d.max_distance) * 1e-2f;
-  const float range_m = static_cast<float>(d.current_distance) * 1e-2f;
-  if (range_m > out.max_range) {
-    out.range = std::numeric_limits<float>::infinity();
-  } else if (range_m < out.min_range) {
-    out.range = -std::numeric_limits<float>::infinity();
-  } else {
-    out.range = range_m;
-  }
+  out.range = rangeFromDistanceSensor(
+    d.current_distance, d.min_distance, d.max_distance, d.signal_quality);
   range_pub_->publish(out);
 }
 

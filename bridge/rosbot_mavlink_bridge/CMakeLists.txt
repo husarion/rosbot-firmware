@@ -75,6 +75,8 @@ if(BUILD_TESTING)
   find_package(ament_cmake_gtest REQUIRED)
   ament_add_gtest(test_boot_text test/test_boot_text.cpp)
   target_include_directories(test_boot_text PRIVATE include)
+  ament_add_gtest(test_range_value test/test_range_value.cpp)
+  target_include_directories(test_range_value PRIVATE include)
   ament_add_gtest(test_timesync_estimator test/test_timesync_estimator.cpp)
   target_include_directories(test_timesync_estimator PRIVATE include)
   ament_add_gtest(test_diagnostics_mapper test/test_diagnostics_mapper.cpp

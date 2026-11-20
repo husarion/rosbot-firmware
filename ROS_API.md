@@ -33,7 +33,7 @@ wire side.
 | ✅  | ✅    | **`diagnostics`**      | MCU and hardware health, 1 Hz — see below. <br /> _[diagnostic_msgs/DiagnosticArray]_ |
 | ❌  | ✅    | **`led_strip`**        | LED strip command. <br /> _[sensor_msgs/Image]_             |
 | ✅  | ✅    | **`leds`**             | Rear panel LEDs command. <br /> _[std_msgs/UInt8]_          |
-| ✅  | ❌    | **`ranges`**           | Range sensor data. <br /> _[sensor_msgs/Range]_             |
+| ✅  | ❌    | **`ranges`**           | Range sensor data, one message per sensor (`frame_id`). NaN = no reading (sensor lost or timed out), −inf / +inf = below / above the measurable range (REP-117). <br /> _[sensor_msgs/Range]_ |
 | ✅  | ✅    | **`_imu/data`**        | Raw IMU data. <br /> _[sensor_msgs/Imu]_                    |
 | ✅  | ✅    | **`_imu/calibration`** | BNO055 calibration status, 5 Hz — see below. <br /> _[std_msgs/UInt8MultiArray]_ |
 | ✅  | ✅    | **`_motors/cmd`**      | Wheel speed commands. <br /> _[std_msgs/Float32MultiArray]_ |

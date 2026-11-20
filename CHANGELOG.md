@@ -34,6 +34,8 @@ Fixes from the 2026-10 static firmware audit. HW-tested 2026-10-26 on ROSbot 3 a
 
 ### Fixed
 
+- ROSbot `ranges`: a sensor with no reading (lost or timed out) is published as NaN instead of −inf, which REP-117 reserves for an object closer than the minimum range. Needs the matching bridge; firmware and bridge each stay compatible with the older other half.
+- ROSbot range sensors whose re-initialisation fails are retried with backoff instead of staying dead until reboot.
 - I2C faults (bus lock, NACK storm, stale DMA callback) are recovered without resetting the MCU; IMU reads wait up to 25 ms for BNO055 clock stretching.
 - Boot IMU calibration starts from scratch instead of loading the saved offsets first.
 - NaN/Inf wheel setpoints are rejected (watchdog not fed); PID and PWM guard against non-finite values.
