@@ -429,13 +429,32 @@ Błędy znalezione na XL i poprawione:
   uśpiony na ROSbocie.
 - Zapas stosu HwMonitor 156–252 B, blisko progu ostrzeżenia (`3ba02e8`).
 
-Otwarte (bez zmian w kodzie):
-- ~12 timeoutów IMU w pierwszych ~120 ms po starcie schedulera (DMA
-  skończył, przerwanie zakończenia nieobsłużone na czas); kosmetyczne.
-- Oba roboty taktowane z HSI mimo kwarcu na płytce (XL 24 MHz); dryf
-  ~2000 ppm wymusza korekty TIMESYNC.
-- Martwe VL53L0X nie są ponownie inicjalizowane, a ich timeouty kosztują
-  ~50 % CPU.
+Rozwiązane później tego samego dnia (2026-11-20):
+- Timeouty IMU przy starcie: BNO055 rozciąga zegar >8 ms przez ~120 ms po
+  przejściu w fuzję; timeout odczytu 25 ms → 0 błędów (`4516a34`).
+- Zegar z kwarcu (`7a1d068`, spec `.claude/specs/hse-clock.md`): XL −9 ppm,
+  0 korekt TIMESYNC w 10 min (było 17), ROSbot IMU 100,0 / feedback
+  200,0 Hz; fallback na HSI sprawdzony.
+- Martwe VL53L0X (`1dd2da8`): wykrycie w ~200 ms bez kręcenia CPU, ponowna
+  inicjalizacja całej tablicy 1→16 s, sprawdzone impulsem XSHUT na HW
+  (idle 95,3 % przez cały czas); w teście kół przedni prawy czujnik raz
+  się zgubił i sam wrócił.
+
+Wycieki pamięci (2026-11-20): 30 min obciążenia (komendy kół, taśma LED,
+diody, serwisy, śmieci UDP, restart bridge'a co 5 min) na obu robotach.
+ROSbot: wolna sterta stała 102 504 B. XL przez SWD co minutę: sterta newlib
+20 884 B zajęte, koniec `sbrk` stały, sterta lwIP pusta, pule `memp` bez
+zmian (UDP PCB 1/6 zajęty przez 6 połączeń). Brak wycieku. Przegląd kodu:
+wszystkie alokacje przy starcie, ścieżki ponownego otwarcia sprawdzają
+`nullptr`, pbufy zwalniane na każdej ścieżce.
+
+Szarpnięcia silników XL przy zmianie kierunku (2026-11-20): jazzy i nowy
+firmware identyczne. Skok +2 → −2 rad/s prosto na `/_motors/cmd`: pełne
+PWM wstecz, odwrócenie w ~25 ms, przestrzelenie do −2,97, powrót do −1,47,
+ustalenie ~110 ms (szczyt ~150–175 rad/s²). Z rampą jak z kontrolera
+(1 m/s² ≈ 20 rad/s² na kole) płynnie, ~10–15 ms przy zerze. Pod obciążeniem
+możliwa „blokada” przy zerze: zadana 0 kasuje całkę, a wypełnienie <1 %
+włącza Brake (zwarcie). Poprawka regulatora czeka na decyzję.
 
 Nie testowane na XL (wymaga człowieka albo SBC): przycisk wyłączenia na
 power boardzie i żądanie HTTP, ponowne wpięcie kabla Ethernet, porty
