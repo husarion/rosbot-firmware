@@ -190,7 +190,7 @@ upstream stack; it was removed after v2.1.0-jazzy (see git history).
 | `vl53l0x/` | Vendored Pololu VL53L0X driver (MIT, `LICENSE.txt`), bus calls on `platform::I2c`; excluded from pre-commit |
 | `motor/` | `MotorInterface`, `MotorHiZ`, `MotorArray` (Hi-Z PWM control) |
 | `persistent_config/` | Namespace + BNO055 calibration offsets, stored as one record appended to a log in flash sector 11. Appending is safe at runtime; only the 1-3 s sector erase (sector full) is deferred to a pre-scheduler `save()` — see "IMU calibration" |
-| `platform/` | Hardware access on CMSIS registers / HAL (it replaced the Arduino API, see `.claude/plans/cube-migration.md`). `freertos.hpp`: the kernel headers the code uses. `i2c`: HAL I2C master at 400 kHz with a per-bus mutex; once the scheduler runs every transfer uses HAL's IT API (DMA for the IMU block read) and the task sleeps until it ends; bus recovery after faults; owns the I2C IRQs and HAL I2C callbacks. `spi`: blocking SPI master. `device.hpp`: CMSIS device header + HAL. `uart`: USART1/2/3 with DMA TX/RX, see "UART driver and DMA stream map". `analog_in`: ADC1 single-shot 10-bit reads (battery, NTC, motor current), serialized with masked IRQs. `timer`: timer clock enable / kernel clock for any TIM, and `PwmOutput` (motor PWM). `clock`: TIM5 free-running at 1 MHz (also the FreeRTOS run-time stats source, see `time_base.cpp`) (`init()` is the first line of `setup()`), `delayUs()`, `delayMs()` (blocks the task once the scheduler runs). `Pin`: constexpr GPIO (`Pin{Port::E, 2}`) with output/input/analog setup under masked IRQs, used for every pure-GPIO pin in both board configs (timer and ADC pins too, via `setAsAlternate` / `AnalogIn`); host-tested against a fake register block in `test/native_stubs/stm32f4xx.h` |
+| `platform/` | Hardware access on CMSIS registers / HAL (it replaced the Arduino API). `freertos.hpp`: the kernel headers the code uses. `i2c`: HAL I2C master at 400 kHz with a per-bus mutex; once the scheduler runs every transfer uses HAL's IT API (DMA for the IMU block read) and the task sleeps until it ends; bus recovery after faults; owns the I2C IRQs and HAL I2C callbacks. `spi`: blocking SPI master. `device.hpp`: CMSIS device header + HAL. `uart`: USART1/2/3 with DMA TX/RX, see "UART driver and DMA stream map". `analog_in`: ADC1 single-shot 10-bit reads (battery, NTC, motor current), serialized with masked IRQs. `timer`: timer clock enable / kernel clock for any TIM, and `PwmOutput` (motor PWM). `clock`: TIM5 free-running at 1 MHz (also the FreeRTOS run-time stats source, see `time_base.cpp`) (`init()` is the first line of `setup()`), `delayUs()`, `delayMs()` (blocks the task once the scheduler runs). `Pin`: constexpr GPIO (`Pin{Port::E, 2}`) with output/input/analog setup under masked IRQs, used for every pure-GPIO pin in both board configs (timer and ADC pins too, via `setAsAlternate` / `AnalogIn`); host-tested against a fake register block in `test/native_stubs/stm32f4xx.h` |
 | `pid/` | PID controller with feedforward, anti-windup, dead-zone boost |
 | `power_board/` | UART protocol to rosbot_xl power board MCU (battery state) |
 | `range/` | `RangeInterface` + `RangeVl53l0x` + `RangeArray` (rosbot only) |
@@ -757,8 +757,8 @@ asks for 4 MHz and gets 2.625 MHz (the next power-of-two divider).
 Minimum free stack per task (`uxTaskGetStackHighWaterMark`, from the Monitor
 task the firmware had then) while driving a test profile on a stand; IDLE
 from the run-time stats. The same numbers now come from `/diagnostics`
-(smallest headroom and its task, CPU idle). For the 2026-11 ROSbot 3
-comparison against jazzy see `.claude/plans/cube-migration.md`.
+(smallest headroom and its task, CPU idle). For the 2026-11 comparison
+against jazzy see "Measured on HW against jazzy 2.4.0" below.
 
 | ROSbot 3 | free | ROSbot XL rev 1.2 | free |
 |---|---:|---|---:|
@@ -773,6 +773,55 @@ comparison against jazzy see `.claude/plans/cube-migration.md`.
 
 XL `MotorControl` uses ~536 B of its 1 KB: with the old 576 B (`Stack::XXS`)
 the margin would have been ~40 B. Free heap: 89 KB (ROSbot 3), 44 KB (XL).
+
+### Measured on HW against jazzy 2.4.0 (2026-11)
+
+ROSbot 3 (CORE2) and ROSbot XL (Digital Board v1.2, power board v1.3 with
+firmware v1.0.4), the same board flashed alternately with jazzy 2.4.0 and
+this firmware, wheels in the air unless noted. Identical instrumentation
+in both copies; medians of 3–10 runs. CPU idle was cross-checked by
+sampling the PC over SWD at steady state: it agrees with the FreeRTOS run
+time stats within ~1 point (interrupt time). Full data:
+`~/Husarion/reports/rosbot/cube-fw-metrics-2026-11-19.html` (not in the repo).
+
+| Metric | ROSbot 3 jazzy → new | XL jazzy → new |
+|---|---|---|
+| CPU idle, idle (SWD PC sampling) | 92.5 → 94.4–94.7 % | 90.7 → 94.0 % |
+| CPU idle, driving (run-time stats) | 92.6 → 95.9 % | 88.5 → 94.7 % |
+| Imu task CPU | 3.75 → 0.43 % (no busy-wait on I2C) | 3.72 → 0.45 % |
+| IMU sample → TX queue, mean / max | 5.95 / 10.05 → 3.53 / 6.98 ms | 3.67 / 7.94 → 3.65 / 7.96 ms |
+| Wheel feedback → TX queue, mean | 88 → 65 µs | 95 → 78 µs (driving 265 → 96 µs) |
+| IMU / feedback rate | 99.8 / 199.6 → 100.0 / 200.0 Hz (crystal) | 99.7 / 199.4 → 100.0 / 200.0 Hz |
+| `/battery` | unchanged | 0.9 → 10 Hz (PB firmware >= v1.0.3) |
+| Free heap | 89.4 → 102.5 KB | 44.1 → 55.3 KB |
+| Static RAM / image | 11.4 → 9.3 KB / 88 → 100 KB | 56.0 → 52.6 KB / 123 → 152 KB |
+| TIMESYNC re-seeds in 10 min | ~17 → 0 | ~17 → 0 (clock −9 ppm) |
+| Boot to first MAVLink | 5.6 → 5.3 s | 11.3 s both |
+| Wheel tracking, watchdog stop, gyro noise | unchanged | unchanged |
+
+- The largest gap between samples on the host is longer (ROSbot 3: IMU
+  17.5 → 29.2 ms): the new firmware sends a sample as soon as it is read,
+  so the BNO055's variable read time (clock stretching) shows in delivery,
+  while jazzy published on a fixed 5 ms grid at the cost of latency.
+  Sample timestamps are regular in both.
+- No leak: 30 min of wheel commands, LED strip, LEDs, services, UDP
+  garbage and a bridge restart every 5 min. ROSbot 3 free heap constant
+  at 102 504 B; on XL (over SWD) newlib heap use, the `sbrk` top and the
+  lwIP pools did not move. Every allocation happens at startup.
+- Direction reversal is the same in both firmware. A step +2 → −2 rad/s
+  sent straight to `/_motors/cmd` overshoots to ~−3 rad/s and settles in
+  ~110 ms; through the controller (with its acceleration limits) it is
+  smooth. On the floor ROSbot 3 pauses 110–250 ms at zero when reversing
+  rotation (skid-steer friction, the PID starts from zero): see "Open work".
+- Checked by hand on both robots: LEDs, LED strip, buttons, IMU axes
+  (REP-103), boot gestures, IMU calibration window, range sensors, Ethernet
+  replug, fan against the NTC, power board shutdown request, flashing with
+  `rosbot.flash` from the SBC (snap `rosbot` 1.3.1, `jazzy/edge`; 1.3.0
+  accepts only firmware v2.2.1), 10 min with the full stack without a
+  disconnect, LAN9303 rear port ↔ SBC ~90 Mbit/s.
+- Crystal fallback to the RC checked on XL (HSE bypass with no clock); the
+  NMI path checked on ROSbot 3. The clock security system trip itself was
+  not tested: it needs the crystal stopped in hardware.
 
 ### UART driver and DMA stream map
 
@@ -1141,6 +1190,24 @@ These are documented to avoid re-discovery:
   `include/rosbot_xl/config.hpp`. True auto-discovery options were
   considered (DHCP server on MCU, broadcast announcement protocol, mDNS)
   but not implemented yet — see commit / chat history for trade-offs.
+- **Heap instead of static allocation.** Tasks and queues come from
+  `pvPortMalloc()` (newlib `malloc()`), all at startup.
+  `configSUPPORT_DYNAMIC_ALLOCATION 0` with `xTaskCreateStatic` is a
+  separate change.
+- **No CubeMX `.ioc`.** Every peripheral is set up in `lib/platform/` and the
+  clock tree in `boards/stm32f407/system.cpp`; an `.ioc` could be added as
+  pinout documentation only.
+- **HAL ETH is the Legacy (pre-1.27) driver**, kept from the Arduino core
+  fork. Moving to the new F4 ETH API is a separate change.
+- **`Pin` keeps Arduino's very-high output speed.** Lowering it (EMI) needs
+  a measurement on HW.
+- **ROSbot 3 pauses at zero when reversing rotation** (110–250 ms on the
+  floor, jazzy too): the PID clears its integral at a zero setpoint and
+  restarts from zero against skid-steer friction. Friction feed-forward or
+  keeping the integral through zero would shorten it.
+- **Crystal only verified on CORE2 v1.3+ and Digital Board v1.1/v1.2.** An
+  older CORE2 without a crystal falls back to the RC; one with a crystal
+  of another frequency would run at the wrong clock.
 
 When closing one of these items, remove the bullet here and add a
 matching entry to the relevant "Patterns" section.
