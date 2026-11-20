@@ -940,8 +940,8 @@ Facts marked *unverified* have not been checked on hardware or in a datasheet.
   `husarion/rosbot_xl_pb_firmware` (private, C on STM32Cube LL, built with
   PlatformIO there; its board `rhf76_052` is an L052 definition).
 - **Link to the digital board (DB).** UART 38400 baud, DB PD5/PD6 to PB USART1
-  (PB6/PB7). Frames are ASCII hex with an XOR checksum: `<CC SS args CC>`. Two
-  commands: 1 = board info (firmware version `args[1..11]`, hardware revision
+  (PB6/PB7). Frames are ASCII hex with an XOR checksum: `<CC SS args CC>`. The DB
+  uses two commands (full protocol: `docs/UART_PROTOCOL.md` in the PB repo): 1 = board info (firmware version `args[1..11]`, hardware revision
   `args[13..24]`), 2 = battery state. The PB never sends on its own. The DB polls
   at 1 Hz, or at the HwMonitor task rate (10 Hz) when the PB reports firmware
   >= v1.0.3 (`PowerBoard::supportsFastPolling()`).
@@ -953,8 +953,10 @@ Facts marked *unverified* have not been checked on hardware or in a datasheet.
   replies" note in `hwMonitorTask` (the 500 ms spacing is kept for old PBs).
   v1.0.3 services UART every millisecond (measured over SWD: reply in 2-4 ms) and
   refreshes voltage and currents every 100 ms; its charger logic still runs every
-  750 ms. The battery frame has a percentage byte (`args[13]`) that the PB never
-  sets, which is why the percentage is computed on the DB (`SocEstimator`).
+  750 ms. Up to v1.0.4 the PB leaves the percentage byte (`args[13]`) and the
+  capacity (`args[9..10]`) at 0, which is why this DB computes the percentage
+  itself (`SocEstimator`). From v1.0.5 (released as v1.1.0) the PB counts SoC and
+  sends both (`args[13]` = 255 while unknown); this branch still ignores them.
 - **Versions in the field.** A PB v1.3 reported firmware `v1.0.0` (2026-11-09);
   the PB repository says `v1.0.1`. Version strings are copied from fixed buffers
   on the PB, so a short string is followed by stale bytes; the DB keeps only the
