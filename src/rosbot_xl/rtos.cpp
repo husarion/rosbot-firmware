@@ -55,7 +55,7 @@ void shutdownTask(void* p);
 void linkTask(void* p);
 
 TaskConfig tasks[] = {
-    {"HwMonitor", Priority::OBSERVING, Stack::S, 10, hwMonitorTask},
+    {"HwMonitor", Priority::OBSERVING, Stack::M, 10, hwMonitorTask},
     {"Imu", Priority::SENSORS, Stack::M, 100, imuTask},
     {"LedStrip", Priority::OBSERVING, Stack::M, 30, ledStripTask},
     {"MotorControl", Priority::CONTROL, Stack::M, 200, motorControlTask},
