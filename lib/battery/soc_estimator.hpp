@@ -18,50 +18,12 @@
 #include <cstddef>
 #include <cstdint>
 
-// Rest voltage per cell (ascending) against SoC, linearly interpolated.
-struct OcvCurve {
-  const float* cell_v;
-  const float* soc;
-  size_t n;
-};
-
-namespace ocv_curves {
-
-// Generic 18650 Li-ion curve; 3.27 V is 0 %, in line with a 3.2 V/cell
-// (9.6 V) cut-off. Not measured and too low between ~20 and 70 %; both
-// robots use kRosbotXl.
-inline constexpr float kGenericV[] = {
-    3.27f, 3.61f, 3.69f, 3.71f, 3.73f, 3.75f, 3.77f, 3.79f, 3.80f, 3.82f, 3.84f,
-    3.85f, 3.87f, 3.91f, 3.95f, 3.98f, 4.02f, 4.08f, 4.11f, 4.15f, 4.20f};
-inline constexpr float kGenericSoc[] = {
-    0.00f, 0.05f, 0.10f, 0.15f, 0.20f, 0.25f, 0.30f, 0.35f, 0.40f, 0.45f, 0.50f,
-    0.55f, 0.60f, 0.65f, 0.70f, 0.75f, 0.80f, 0.85f, 0.90f, 0.95f, 1.00f};
-inline constexpr OcvCurve kGeneric{kGenericV, kGenericSoc,
-                                   sizeof(kGenericV) / sizeof(kGenericV[0])};
-
-// Based on real measurements: ROSbot XL pack HCP18650ZC-3S3P, bench robot,
-// 2026-11-19, ~24 C. 10 % discharge steps at 1.8-2.9 A, 15-60 min rests;
-// SoC counted back from the 9.6 V loaded cut-off (9.034 Ah). VBAT from the
-// BQ25713 (64 mV/pack step = 21 mV/cell). Data and method:
-// rosbot_xl_pb_firmware docs/battery-measurements.md.
-inline constexpr float kRosbotXlV[] = {3.328f, 3.413f, 3.477f, 3.563f,
-                                       3.605f, 3.627f, 3.691f, 3.797f,
-                                       3.883f, 3.989f, 4.096f, 4.200f};
-inline constexpr float kRosbotXlSoc[] = {0.000f, 0.018f, 0.116f, 0.214f,
-                                         0.312f, 0.411f, 0.509f, 0.607f,
-                                         0.705f, 0.803f, 0.902f, 1.000f};
-inline constexpr OcvCurve kRosbotXl{kRosbotXlV, kRosbotXlSoc,
-                                    sizeof(kRosbotXlV) / sizeof(kRosbotXlV[0])};
-
-}  // namespace ocv_curves
-
 struct SocEstimatorConfig {
   uint8_t num_cells = 3;  // series count; parallel cells only add capacity
   float capacity_ah = 7.8f;
-  const OcvCurve* ocv = &ocv_curves::kGeneric;
-  // Pack resistance used to undo load sag. ROSbot XL measured ~0.105 ohm incl.
-  // the PB path (2026-11-18/19); the OCV correction is weighted down under
-  // load, so an error here only slows convergence.
+  // Pack resistance used to undo load sag. Generic estimate, not measured on
+  // hardware: the OCV correction is weighted down under load, so an error
+  // here only slows convergence.
   float r_internal_ohm = 0.10f;
   float correction_tau_s = 60.0f;
   float load_ref_a = 2.0f;
@@ -80,8 +42,7 @@ class SocEstimator {
     }
 
     const float ocv = voltage_v - current_a * cfg_.r_internal_ohm;
-    const float soc_ocv =
-        ocvToSoc(ocv / static_cast<float>(cfg_.num_cells), *cfg_.ocv);
+    const float soc_ocv = ocvToSoc(ocv / static_cast<float>(cfg_.num_cells));
 
     if (!initialized_) {
       soc_ = soc_ocv;
@@ -109,7 +70,7 @@ class SocEstimator {
     if (!std::isfinite(voltage_v) || cfg_.num_cells == 0) return soc_;
 
     const float soc_ocv =
-        ocvToSoc(voltage_v / static_cast<float>(cfg_.num_cells), *cfg_.ocv);
+        ocvToSoc(voltage_v / static_cast<float>(cfg_.num_cells));
     if (!initialized_) {
       soc_ = soc_ocv;
       initialized_ = true;
@@ -124,15 +85,25 @@ class SocEstimator {
   float soc() const { return initialized_ ? soc_ : NAN; }
   void reset() { initialized_ = false; }
 
-  static float ocvToSoc(float cell_v,
-                        const OcvCurve& c = ocv_curves::kGeneric) {
-    if (cell_v <= c.cell_v[0]) return c.soc[0];
-    if (cell_v >= c.cell_v[c.n - 1]) return c.soc[c.n - 1];
+  // Generic 18650 Li-ion rest-voltage curve per cell; 3.27 V is 0 % here, in
+  // line with the 3.2 V/cell (9.6 V) cut-off in config.hpp.
+  static float ocvToSoc(float cell_v) {
+    static constexpr float kV[] = {3.27f, 3.61f, 3.69f, 3.71f, 3.73f, 3.75f,
+                                   3.77f, 3.79f, 3.80f, 3.82f, 3.84f, 3.85f,
+                                   3.87f, 3.91f, 3.95f, 3.98f, 4.02f, 4.08f,
+                                   4.11f, 4.15f, 4.20f};
+    static constexpr float kSoc[] = {0.00f, 0.05f, 0.10f, 0.15f, 0.20f, 0.25f,
+                                     0.30f, 0.35f, 0.40f, 0.45f, 0.50f, 0.55f,
+                                     0.60f, 0.65f, 0.70f, 0.75f, 0.80f, 0.85f,
+                                     0.90f, 0.95f, 1.00f};
+    constexpr size_t kN = sizeof(kV) / sizeof(kV[0]);
+
+    if (cell_v <= kV[0]) return 0.0f;
+    if (cell_v >= kV[kN - 1]) return 1.0f;
     size_t i = 1;
-    while (cell_v > c.cell_v[i]) ++i;
-    const float t =
-        (cell_v - c.cell_v[i - 1]) / (c.cell_v[i] - c.cell_v[i - 1]);
-    return c.soc[i - 1] + t * (c.soc[i] - c.soc[i - 1]);
+    while (cell_v > kV[i]) ++i;
+    const float t = (cell_v - kV[i - 1]) / (kV[i] - kV[i - 1]);
+    return kSoc[i - 1] + t * (kSoc[i] - kSoc[i - 1]);
   }
 
  private:

@@ -48,27 +48,6 @@ void test_curve_endpoints_and_monotonic() {
   }
 }
 
-void test_rosbot_xl_curve_matches_measurement() {
-  const OcvCurve& c = ocv_curves::kRosbotXl;
-  TEST_ASSERT_EQUAL_FLOAT(0.0f, SocEstimator::ocvToSoc(3.0f, c));
-  TEST_ASSERT_EQUAL_FLOAT(1.0f, SocEstimator::ocvToSoc(4.3f, c));
-  for (size_t i = 1; i < c.n; ++i) {
-    TEST_ASSERT_TRUE(c.cell_v[i] > c.cell_v[i - 1]);
-    TEST_ASSERT_TRUE(c.soc[i] > c.soc[i - 1]);
-  }
-  // 11.07 V pack at rest measured at 51 %; the generic curve reads ~10 % there.
-  TEST_ASSERT_FLOAT_WITHIN(0.01f, 0.509f,
-                           SocEstimator::ocvToSoc(11.07f / 3, c));
-  TEST_ASSERT_TRUE(SocEstimator::ocvToSoc(11.07f / 3) < 0.15f);
-}
-
-void test_estimator_uses_configured_curve() {
-  SocEstimatorConfig c;
-  c.ocv = &ocv_curves::kRosbotXl;
-  SocEstimator e(c);
-  TEST_ASSERT_FLOAT_WITHIN(0.01f, 0.509f, e.update(11.07f, 0.0f, 0.1f));
-}
-
 void test_first_sample_initialises_from_ocv() {
   SocEstimatorConfig c;
   SocEstimator e(c);
@@ -169,8 +148,6 @@ void test_voltage_only_converges_and_ignores_bad_input() {
 int main() {
   UNITY_BEGIN();
   RUN_TEST(test_curve_endpoints_and_monotonic);
-  RUN_TEST(test_rosbot_xl_curve_matches_measurement);
-  RUN_TEST(test_estimator_uses_configured_curve);
   RUN_TEST(test_first_sample_initialises_from_ocv);
   RUN_TEST(test_load_step_does_not_jump);
   RUN_TEST(test_discharge_integrates_current);

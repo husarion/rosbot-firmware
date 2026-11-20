@@ -19,11 +19,7 @@
 #include "time_base.hpp"
 
 BatteryAdc::BatteryAdc(const BatteryAdcConfig config)
-    // ROSbot 3 cells (3500 mAh 18650) were never measured; the XL pack's
-    // curve is much closer than the generic one (6 % vs ~42 % at 10.9 V).
-    : cfg_(config),
-      soc_(SocEstimatorConfig{.num_cells = config.num_cells,
-                              .ocv = &ocv_curves::kRosbotXl}) {
+    : cfg_(config), soc_(SocEstimatorConfig{.num_cells = config.num_cells}) {
   voltage_factor_ = cfg_.v_ref * cfg_.correction * cfg_.divider;
 }
 
