@@ -199,16 +199,22 @@ extern "C" void setup() {
 
   const bool imu_ready = imu_bno055.init();
   if (imu_ready) {
-    if (now.has_imu_calibration) {
-      imu_bno055.applyCalibrationOffsets(now.imu_calibration);
-    }
+    // The saved offsets go in after the window, and only if it failed:
+    // loaded before it, they made the chip report gyro/accel/mag 3 at once,
+    // so the window "succeeded" instantly and saved them again (HW, ROSbot
+    // XL, 2026-11-20).
+    bool calibrated_now = false;
     if (imu_calibration_requested) {
       ImuCalibrationOffsets captured{};
       if (imu_calibration_boot::run(imu_bno055, RED_LED, green_leds, captured,
                                     g_comm_mgr.debugSerial())) {
         now.has_imu_calibration = true;
         now.imu_calibration = captured;
+        calibrated_now = true;
       }
+    }
+    if (now.has_imu_calibration && !calibrated_now) {
+      imu_bno055.applyCalibrationOffsets(now.imu_calibration);
     }
   }
   persistent_config::save(now);
