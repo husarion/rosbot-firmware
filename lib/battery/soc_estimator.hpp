@@ -28,8 +28,8 @@ struct OcvCurve {
 namespace ocv_curves {
 
 // Generic 18650 Li-ion curve; 3.27 V is 0 %, in line with a 3.2 V/cell
-// (9.6 V) cut-off. Not measured; used where no pack measurement exists
-// (ROSbot 3).
+// (9.6 V) cut-off. Not measured and too low between ~20 and 70 %; both
+// robots use kRosbotXl.
 inline constexpr float kGenericV[] = {
     3.27f, 3.61f, 3.69f, 3.71f, 3.73f, 3.75f, 3.77f, 3.79f, 3.80f, 3.82f, 3.84f,
     3.85f, 3.87f, 3.91f, 3.95f, 3.98f, 4.02f, 4.08f, 4.11f, 4.15f, 4.20f};
