@@ -2,8 +2,8 @@
 
 Status: kroki 0–7 na lokalnym `devel`, kroki 8–10, poprawki z testów HW,
 optymalizacje i diagnostyka na lokalnym `cube-switchover`, 2026-11-19.
-ROSbot 3 (CORE2) przetestowany zdalnie przez tylny USB (wyniki niżej);
-ROSbot XL nietestowany.
+ROSbot 3 (CORE2) przetestowany zdalnie przez tylny USB, ROSbot XL
+(Digital Board v1.2) przez Ethernet i ST-LINK, 2026-11-20 (wyniki niżej).
 
 Decyzje (Rafał, 2026-11-19): CMake + CubeMX po kroku 9; kroki 8–9 na
 krótko żyjącym branchu, merge do `devel` po teście HW na obu robotach;
@@ -357,7 +357,91 @@ po testach kół; przyczyna niezrozumiana (ARCHITECTURE.md, I2C).
 Nie testowane zdalnie (wymaga człowieka przy robocie albo SBC): gesty
 przycisku przy starcie, diody, przyciski, osie IMU przy przechylaniu,
 okno kalibracji IMU, link przez UART SBC, fizyczne zwarcie SDA (zastąpione
-programowym), cały ROSbot XL.
+programowym).
+
+Regresja po poprawce I2C (2026-11-20, HEAD 3ba02e8): IMU, feedback kół,
+silniki (2,98 rad/s), `/ranges` 40 Hz, 0 timeoutów czujników. Przebiegi,
+w których koła ocierały o ścianę, odrzucone (MCU miał wtedy reset od
+spadku napięcia, potem wszystkie VL53L0X miały timeouty aż do resetu,
+ARCHITECTURE.md „Range sensors that lose power”).
+
+## Wyniki testów HW: ROSbot XL, jazzy vs nowy firmware (2026-11-20)
+
+Digital Board v1.2 (rewizja z EEPROM: V1_2), power board v1.3 z firmware
+v1.0.4, koła w powietrzu, link UDP przez Ethernet do hosta (192.168.77.2).
+Flashowanie i pomiary przez ST-LINK (SWD): ten sam task statystyk w obu
+wersjach zapisuje obciążenie CPU, zapas stosów, stertę i opóźnienie
+„próbka → kolejka TX” do RAM, a host czyta je przez SWD (log z innego
+taska psuł lwIP jazzy). Mediany z 5 przebiegów każdej wersji, naprzemiennie,
+świeży flash przed każdym.
+
+| Metryka | jazzy | nowy | Lepiej |
+|---|---:|---:|---|
+| CPU idle bez jazdy / w jeździe (statystyki FreeRTOS) | 91,8 / 88,5 % | 95,0 / 94,7 % | nowy |
+| CPU idle z próbkowania PC przez SWD (stan ustalony) | 90,7 % | 94,0 % | nowy |
+| Task Imu | 3,72 % | 0,45 % | nowy |
+| Task MotorControl bez jazdy / w jeździe | 0,80 / 3,92 % | 0,64 / 1,03 % | nowy |
+| Task Link | 3,25 % | 2,72 % | nowy |
+| Task ethernet_scheduler | 0,04 % | 0,81 % | jazzy (lwIP co tick) |
+| Próbka IMU → TX, średnio / max | 3,67 / 7,94 ms | 3,65 / 7,96 ms | = |
+| Feedback kół → TX bez jazdy / w jeździe | 95 / 265 µs | 78 / 96 µs | nowy |
+| Częstotliwości IMU / feedback | 99,7 / 199,4 Hz | 99,7 / 199,5 Hz | = |
+| `/battery` | 0,91 Hz | 9,97 Hz | nowy (czyta nowy firmware PB) |
+| Wolna sterta (z taskiem statystyk) | 44,1 KB | 55,3 KB | nowy |
+| Statyczny RAM (data + bss) | 56,0 KB | 52,6 KB | nowy |
+| Obraz (flash) | 122,7 KB | 152,0 KB | jazzy |
+| Najmniejszy zapas stosu | HwMonitor 268 B | HwMonitor 156–252 B → po `3ba02e8` IDLE 432 B | nowy po poprawce |
+| Od resetu do połączenia z bridge'em | 11,3 s | 11,3 s | = |
+| Śledzenie prędkości kół / start do 90 % / watchdog | 3,00 rad/s / 36 ms / 561 ms | 3,00 rad/s / 35 ms / 559 ms | = |
+| Odpowiedź `_mcu_id` | 1,7 ms | 1,7 ms | = |
+| Szum żyroskopu (std) | 0,001 rad/s | 0,001 rad/s | = |
+| 10 min ciągłej pracy | — | 0 zerwań, 0 cofnięć znaczników | — |
+| Korekty TIMESYNC (dryf HSI) | co ~30 s | co ~35–40 s | = (oba na HSI) |
+
+Próbkowanie PC przez SWD potwierdza statystyki FreeRTOS: w stanie
+ustalonym różnią się o 0,4–1,3 punktu (czas przerwań). Pierwsza seria
+próbkowała też start MCU (opóźnienia, autonegocjacja Ethernetu) i dawała
+zaniżone idle; powtórzone na ustalonej pracy.
+
+Start XL (próbkowanie PC od resetu, oba firmware podobnie): ~1,6 s
+opóźnień przy starcie, ~2,5 s okna konfiguracji (`waitForHostConfig`),
+~5 s czekania HAL na autonegocjację Ethernetu, potem scheduler.
+
+Testy funkcjonalne XL na buildzie release z HEAD: ping 192.168.77.3,
+`_mcu_id`, `_power_board_info` (v1.0.4 / v1.3), zielona dioda z `/leds`
+(GPIOE ODR), ramka taśmy LED w buforze `g_led_strip`, effort z pomiaru
+prądu ~0,09 Nm przy 3 rad/s, NTC 27,4 °C, PWM wentylatora TIM8 CH2N 25 kHz
+(wymuszone 50 % → ~54 % próbek wysokich na PB0), wzmacniacz audio
+włączony (PB2), hub USB poza resetem (PE1), tekst debug na USART1 (drugie
+FTDI), sesja kalibracji IMU start/stop, zapisane offsety nadal stosowane
+po flashowaniu (sektor 11 nietknięty), śmieci na RX → Link WARN,
+wstrzyknięte błędy przez debugger: asercja, hard fault (PC 0x40000000),
+przepełnienie stosu → właściwa przyczyna w `/diagnostics` po restarcie;
+zwarcie SDA (PF0 wymuszony nisko przez SWD na 1 s) → jeden reset
+magistrali, IMU wraca bez restartu, EEPROM nadal czytany (rewizja V1_2 po
+kolejnych resetach). Przy podłączonym debuggerze `fatalErrorWithCode`
+zatrzymuje się na `BKPT` (tak jest zaprojektowane), test go przeskakuje.
+
+Błędy znalezione na XL i poprawione:
+- IMU nie działało wcale (`205e691`): stary callback DMA po timeoucie
+  przy starcie włączał `DMAEN` przy zapisie IT i każdy odczyt kończył się
+  burzą przerwań (ARCHITECTURE.md, I2C fault recovery). Ten sam błąd był
+  uśpiony na ROSbocie.
+- Zapas stosu HwMonitor 156–252 B, blisko progu ostrzeżenia (`3ba02e8`).
+
+Otwarte (bez zmian w kodzie):
+- ~12 timeoutów IMU w pierwszych ~120 ms po starcie schedulera (DMA
+  skończył, przerwanie zakończenia nieobsłużone na czas); kosmetyczne.
+- Oba roboty taktowane z HSI mimo kwarcu na płytce (XL 24 MHz); dryf
+  ~2000 ppm wymusza korekty TIMESYNC.
+- Martwe VL53L0X nie są ponownie inicjalizowane, a ich timeouty kosztują
+  ~50 % CPU.
+
+Nie testowane na XL (wymaga człowieka albo SBC): przycisk wyłączenia na
+power boardzie i żądanie HTTP, ponowne wpięcie kabla Ethernet, porty
+LAN9303 (SBC ↔ tylny port), gesty przycisku przy starcie, osie IMU przy
+przechylaniu, wentylator przy realnym wzroście temperatury, `just flash` z
+SBC.
 
 ## Strategia testów
 

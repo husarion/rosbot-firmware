@@ -664,6 +664,30 @@ then left an event flag HAL never clears, and the re-entering IRQ starved
 every task (link silent, no reset). `ImuBno055` also backs off to one read
 a second after 10 failures in a row.
 
+`armTransfer()` clears the RX DMA handle's `XferCpltCallback` before every
+transfer. Only a DMA read that completes clears it in HAL; one that timed
+out leaves it set, and HAL's start-bit handler then sets `DMAEN` for the
+next IT write, whose TXE it never serves while `DMAEN` is set: the IRQ
+budget trips on every IMU read and `recover()` does not help, because the
+callback lives in the handle, not in the peripheral. Found on ROSbot XL
+(2026-11-20, ST-LINK): the IMU never came up after one boot-time timeout.
+
+Still open (XL, HW 2026-11-20): in the first ~120 ms after the scheduler
+starts, ~12 IMU DMA reads time out with all 46 bytes transferred (NDTR 0,
+SCL held low) but the DMA completion IRQ not yet served. The IMU then runs
+normally; only the diagnostics counters start at ~12.
+
+### Range sensors that lose power
+
+The VL53L0X driver polls the result register until data is ready or
+`timeout_ms` (500 ms) passes. On ROSbot 3, after the board browned out
+with the wheels stalled against a wall, all four sensors timed out on every
+read; a sensor that does not answer makes each `update()` spin on I2C
+transactions for the full timeout, so the Range task held ~2 s per cycle
+(`/ranges` 2 Hz, 2 s old) and cost ~50 % CPU. Nothing re-initialises a
+sensor once `init()` succeeded, so this lasted until the next MCU reset
+(HW 2026-11-20; the Pololu loop in jazzy is the same).
+
 ### I2C bus speed (400 kHz)
 
 `platform::I2c::init()` sets 400 kHz with the 2:1 fast-mode duty cycle.
@@ -857,6 +881,9 @@ HAL and 168 MHz, the order the Arduino core used. `main()` calls `setup()`
 (`src/<variant>/main.cpp`), which ends in `vTaskStartScheduler()`.
 
 Clock: internal 16 MHz RC → PLL → SYSCLK 168 MHz, APB1 42 MHz, APB2 84 MHz.
+Both boards have a crystal on PH0/PH1 (Digital Board v1.2: Q1 24 MHz; CORE2
+v1.3+: Q1, value not printed on the schematic) that no firmware uses yet;
+the RC oscillator's drift is what TIMESYNC re-seeds for.
 `SysTick_Handler` increments `HAL_GetTick()` and, once the scheduler runs,
 calls the FreeRTOS tick.
 
@@ -1037,9 +1064,13 @@ The bridge turns `time_boot_us` into ROS time with `wall = mcu + offset`
   `bridge_now − ts1`, which includes the whole uplink delay. The first
   two-way sample replaces that estimate outright. This keeps any firmware
   and any bridge version interoperable.
-- Not modelled: MCU clock drift (tens of ppm, a few hundred µs of EWMA lag)
-  and the MCU's TX queueing ahead of the reply, which the RTT filter only
-  partly absorbs.
+- Not modelled: MCU clock drift and the MCU's TX queueing ahead of the
+  reply, which the RTT filter only partly absorbs. The MCU runs on the
+  internal RC oscillator (see "Startup and memory"), which drifts ~1500–2000
+  ppm against the host: on ROSbot XL the offset moves past the 50 ms
+  re-seed threshold every 30–40 s, and the bridge logs "TIMESYNC: offset
+  stepped by ~57 ms" each time (jazzy release and this firmware alike, HW
+  2026-11-20). Stamps never go backwards, they jump ~57 ms forward.
 
 ### Telemetry rates and topic mapping
 
