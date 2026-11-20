@@ -78,9 +78,19 @@ TEST(DiagnosticsMapper, HealthyRobotIsAllOk)
   EXPECT_EQ(value(status(a, "MCU"), "Task with smallest stack"), "Range");
 }
 
+TEST(DiagnosticsMapper, NamespaceKeepsRobotsApart)
+{
+  DiagnosticsMapper m("rosbot_mcu /robot1");
+  const auto a = m.map(healthyRosbot(5000), 0);
+  for (const auto & s : a.status) {
+    EXPECT_EQ(s.name.rfind("rosbot_mcu /robot1: ", 0), 0u) << s.name;
+    EXPECT_EQ(s.hardware_id, "rosbot_mcu /robot1");
+  }
+}
+
 TEST(DiagnosticsMapper, MissingImuAndSensorAreErrors)
 {
-  DiagnosticsMapper m("x");
+  DiagnosticsMapper m("rosbot_mcu");
   auto d = healthyRosbot(5000);
   d.imu_ok = 0;
   d.range_ok = 0x0D;  // front right missing
@@ -92,7 +102,7 @@ TEST(DiagnosticsMapper, MissingImuAndSensorAreErrors)
 
 TEST(DiagnosticsMapper, OldCountersAreNotRecentButNewOnesWarnForAWhile)
 {
-  DiagnosticsMapper m("x");
+  DiagnosticsMapper m("rosbot_mcu");
   auto d = healthyRosbot(5000);
   d.range_timeouts[1] = 40;  // happened before the bridge started
   EXPECT_EQ(status(m.map(d, 0), "Range sensors").level, DiagnosticStatus::OK);
@@ -110,7 +120,7 @@ TEST(DiagnosticsMapper, OldCountersAreNotRecentButNewOnesWarnForAWhile)
 
 TEST(DiagnosticsMapper, McuRebootRestartsHistory)
 {
-  DiagnosticsMapper m("x");
+  DiagnosticsMapper m("rosbot_mcu");
   auto d = healthyRosbot(50000);
   m.map(d, 0);
   d.link_tx_dropped = 7;
@@ -124,7 +134,7 @@ TEST(DiagnosticsMapper, McuRebootRestartsHistory)
 
 TEST(DiagnosticsMapper, McuResourceThresholds)
 {
-  DiagnosticsMapper m("x");
+  DiagnosticsMapper m("rosbot_mcu");
   auto d = healthyRosbot(5000);
   d.stack_min_free = DiagnosticsMapper::kStackWarnBytes - 1;
   EXPECT_EQ(status(m.map(d, 0), "MCU").level, DiagnosticStatus::WARN);
@@ -150,7 +160,7 @@ TEST(DiagnosticsMapper, McuResourceThresholds)
 
 TEST(DiagnosticsMapper, FaultDetailNamesThePcOrTheTask)
 {
-  DiagnosticsMapper m("x");
+  DiagnosticsMapper m("rosbot_mcu");
   auto d = healthyRosbot(5000);
   d.reset_cause = 4 | 64;
   d.fault_code = 4;
@@ -165,7 +175,7 @@ TEST(DiagnosticsMapper, FaultDetailNamesThePcOrTheTask)
 
 TEST(DiagnosticsMapper, MotorAndBatteryFlags)
 {
-  DiagnosticsMapper m("x");
+  DiagnosticsMapper m("rosbot_mcu");
   auto d = healthyRosbot(5000);
   d.flags |= 4 | 1;  // motor fault active, battery low
   auto a = m.map(d, 0);
@@ -177,7 +187,7 @@ TEST(DiagnosticsMapper, MotorAndBatteryFlags)
 
 TEST(DiagnosticsMapper, RosbotXlReportsPowerBoardAndEthernet)
 {
-  DiagnosticsMapper m("x");
+  DiagnosticsMapper m("rosbot_mcu");
   mavlink_rosbot_diagnostics_t d{};
   d.uptime_ms = 1000;
   d.cpu_idle = 900;

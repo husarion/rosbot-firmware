@@ -81,7 +81,7 @@ class StatusBuilder
 public:
   StatusBuilder(const std::string & name, const std::string & hardware_id)
   {
-    s_.name = "rosbot_mcu: " + name;
+    s_.name = hardware_id + ": " + name;
     s_.hardware_id = hardware_id;
     s_.level = DiagnosticStatus::OK;
   }
