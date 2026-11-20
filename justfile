@@ -7,16 +7,18 @@
 #
 # Common usage:
 #   just                          # list recipes
-#   just build rosbot             # build one env
-#   just flash rosbot_xl          # build + flash one env
-#   just build-all                # build all 4 envs (debug + release)
+#   just build rosbot             # build one board (rosbot or rosbot_xl)
+#   just flash rosbot_xl          # build + flash one target
+#   just build-all                # build both boards
+#   just test                     # host unit tests (CTest)
+#   just check                    # lint + both boards + host tests
 #   SERIAL_PORT=/dev/ttyUSB1 just flash rosbot_xl   # override port
 
-# Default PlatformIO env if none is passed on the CLI.
-default_env := env_var_or_default("PIO_ENV", "rosbot")
+# Default target if none is passed on the CLI.
+default_env := env_var_or_default("FW_TARGET", "rosbot")
 
-# Path to the Python venv where pymavlink + platformio live. `install-deps`
-# creates it; downstream recipes (mavgen, build, flash) prepend it to PATH.
+# Path to the Python venv where pymavlink lives. `install-deps` creates it;
+# `mavgen` runs from it.
 venv := env_var_or_default("ROSBOT_FW_VENV", "$HOME/.venv-rosbot-fw")
 
 # Show available recipes.
@@ -29,7 +31,9 @@ default:
 # can run `just build` / `just flash` / `just mavgen` without manual setup.
 #
 # Apt prerequisites (need root on Ubuntu 24.04):
-#   sudo apt install python3-venv python3-full stm32flash
+#   sudo apt install python3-venv python3-full stm32flash \
+#     cmake ninja-build gcc-arm-none-eabi libnewlib-arm-none-eabi \
+#     libstdc++-arm-none-eabi-newlib
 # `stm32flash` is bundled with rosbot-snap on production robots; install it
 # explicitly here for developer machines.
 install-deps:
@@ -43,7 +47,6 @@ install-deps:
     # byte-identical to what CI's verify-dialect job expects. Bumping the
     # pin should accompany a `just mavgen` + re-commit.
     {{venv}}/bin/pip install \
-      platformio \
       'pymavlink==2.4.49' \
       pyudev \
       pyserial
@@ -71,30 +74,57 @@ mavgen:
       lib/mavlink/dialect/rosbot.xml
     echo "Regenerated bridge/rosbot_mavlink_bridge/mavlink_dialect/. Commit the diff."
 
-# Build one PlatformIO env (default: $PIO_ENV or rosbot).
+# Build one board (default: $FW_TARGET or rosbot) into build/release/.
 build ENV=default_env:
     #!/bin/bash
-    pio run -e {{ENV}}
+    set -euo pipefail
+    ./scripts/build.sh "{{ENV}}"
 
-# Build all four envs (debug + release × rosbot, rosbot_xl).
+# Build both boards.
 build-all:
     #!/bin/bash
-    pio run -e rosbot -e rosbot_release -e rosbot_xl -e rosbot_xl_release
+    set -euo pipefail
+    [[ -f build/release/CMakeCache.txt ]] || cmake -S cmake --preset release
+    cmake --build build/release
 
-# Host unit tests for the hardware-free libraries (test/, env:native).
+# Host unit tests for the hardware-free libraries (test/, CTest + Unity).
 test:
     #!/bin/bash
-    pio test -e native
+    set -euo pipefail
+    [[ -f build/test/CMakeCache.txt ]] || cmake -S test -B build/test -G Ninja
+    cmake --build build/test
+    ctest --test-dir build/test --output-on-failure
 
-# Wipe PlatformIO build outputs.
+# Wipe build outputs (firmware and host tests).
 clean:
     #!/bin/bash
-    pio run --target clean
+    for dir in build/release build/test; do
+      [[ -d $dir ]] && cmake --build "$dir" --target clean
+    done
+    true
 
-# Build + flash one env (delegates to scripts/flash.sh, which wraps rosbot_utils).
+# Build + flash one target (delegates to scripts/flash.sh, which wraps rosbot_utils).
 flash ENV=default_env:
     #!/bin/bash
     ./scripts/flash.sh {{ENV}}
+
+# Everything CI checks that runs offline: hooks, both boards, host tests.
+check: lint build-all test
+
+# Leaves flash sector 11 (saved settings) alone. OPENOCD overrides the binary.
+# Build + flash over an ST-LINK (SWD at 4 MHz, ~6 s).
+flash-swd BOARD=default_env:
+    #!/bin/bash
+    set -euo pipefail
+    bin="$(./scripts/build.sh "{{BOARD}}")"
+    "${OPENOCD:-openocd}" -f interface/stlink.cfg -f target/stm32f4x.cfg \
+      -c "adapter speed 4000" -c "program $bin 0x08000000 verify reset exit"
+
+# GDB server on :3333 over an ST-LINK, for gdb-multiarch or VS Code.
+debug-server:
+    #!/bin/bash
+    "${OPENOCD:-openocd}" -f interface/stlink.cfg -f target/stm32f4x.cfg \
+      -c "adapter speed 4000"
 
 # Build + flash both variants. Useful for release smoke-tests.
 flash-all:
@@ -139,11 +169,7 @@ stage-snap-firmware:
     dest=bridge/rosbot_mavlink_bridge/firmware
     mkdir -p "$dest"
     for variant in rosbot rosbot_xl; do
-      src=".pio/build/${variant}_release/firmware.bin"
-      if [[ ! -f "$src" ]]; then
-        echo "$src missing — building it now..."
-        pio run -e "${variant}_release"
-      fi
+      src="$(./scripts/build.sh "$variant")"
       cp -v "$src" "$dest/${variant}_mavlink.bin"
     done
     echo "Firmware binaries staged under $dest — snapcraft can pick them up."
@@ -193,15 +219,9 @@ release BUMP="auto":
 
     # ---- 2. Local build gate ----
     # Catches "this commits builds clean locally" before CI burns time.
-    # Auto-bootstrap the dev venv so a fresh host doesn't need install-deps
-    # as a separate step. Idempotent.
-    if [[ ! -x {{venv}}/bin/pio ]]; then
-        echo "release: 'pio' not in {{venv}} — bootstrapping dev deps..."
-        just install-deps
-    fi
-    export PATH="{{venv}}/bin:$PATH"
-    echo "=== local gate: building release envs ==="
-    pio run -e rosbot_release -e rosbot_xl_release
+    echo "=== local gate: building release images ==="
+    ./scripts/build.sh rosbot >/dev/null
+    ./scripts/build.sh rosbot_xl >/dev/null
     echo "build OK"
     echo
 
@@ -222,7 +242,7 @@ release BUMP="auto":
     commits=$(git log ${range:+$range} --no-merges --pretty='%h %s' 2>/dev/null || true)
     [ -n "$commits" ] \
         || { echo "release: no commits ${range_desc} — nothing to release." >&2; exit 1; }
-    current_version=$(sed -nE 's/.*-D FW_VERSION=\\"([^"]+)\\".*/\1/p' platformio.ini | head -n1)
+    current_version=$(sed -nE 's/^set\(FW_VERSION "([^"]+)"\)/\1/p' cmake/CMakeLists.txt | head -n1)
     echo "=== ${distro} ${range_desc} (current FW_VERSION: ${current_version}) ==="
     printf '%s\n' "$commits" | sed 's/^/  /'
     echo

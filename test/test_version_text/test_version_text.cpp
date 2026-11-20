@@ -57,6 +57,27 @@ void test_zero_sized_destination_is_untouched() {
   TEST_ASSERT_EQUAL_CHAR('q', out[0]);
 }
 
+void test_version_at_least_compares_numerically() {
+  TEST_ASSERT_TRUE(versionAtLeast("v1.0.3", 1, 0, 3));
+  TEST_ASSERT_TRUE(versionAtLeast("v1.0.10", 1, 0, 3));
+  TEST_ASSERT_TRUE(versionAtLeast("v1.1.0", 1, 0, 3));
+  TEST_ASSERT_TRUE(versionAtLeast("v2.0.0", 1, 0, 3));
+  TEST_ASSERT_FALSE(versionAtLeast("v1.0.2", 1, 0, 3));
+  TEST_ASSERT_FALSE(versionAtLeast("v1.0.1", 1, 0, 3));
+  TEST_ASSERT_FALSE(versionAtLeast("v0.9.9", 1, 0, 3));
+}
+
+void test_version_at_least_ignores_a_suffix_and_rejects_garbage() {
+  TEST_ASSERT_TRUE(versionAtLeast("v1.0.3-dirty", 1, 0, 3));
+  TEST_ASSERT_FALSE(versionAtLeast("", 1, 0, 3));
+  TEST_ASSERT_FALSE(versionAtLeast("1.0.3", 1, 0, 3));
+  TEST_ASSERT_FALSE(versionAtLeast("v1.0", 1, 0, 3));
+  TEST_ASSERT_FALSE(versionAtLeast("v1..3", 1, 0, 3));
+  TEST_ASSERT_FALSE(versionAtLeast("vx.y.z", 1, 0, 3));
+  TEST_ASSERT_FALSE(versionAtLeast(nullptr, 1, 0, 3));
+  TEST_ASSERT_FALSE(versionAtLeast("v99999.0.0", 1, 0, 3));
+}
+
 int main() {
   UNITY_BEGIN();
   RUN_TEST(test_stops_at_nul_and_ignores_trailing_garbage);
@@ -64,5 +85,7 @@ int main() {
   RUN_TEST(test_all_bytes_printable_is_truncated_to_destination);
   RUN_TEST(test_leading_garbage_gives_empty_string);
   RUN_TEST(test_zero_sized_destination_is_untouched);
+  RUN_TEST(test_version_at_least_compares_numerically);
+  RUN_TEST(test_version_at_least_ignores_a_suffix_and_rejects_garbage);
   return UNITY_END();
 }

@@ -14,8 +14,7 @@
 
 #include "mavlink_udp_transport.hpp"
 
-#include <STM32FreeRTOS.h>
-#include <stream_buffer.h>
+#include "freertos.hpp"
 
 extern "C" {
 #include <lwip/ip_addr.h>
@@ -58,8 +57,7 @@ bool MavlinkUdpTransport::open() {
     xStreamBufferReset(s_rx_stream);
   }
 
-  IP_ADDR4(&s_peer_addr, cfg_.peer_ip[0], cfg_.peer_ip[1], cfg_.peer_ip[2],
-           cfg_.peer_ip[3]);
+  s_peer_addr = cfg_.peer_ip;
   s_peer_port = cfg_.peer_port;
 
   s_pcb = udp_new();
@@ -85,8 +83,8 @@ void MavlinkUdpTransport::close() {
 size_t MavlinkUdpTransport::write(const uint8_t* buf, size_t len) {
   if (s_pcb == nullptr || buf == nullptr || len == 0) return 0;
 
-  // lwIP runs NO_SYS=1 and is driven by STM32Ethernet's ethernet_scheduler
-  // task (priority 5); no ISR touches it (ETH_INPUT_USE_IT is off).
+  // lwIP runs NO_SYS=1 and is driven by the ethernet_scheduler task
+  // (lib/ethernet, priority 5); no ISR touches it (ETH_INPUT_USE_IT is off).
   // Suspending the scheduler keeps that task out without masking IRQs.
   // Only called from the link task, so the scheduler is always running.
   vTaskSuspendAll();

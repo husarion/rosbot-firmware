@@ -1,4 +1,4 @@
-// Copyright 2022 Husarion sp. z o.o.
+// Copyright 2026 Husarion sp. z o.o.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -14,74 +14,74 @@
 
 #pragma once
 
-#include <Adafruit_BNO055.h>
-#include <Wire.h>
+#include <cstdint>
 
+#include "i2c.hpp"
 #include "imu_interface.hpp"
+#include "pin.hpp"
+
+namespace bno055 {
+// AXIS_MAP_CONFIG / AXIS_MAP_SIGN placements, datasheet section 3.4.
+inline constexpr uint8_t kRemapConfigP0 = 0x21;
+inline constexpr uint8_t kRemapConfigP1 = 0x24;
+inline constexpr uint8_t kRemapConfigP2 = 0x24;
+inline constexpr uint8_t kRemapConfigP3 = 0x21;
+inline constexpr uint8_t kRemapSignP0 = 0x04;
+inline constexpr uint8_t kRemapSignP1 = 0x00;
+inline constexpr uint8_t kRemapSignP2 = 0x06;
+inline constexpr uint8_t kRemapSignP3 = 0x02;
+}  // namespace bno055
 
 struct ImuBno055Config {
-  TwoWire* bus;
+  platform::I2c* bus;
   uint8_t i2c_addr;
-  int32_t sensor_id;
-  uint16_t int_pin;
-  Adafruit_BNO055::adafruit_bno055_axis_remap_config_t axis_config =
-      Adafruit_BNO055::REMAP_CONFIG_P0;
-  Adafruit_BNO055::adafruit_bno055_axis_remap_sign_t axis_sign =
-      Adafruit_BNO055::REMAP_SIGN_P0;
+  platform::Pin int_pin;  // wired, not used yet
+  uint8_t axis_config = bno055::kRemapConfigP1;
+  uint8_t axis_sign = bno055::kRemapSignP1;
 };
 
 class ImuBno055 : public ImuInterface {
  public:
-  explicit ImuBno055(const ImuBno055Config& cfg);
+  explicit ImuBno055(const ImuBno055Config& cfg) : cfg_(cfg) {}
 
-  // Brings the chip up (NDOF mode, axis remap) — safe to follow with
-  // blocking Adafruit_BNO055 calls (getCalibrationStatus(),
-  // capture/applyCalibrationOffsets()). Does NOT enable the DMA read
-  // path used by update() — call enableDmaReads() for that, separately.
+  // Resets the chip and starts NDOF fusion with the configured axis remap.
   bool init() override;
 
-  // Sets up the DMA + IRQ path update() needs. Must run after init(),
-  // and must NOT run before boot-time IMU calibration (if any) is done —
-  // it breaks Wire's blocking I2C transactions, which calibration
-  // depends on. Call once, right before vTaskStartScheduler(). Until
-  // called, update() is a safe no-op (see its s_done_sem guard).
-  bool enableDmaReads();
-
+  // Task context: reads the data block through DMA.
   bool update() override;
   const char* name() const override { return "BNO055"; }
 
-  // Live CALIB_STAT from the DMA block — no extra bus traffic.
+  // Live CALIB_STAT from the update() block — no extra bus traffic.
   bool calibrationStatus(ImuCalibrationStatus& out) const override;
 
-  // Runtime counterpart of captureCalibrationOffsets(): the offset
-  // registers are only readable in CONFIG mode, so this leaves NDOF for
-  // ~60 ms (no IMU samples, fusion restarts). Uses polling HAL calls, not
-  // Wire, which enableDmaReads() breaks. Requires enableDmaReads().
+  // The offset registers are only readable in CONFIG mode, so this leaves
+  // NDOF for ~60 ms (no IMU samples, fusion restarts).
   bool readCalibrationOffsets(ImuCalibrationOffsets& out) override;
 
-  // Not const: Adafruit_BNO055's I2C accessors aren't const-qualified.
+  // Blocking CALIB_STAT read, for the boot-time calibration window.
   ImuCalibrationStatus getCalibrationStatus();
 
-  // Reads the chip's current offset registers into `out` (boot-time, Wire).
-  // Returns false unless ImuCalibrationStatus::fullyCalibrated() — not
-  // Adafruit's own check, which also demands system == 3.
+  // Boot-time: false unless ImuCalibrationStatus::fullyCalibrated().
   bool captureCalibrationOffsets(ImuCalibrationOffsets& out);
 
-  // Loads previously-captured offsets into the chip so fusion starts
-  // calibrated. Safe to call any time — the driver handles the required
-  // CONFIG-mode switch internally.
+  // Loads previously-captured offsets so fusion starts calibrated; handles
+  // the CONFIG-mode switch itself.
   void applyCalibrationOffsets(const ImuCalibrationOffsets& offsets);
 
-  // Diagnostic only: reads CALIB_STAT (0x35) directly over `cfg_.bus`,
-  // bypassing Adafruit_BNO055::read8() — which silently returns the
-  // register address itself (0x35) as "data" on a failed I2C transaction,
-  // with no way to tell that apart from a real reading. Returns false
-  // (and leaves raw_byte at 0) on I2C failure; `wire_error` is
-  // TwoWire::endTransmission()'s code (0 = success, see Arduino Wire
-  // docs for 1-5).
-  bool probeCalibStatRaw(uint8_t& raw_byte, uint8_t& wire_error);
+  // Diagnostic: CALIB_STAT with the I2C outcome. On failure raw_byte is 0
+  // and i2c_error holds the HAL_I2C_ERROR_* bits.
+  bool probeCalibStatRaw(uint8_t& raw_byte, uint32_t& i2c_error);
 
  private:
+  bool writeByte(uint8_t reg, uint8_t value);
+  bool readByte(uint8_t reg, uint8_t& value);
+  bool setMode(uint8_t mode);
+  bool readOffsetsInConfigMode(ImuCalibrationOffsets& out);
+
   ImuBno055Config cfg_;
-  Adafruit_BNO055 bno_;
+  bool initialized_ = false;
+  static constexpr uint8_t kFailStreakBackoff = 10;
+  static constexpr uint8_t kBackoffSkips = 100;  // updates, ~1 s at 100 Hz
+  uint8_t fail_streak_ = 0;
+  uint8_t backoff_skips_ = 0;
 };

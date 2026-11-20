@@ -14,23 +14,23 @@
 
 #include "battery_adc.hpp"
 
-#include <Arduino.h>
-
 #include <cmath>
+
+#include "time_base.hpp"
 
 BatteryAdc::BatteryAdc(const BatteryAdcConfig config)
     : cfg_(config), soc_(SocEstimatorConfig{.num_cells = config.num_cells}) {
   voltage_factor_ = cfg_.v_ref * cfg_.correction * cfg_.divider;
 }
 
-void BatteryAdc::init() { pinMode(cfg_.adc_pin, INPUT); }
+void BatteryAdc::init() { cfg_.adc.init(); }
 
 void BatteryAdc::update() {
-  float raw = analogRead(cfg_.adc_pin) * cfg_.adc_resolution_scale;
+  float raw = cfg_.adc.read() * cfg_.adc_resolution_scale;
 
   data_.voltage = raw * voltage_factor_;
 
-  const uint32_t now_ms = millis();
+  const uint32_t now_ms = time_boot_ms();
   const float dt_s =
       (last_update_ms_ == 0)
           ? 0.0f

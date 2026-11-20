@@ -14,17 +14,20 @@
 
 #pragma once
 
+#include <etl/span.h>
+
 #include <atomic>
 
-#include "STM32FreeRTOS.h"
+#include "freertos.hpp"
 #include "motor_interface.hpp"
+#include "pin.hpp"
 
 #define MAX_NUM_MOTORS 4
 
 /// H-bridge driver group (e.g. one DRV8848 chip → 2 channels).
 struct DriverGroupConfig {
-  uint8_t sleep_pin;  // nSLEEP output
-  uint8_t fault_pin;  // nFAULT input (active-LOW)
+  platform::Pin sleep_pin;  // nSLEEP output
+  platform::Pin fault_pin;  // nFAULT input (active-LOW)
 };
 
 /// Aggregate data snapshot for all motors.
@@ -44,10 +47,9 @@ class MotorArray {
 
   MotorArray() = default;
 
-  /// Construct from motor pointers + optional driver groups.
-  MotorArray(MotorInterface** motors, uint8_t count,
-             const DriverGroupConfig* drivers = nullptr,
-             uint8_t num_driver_groups = 0);
+  /// Motors beyond MAX_NUM_MOTORS are ignored.
+  explicit MotorArray(etl::span<MotorInterface* const> motors,
+                      etl::span<const DriverGroupConfig> drivers = {});
 
   /// Init driver pins + all motors.
   void init();
@@ -61,6 +63,11 @@ class MotorArray {
   bool checkFaults() const;
   /// Latched nFAULT: set after kFaultAssertCycles consecutive control cycles,
   /// cleared kFaultClearMs after the pin releases.
+  // Times the fault latch was set since boot.
+  uint32_t faultEvents() const {
+    return fault_events_.load(std::memory_order_relaxed);
+  }
+
   bool hasFault() const {
     return fault_latched_.load(std::memory_order_relaxed);
   }
@@ -73,8 +80,8 @@ class MotorArray {
 
   // ── data access ──────────────────────────────────────────
   MotorsData getData() const { return data_; }
-  uint8_t count() const { return count_; }
-  bool isAvailable() const { return count_ > 0; }
+  uint8_t count() const { return static_cast<uint8_t>(motors_.size()); }
+  bool isAvailable() const { return !motors_.empty(); }
 
   // ── watchdog ─────────────────────────────────────────────
   void feedWatchdog();
@@ -88,17 +95,15 @@ class MotorArray {
 
   // ── element access ───────────────────────────────────────
   MotorInterface* operator[](uint8_t idx) {
-    return (idx < count_) ? motors_[idx] : nullptr;
+    return (idx < motors_.size()) ? motors_[idx] : nullptr;
   }
   const MotorInterface* operator[](uint8_t idx) const {
-    return (idx < count_) ? motors_[idx] : nullptr;
+    return (idx < motors_.size()) ? motors_[idx] : nullptr;
   }
 
  private:
-  MotorInterface** motors_ = nullptr;
-  uint8_t count_ = 0;
-  const DriverGroupConfig* drivers_ = nullptr;
-  uint8_t num_drivers_ = 0;
+  etl::span<MotorInterface* const> motors_;
+  etl::span<const DriverGroupConfig> drivers_;
   MotorsData data_ = {};
 
   // watchdog
@@ -114,6 +119,7 @@ class MotorArray {
   uint8_t fault_cycles_ = 0;
   uint32_t last_fault_ms_ = 0;
   std::atomic<bool> fault_latched_{false};
+  std::atomic<uint32_t> fault_events_{0};
 
   // FreeRTOS
   SemaphoreHandle_t mutex_ = nullptr;

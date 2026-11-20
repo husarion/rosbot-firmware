@@ -14,8 +14,12 @@
 
 #pragma once
 
+#include <etl/span.h>
+
 #include <cstddef>
 #include <cstdint>
+
+#include "pin.hpp"
 
 // Single point of truth for "what does the operator want at power-on".
 // Replaces the old useAlt()/confirmAlt() button-polling pair that used to
@@ -34,14 +38,11 @@ struct BootOptionConfig {
   // One or more interchangeable buttons — rosbot has two (either one
   // qualifies), rosbot_xl has one (PUSH_BUTTON2 there is wired to MCU
   // NRST, not a readable GPIO).
-  const uint8_t* buttons;
-  uint8_t button_count;
+  etl::span<const platform::Pin> buttons;  // active-low
 
-  // Green status LED(s) used to confirm the decision. Pass 0 for
-  // green_led2 on boards with only one (rosbot_xl) — rosbot has two and
+  // Green status LED(s) used to confirm the decision. rosbot has two and
   // this lights both together, so both robots read identically.
-  uint8_t green_led;
-  uint8_t green_led2 = 0;
+  etl::span<const platform::Pin> green_leds;
 
   uint32_t calibration_hold_ms = 3000;
 

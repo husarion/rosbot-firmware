@@ -14,14 +14,14 @@
 
 #pragma once
 
-#include <HardwareSerial.h>
-#include <STM32FreeRTOS.h>
-
+#include <atomic>
 #include <cstddef>
 #include <cstdint>
 
+#include "freertos.hpp"
 #include "mavlink.h"
 #include "transport/mavlink_transport_interface.hpp"
+#include "uart.hpp"
 
 class MavlinkPublisherInterface;
 class MavlinkSubscriberInterface;
@@ -55,7 +55,7 @@ class MavlinkNode {
   bool isConnected() const { return state_ == CONNECTED; }
   void setNamespace(const char* ns) { ns_ = ns; }
   // `mutex` is shared with every other writer of `serial` (may be null).
-  void setDiagnosticSerial(HardwareSerial* serial, SemaphoreHandle_t mutex) {
+  void setDiagnosticSerial(platform::Uart* serial, SemaphoreHandle_t mutex) {
     diag_serial_ = serial;
     diag_mutex_ = mutex;
   }
@@ -73,6 +73,14 @@ class MavlinkNode {
   State state() const { return state_; }
   const char* nsName() const { return ns_; }
 
+  // Since boot: frames the transport did not take (TX queue full), frames
+  // the parser dropped (CRC/framing), connections established.
+  uint32_t txDropped() const {
+    return tx_dropped_.load(std::memory_order_relaxed);
+  }
+  uint32_t rxErrors() const { return rx_errors_; }
+  uint32_t reconnects() const { return reconnects_; }
+
  private:
   void emitHeartbeatIfDue(uint32_t now_ms);
   void emitTimesyncIfDue(uint32_t now_ms);
@@ -81,7 +89,7 @@ class MavlinkNode {
 
   MavlinkTransport& transport_;
   MavlinkNodeConfig cfg_;
-  HardwareSerial* diag_serial_ = nullptr;
+  platform::Uart* diag_serial_ = nullptr;
   SemaphoreHandle_t diag_mutex_ = nullptr;
   const char* ns_ = "";
   const char* boot_notice_ = nullptr;
@@ -95,6 +103,9 @@ class MavlinkNode {
   bool critical_ = false;
   State state_ = WAITING;
   SemaphoreHandle_t tx_mutex_ = nullptr;
+  std::atomic<uint32_t> tx_dropped_{0};
+  uint32_t reconnects_ = 0;
+  uint32_t rx_errors_ = 0;  // link task only
 };
 
 extern MavlinkNode g_mavlink_node;

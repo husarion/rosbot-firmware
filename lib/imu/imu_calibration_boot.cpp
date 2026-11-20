@@ -14,17 +14,18 @@
 
 #include "imu_calibration_boot.hpp"
 
-#include <Arduino.h>
-
 #include <cstdarg>
 #include <cstdio>
+
+#include "clock.hpp"
+#include "time_base.hpp"
 
 namespace imu_calibration_boot {
 
 namespace {
 constexpr uint32_t kLogIntervalMs = 1000;
 
-void logLine(HardwareSerial* a, HardwareSerial* b, const char* fmt, ...) {
+void logLine(platform::Uart* a, platform::Uart* b, const char* fmt, ...) {
   if (a == nullptr && b == nullptr) return;
   char line[200];
   va_list args;
@@ -36,10 +37,11 @@ void logLine(HardwareSerial* a, HardwareSerial* b, const char* fmt, ...) {
 }
 }  // namespace
 
-bool run(ImuBno055& imu, uint8_t red_led, uint8_t green_led, uint8_t green_led2,
-         ImuCalibrationOffsets& out, HardwareSerial* debug_serial,
-         HardwareSerial* link_serial, uint32_t timeout_ms, uint32_t blink_ms) {
-  const uint32_t start = millis();
+bool run(ImuBno055& imu, platform::Pin red_led,
+         etl::span<const platform::Pin> green_leds, ImuCalibrationOffsets& out,
+         platform::Uart* debug_serial, platform::Uart* link_serial,
+         uint32_t timeout_ms, uint32_t blink_ms) {
+  const uint32_t start = time_boot_ms();
   uint32_t last_toggle = start;
   uint32_t last_log = start;
   bool led_on = false;
@@ -50,12 +52,11 @@ bool run(ImuBno055& imu, uint8_t red_led, uint8_t green_led, uint8_t green_led2,
           "rests >45deg apart (accel).\r\n",
           static_cast<unsigned long>(timeout_ms / 1000));
 
-  while (millis() - start < timeout_ms) {
+  while (time_boot_ms() - start < timeout_ms) {
     const ImuCalibrationStatus status = imu.getCalibrationStatus();
     if (status.fullyCalibrated()) {
-      digitalWrite(red_led, LOW);
-      digitalWrite(green_led, HIGH);
-      if (green_led2 != 0) digitalWrite(green_led2, HIGH);
+      red_led.reset();
+      for (const auto& led : green_leds) led.set();
       const bool captured = imu.captureCalibrationOffsets(out);
       logLine(debug_serial, link_serial,
               "IMU calibration: fully calibrated (sys=%u gyro=3 accel=3 "
@@ -63,29 +64,30 @@ bool run(ImuBno055& imu, uint8_t red_led, uint8_t green_led, uint8_t green_led2,
               status.system, captured ? "captured" : "capture FAILED");
       return captured;
     }
-    const uint32_t now = millis();
+    const uint32_t now = time_boot_ms();
     if (now - last_toggle >= blink_ms) {
       led_on = !led_on;
-      digitalWrite(red_led, led_on ? HIGH : LOW);
+      red_led.write(led_on);
       last_toggle = now;
     }
     if ((debug_serial != nullptr || link_serial != nullptr) &&
         now - last_log >= kLogIntervalMs) {
       uint8_t raw_byte = 0;
-      uint8_t wire_error = 0;
-      const bool i2c_ok = imu.probeCalibStatRaw(raw_byte, wire_error);
+      uint32_t i2c_error = 0;
+      const bool i2c_ok = imu.probeCalibStatRaw(raw_byte, i2c_error);
       logLine(debug_serial, link_serial,
               "IMU calibration: sys=%u gyro=%u accel=%u mag=%u (%lus "
               "elapsed) | raw I2C probe: %s (CALIB_STAT=0x%02X, "
-              "wire_error=%u)\r\n",
+              "i2c_error=0x%lX)\r\n",
               status.system, status.gyro, status.accel, status.mag,
               static_cast<unsigned long>((now - start) / 1000),
-              i2c_ok ? "ok" : "FAILED", raw_byte, wire_error);
+              i2c_ok ? "ok" : "FAILED", raw_byte,
+              static_cast<unsigned long>(i2c_error));
       last_log = now;
     }
-    delay(20);
+    platform::clock::delayMs(20);
   }
-  digitalWrite(red_led, LOW);
+  red_led.reset();
   logLine(debug_serial, link_serial,
           "IMU calibration: timed out, nothing saved.\r\n");
   return false;

@@ -1,44 +1,45 @@
 #!/usr/bin/env bash
-# Build and flash firmware for a given PlatformIO env.
+# Build and flash firmware for a given target.
 #
 # Delegates the STM32 bootloader handshake + stm32flash invocation to
 # `ros2 run rosbot_utils flash_firmware` — the same proven entry point the
 # rosbot-snap uses (snap/local/flash_launcher.sh). This wrapper only:
-#   - builds the binary with PlatformIO
-#   - picks the right --robot-model and --usb flag from the env name
+#   - builds the binary with scripts/build.sh (CMake)
+#   - picks the right --robot-model and --usb flag from the target name
 #   - auto-detects the FTDI tty (VID:PID 0403:6015) when --usb is needed
 #
-# Usage: scripts/flash.sh <pio-env>
+# Usage: scripts/flash.sh <target>
 #   e.g. scripts/flash.sh rosbot
-#        scripts/flash.sh rosbot_xl_release
+#        scripts/flash.sh rosbot_xl
 #
 # Environment overrides:
 #   SERIAL_PORT     — skip auto-detection, use this tty
 #   SERIAL_TYPE_USB — set to "True" to force USB flashing on rosbot (matches
 #                     the snap config key driver.serial-type-usb)
 #
-# Requires: platformio (pio), ros2 with rosbot_utils on the ROS path.
+# Requires: what scripts/build.sh needs, ros2 with rosbot_utils on the ROS
+# path.
 
 set -euo pipefail
 
 ENV_NAME="${1:-}"
 if [[ -z "$ENV_NAME" ]]; then
     cat >&2 <<USAGE
-Usage: $0 <pio-env>
+Usage: $0 <target>
 
-Valid envs:
-  rosbot          rosbot_release
-  rosbot_xl       rosbot_xl_release
+Valid targets:
+  rosbot
+  rosbot_xl
 USAGE
     exit 2
 fi
 
-# Map env name → rosbot_utils robot-model arg.
+# Map target name → rosbot_utils robot-model arg.
 case "$ENV_NAME" in
     rosbot_xl*) MODEL="rosbot_xl" ;;
     rosbot*)    MODEL="rosbot" ;;
     *)
-        echo "ERROR: cannot infer robot model from env '$ENV_NAME'" >&2
+        echo "ERROR: cannot infer robot model from target '$ENV_NAME'" >&2
         exit 1
         ;;
 esac
@@ -77,21 +78,8 @@ PY
     echo "Using serial port: $PORT"
 fi
 
-BIN_PATH=".pio/build/${ENV_NAME}/firmware.bin"
-
-# Build first. Use the same env as the flashing step.
-if ! command -v pio >/dev/null; then
-    echo "ERROR: 'pio' (PlatformIO) not on PATH." >&2
-    echo "  Install: pip3 install -U platformio" >&2
-    exit 1
-fi
-echo "Building env '$ENV_NAME'..."
-pio run -e "$ENV_NAME"
-
-if [[ ! -f "$BIN_PATH" ]]; then
-    echo "ERROR: build artifact not found at $BIN_PATH" >&2
-    exit 1
-fi
+echo "Building '$ENV_NAME'..."
+BIN_PATH="$("$(dirname "${BASH_SOURCE[0]}")/build.sh" "$ENV_NAME")"
 
 # Delegate flashing to the proven rosbot_utils entry point.
 if ! command -v ros2 >/dev/null; then

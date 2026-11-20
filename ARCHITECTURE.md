@@ -41,7 +41,7 @@ Two independent paths reach the switch fabric's CSRs, both confirmed wired
 on the schematic:
 - **MDIO/SMI** — pins 21/20 (`MDIO`/`MDC`) land on nets `ETH_MDIO`/`ETH_MDC`,
   same prefix as the RMII bus to the MCU, i.e. the same pins
-  `STM32Ethernet`'s `ethernetif.cpp` already uses for ordinary PHY register
+  `lib/ethernet/ethernetif.cpp` already uses for ordinary PHY register
   reads (`PHY_BSR`/`PHY_BCR` via `LAN9303_To_SMI_Address_Conv`). SMI reuses
   the MDIO/MDC pins with **extended addressing** (PHY address 16–31, vs.
   plain MIIM 0–15) to reach *all* internal registers, not just the Port 1/2
@@ -116,22 +116,23 @@ as-is given the trade-off above.
 
 ---
 
-## Variant model — how the dispatcher works
+## Variant model
 
-`platformio.ini` defines four envs: `rosbot`, `rosbot_release`, `rosbot_xl`,
-`rosbot_xl_release`. Each variant's env sets:
+`cmake/CMakeLists.txt` builds one executable per board, `rosbot` and
+`rosbot_xl`, from the same compiled `lib/` objects (`fw_common`); each adds
+its `src/<variant>/*.cpp`, and `rosbot_xl` also links `lib/ethernet`
+(`fw_ethernet`). There is one build (preset `release`); the image that
+goes to the robot also carries gdb symbols.
 
-- `build_src_filter` to include only `src/<variant>/*.cpp`
-- `-D ROSBOT` or `-D ROSBOT_XL` macro
-- Variant-specific transport flags (`-D ENABLE_HWSERIAL1`,
-  `-D ETHERNET_USE_FREERTOS`, `-D LAN9303`, ...)
+There is no variant macro: the variant
+is chosen by which `src/<variant>/` is compiled, and those files include
+`include/<variant>/config.hpp` directly. `lib/` never includes a variant
+config and has no variant `#ifdef`; a type only one variant uses lives next
+to its only user (e.g. `RangesStamped` in `publishers/range_publisher.hpp`).
 
-`include/config.hpp` is a thin dispatcher that includes
-`include/<variant>/config.hpp` based on the macro.
-
-Why this matters: **anything in `lib/`, `include/config.hpp`, or
-`platformio.ini` affects both variants.** Anything in `src/<variant>/` or
-`include/<variant>/` is variant-only.
+Why this matters: **anything in `lib/`, `boards/` or `cmake/` affects both
+variants.** Anything in `src/<variant>/` or `include/<variant>/` is
+variant-only.
 
 For runtime board-revision selection (rosbot_xl rev 1.1 vs 1.2), the MCU
 reads a string from EEPROM at boot via the `BoardRevision` class. Pin
@@ -145,20 +146,26 @@ enable, fan mode) is applied at runtime in `setMaxMotorsCurrent(rev)` and
 
 Layers, bottom-up:
 
-1. **STM32 HAL + LL** (vendor) — peripheral drivers. Used directly when we
-   need DMA / interrupt control beyond what the framework exposes.
-2. **stm32duino Arduino core** — `framework-arduinoststm32` (Husarion
-   fork). Provides `Arduino.h`, `Wire`, `HardwareSerial`, `HardwareTimer`,
-   `STM32Ethernet`, `LwIP`. Pinned via `platformio.ini`.
-3. **STM32FreeRTOS 10.3.3** — single-core preemptive scheduler.
-4. **Vendor / device libraries** — Adafruit_BNO055, Adafruit_BusIO,
-   Pololu VL53L0X, etc.
+1. **STM32CubeF4 HAL 1.8.1 + CMSIS device 2.6.8** (vendor, fetched by
+   `cmake/dependencies.cmake`) — HAL for I2C, timers, ETH (the Legacy
+   driver), flash and RCC; everything else in `lib/platform/` is on
+   registers. CMSIS core headers are vendored in `third_party/cmsis_core/`.
+2. **Board support** in `boards/stm32f407/` (shared by both boards):
+   startup from the CMSIS template, linker script, `stm32f4xx_hal_conf.h`,
+   `FreeRTOSConfig.h`, clock tree / SysTick / fault vectors / `main()` in
+   `system.cpp`, the newlib heap (`heap_newlib.c`) and syscalls. No CubeMX
+   project: the clock tree and every peripheral are configured in code.
+3. **FreeRTOS kernel 10.3.1** — single-core preemptive scheduler, ARM_CM4F
+   port, used directly (no CMSIS-RTOS). **lwIP 2.2.1** (`NO_SYS`) on
+   rosbot_xl.
+4. **Vendor / device libraries** — Pololu VL53L0X, vendored in
+   `lib/vl53l0x/` (MIT) and moved onto `platform::I2c`; the BNO055 driver
+   is our own. Plus **ETL** (Embedded Template Library, pinned tag) for
+   fixed-capacity containers and `etl::span` (we build as C++17, so no
+   `std::span`).
 5. **Project libraries** in `lib/`, including the MAVLink stack
    (`lib/mavlink/`).
 6. **Variant entry** in `src/<variant>/`.
-
-micro-ROS (`micro_ros_arduino`) used to sit here as a second, boot-selected
-upstream stack; it was removed after v2.1.0-jazzy (see git history).
 
 ---
 
@@ -169,20 +176,23 @@ upstream stack; it was removed after v2.1.0-jazzy (see git history).
 | `battery/` | `BatteryInterface` + `BatteryAdc` (rosbot battery via ADC) + `SocEstimator` (rosbot_xl: coulomb counting corrected by load-compensated OCV, so percentage does not jump under load; rosbot: rest-voltage curve through a low-pass filter, as there is no current measurement) |
 | `boot_option/` | `resolveBootAction()` — classifies the power-on button gesture (tap vs 3 s hold) into "change transport" / "calibrate IMU" / nothing, owns the confirmation LEDs — see "IMU calibration" under "Patterns" |
 | `comm_manager/` | `CommunicationManager` — chooses primary vs diagnostic transport at boot, driven by `boot_option`'s decision |
+| `ethernet/` | rosbot_xl network bring-up: `ethernet::begin()` (static IP, lwIP task, link checks) + vendored `ethernetif` (ST/Husarion, LAN9303); `include/lwipopts.h` holds the lwIP options |
 | `eeprom/` | I2C EEPROM driver + `BoardRevision` (revision string read on rosbot_xl) |
 | `encoder/` | `EncoderInterface` + `HardwareEncoder` (STM32 timer in encoder mode, x4) |
 | `fan/` | Fan + NTC thermistor (rosbot_xl only) |
 | `fault/` | `fatalError()` and the fault/hook plumbing — see "Fatal errors" under "Patterns" |
-| `imu/` | `ImuInterface` + `ImuBno055` (BNO055, DMA path — see "Patterns"). Also exposes on-chip calibration status/offsets, persisted via `persistent_config` — see "IMU calibration" under "Patterns" |
+| `imu/` | `ImuInterface` + `ImuBno055` (own BNO055 driver on `platform::I2c`: same reset/config sequence as Adafruit_BNO055 1.6.4, 46-byte data block by DMA). Also exposes on-chip calibration status/offsets, persisted via `persistent_config` — see "IMU calibration" under "Patterns" |
 | `indicator/` | Status LED state machine |
-| `led_strip/` | APA102-style LED strip over SPI (rosbot_xl only) |
+| `led_strip/` | APA102-style LED strip over `platform::Spi` (rosbot_xl only) |
+| `vl53l0x/` | Vendored Pololu VL53L0X driver (MIT, `LICENSE.txt`), bus calls on `platform::I2c`; excluded from pre-commit |
 | `motor/` | `MotorInterface`, `MotorHiZ`, `MotorArray` (Hi-Z PWM control) |
 | `persistent_config/` | Namespace + BNO055 calibration offsets, stored as one record appended to a log in flash sector 11. Appending is safe at runtime; only the 1-3 s sector erase (sector full) is deferred to a pre-scheduler `save()` — see "IMU calibration" |
+| `platform/` | Hardware access on CMSIS registers / HAL. `freertos.hpp`: the kernel headers the code uses. `i2c`: HAL I2C master at 400 kHz with a per-bus mutex; once the scheduler runs every transfer uses HAL's IT API (DMA for the IMU block read) and the task sleeps until it ends; bus recovery after faults; owns the I2C IRQs and HAL I2C callbacks. `spi`: blocking SPI master. `device.hpp`: CMSIS device header + HAL. `uart`: USART1/2/3 with DMA TX/RX, see "UART driver and DMA stream map". `analog_in`: ADC1 single-shot 10-bit reads (battery, NTC, motor current), serialized with masked IRQs. `timer`: timer clock enable / kernel clock for any TIM, and `PwmOutput` (motor PWM). `clock`: TIM5 free-running at 1 MHz (also the FreeRTOS run-time stats source, see `time_base.cpp`) (`init()` is the first line of `setup()`), `delayUs()`, `delayMs()` (blocks the task once the scheduler runs). `Pin`: constexpr GPIO (`Pin{Port::E, 2}`) with output/input/analog setup under masked IRQs, used for every pure-GPIO pin in both board configs (timer and ADC pins too, via `setAsAlternate` / `AnalogIn`); host-tested against a fake register block in `test/native_stubs/stm32f4xx.h` |
 | `pid/` | PID controller with feedforward, anti-windup, dead-zone boost |
 | `power_board/` | UART protocol to rosbot_xl power board MCU (battery state) |
 | `range/` | `RangeInterface` + `RangeVl53l0x` + `RangeArray` (rosbot only) |
 | `imu_calibration/` | Runtime calibration: session flag (LED), save request serviced from `imuTask` — see "IMU calibration" |
-| `time_base/` | `time_boot_us()` — the one monotonic µs clock behind every MAVLink timestamp and TIMESYNC; safe from any task/ISR and before the scheduler. Reads `micros()` outside its critical section, because with SysTick masked `micros()` steps back ~1 ms |
+| `time_base/` | `time_boot_us()` / `time_boot_ms()` — the one monotonic clock behind every MAVLink timestamp, TIMESYNC, publisher period and watchdog; safe from any task/ISR and before the scheduler. Extends the 32-bit TIM5 counter (`platform::clock::counterUs()`) to 64 bits; the counter is read before the critical section so a preempting caller is detected by the signed delta |
 | `mavlink/` | MAVLink stack: `MavlinkNode`, publishers/subscribers, transports, `rosbot` dialect (see "MAVLink build") |
 
 Each `*Interface` is the abstract base; the implementation file follows
@@ -229,10 +239,9 @@ CONTROL = 5    (highest)
 | Battery | SENSORS | 10 | ADC sample + queue |
 | Imu | SENSORS | 100 | DMA-read BNO055, queue `ImuStamped` |
 | LedIndicator | OBSERVING | 20 | Status LED blink/solid logic |
-| Monitor | BLOCKING | 1 | `vTaskGetRunTimeStats` to debug serial (debug builds only) |
 | MotorControl | CONTROL | 200 | Encoder + PID + PWM + current/back-EMF estimation |
 | Range | SENSORS | 10 | Read 4× VL53L0X |
-| Link | COMMUNICATION | 200 | `g_mavlink_node.loop()` — MAVLink RX/TX, heartbeat, publishers |
+| Link | COMMUNICATION | 1000 | `g_mavlink_node.loop()` — MAVLink RX/TX, heartbeat, publishers |
 
 ### rosbot_xl tasks
 
@@ -241,7 +250,6 @@ CONTROL = 5    (highest)
 | HwMonitor | OBSERVING | 10 | Battery (via PowerBoard UART) + fan + LED status, rate-limited internally |
 | Imu | SENSORS | 100 | same as rosbot |
 | LedStrip | OBSERVING | 30 | Drain `led_strip_queue`, render via SPI; idle animation blocks for seconds |
-| Monitor | BLOCKING | 1 | Runtime stats (debug builds) |
 | MotorControl | CONTROL | 200 | same as rosbot |
 | Shutdown | OBSERVING | 3 | Detect graceful shutdown signal from power board, stop scheduler |
 | Link | COMMUNICATION | 1000 | same as rosbot |
@@ -364,9 +372,8 @@ state; `COMMAND_LONG` `MAV_CMD_USER_2` with `param1` = 1 start / 0 stop /
    robots read identically with one LED's worth of vocabulary.
 
    `kChangeTransport` is wired to `g_comm_mgr`'s `useDiagnosticCondition`
-   callback (now just returns the precomputed bool — no more live GPIO
-   polling from inside that callback, and no `onDiagnosticSelected`
-   callback either, since BootOption already lit the LED).
+   callback, which returns the precomputed bool (no GPIO polling there;
+   BootOption has already lit the LED).
 2. On `kCalibrateImu`, firmware polls `ImuBno055::getCalibrationStatus()`
    in a blocking loop (RED_LED blinking, via `imu_calibration_boot::run()`
    in `lib/imu/imu_calibration_boot.*` — shared by both variants) while
@@ -411,12 +418,6 @@ is wired to it:
   failed` lines as `[MCU boot] ...`. Those lines therefore stay plain ASCII.
   Not mirrored when the FTDI itself is the link (`kChangeTransport`, a
   developer setup): there is no free debug line then anyway.
-
-Step 2's blocking calls (`getCalibrationStatus()`,
-`captureCalibrationOffsets()`) only work because `main.cpp` calls
-`ImuBno055::init()` without following it with `enableDmaReads()` until
-*after* this whole window — see the "FreeRTOS-safe IRQ priorities"
-gotcha above for why that ordering matters.
 
 ### Hi-Z motor control
 
@@ -487,29 +488,24 @@ co-managed.
 
 ### Serial / UDP transport (event-driven)
 
-The default Arduino paths (`EthernetUDP`, `Stream::readBytes`) busy-poll,
-keeping the link task in the Running state and burning CPU. The transports
-in `lib/mavlink/transport/` replace both with blocking primitives:
+The transports in `lib/mavlink/transport/` never busy-poll, so the link
+task does not burn CPU while waiting:
 
-- **`mavlink_udp_transport`** (rosbot_xl) — bypasses Arduino `EthernetUDP`,
-  uses the LwIP raw API directly. The `udp_recv()` callback (LwIP thread)
+- **`mavlink_udp_transport`** (rosbot_xl) — uses the lwIP raw API. The
+  `udp_recv()` callback (`ethernet_scheduler` task)
   pushes the payload into a FreeRTOS stream buffer; `read()` blocks on
   `xStreamBufferReceive(timeout)`; `write()` calls `udp_sendto()` (LwIP TX
   is already DMA-driven).
-- **`mavlink_serial_transport`** (rosbot) —
-  - **RX**: an `available()`-based loop that calls `vTaskDelay(1)` when the
-    ring buffer is empty, with `vTaskSetTimeOutState` /
-    `xTaskCheckForTimeOut` for tick-wraparound-safe timing. **Not fully
-    event-driven** — `HardwareSerial::_serial` is private in the framework
-    and `HAL_UART_RxCpltCallback` is a strong symbol, so a per-byte
-    semaphore would need a framework patch. The yielding poll buys most of
-    the win at zero invasion.
-  - **TX**: DMA-driven. `write()` pushes bytes into a 2 KB `xStreamBuffer`;
-    the DMA TC IRQ chains the next chunk and only marks idle when the buffer
-    drains. A frame that does not fit in the free space is dropped whole
-    (never split), without blocking the caller. DMA stream + channel are
-    resolved at runtime from the Serial pointer — see "USART → DMA mapping"
-    below.
+- **`mavlink_serial_transport`** (rosbot) — a thin wrapper over
+  `platform::Uart` (see "UART driver and DMA stream map" below):
+  - **RX**: bytes land in the UART's circular DMA buffer; `read()` drains
+    it and, when empty, waits with `vTaskDelay(1)` (tick-wrap-safe via
+    `vTaskSetTimeOutState` / `xTaskCheckForTimeOut`). `MavlinkNode` only
+    reads with a zero timeout from the periodic link task, so no USART
+    interrupt is needed.
+  - **TX**: `Uart::writeFrame()` queues the whole frame in the UART's stream
+    buffer or drops it (never split, never blocks); DMA drains the queue in
+    256 B chunks.
 
 ### Fatal errors
 
@@ -517,37 +513,58 @@ Every unrecoverable error ends in `fatalError()` (`lib/fault/`):
 `configASSERT`, the FreeRTOS stack-overflow hook (`configCHECK_FOR_STACK_OVERFLOW
 2`) and malloc-failed hook, and HardFault/MemManage/BusFault/UsageFault. It
 resets the MCU — every pin goes Hi-Z, so the motor drivers stop driving —
-after halting on a breakpoint if a debugger is attached. Spinning in place,
-which is what the old `configASSERT` and STM32FreeRTOS's fault handlers did,
-leaves the timers generating the last PWM duty with no watchdog running.
+after halting on a breakpoint if a debugger is attached. Spinning in place
+instead would leave the timers generating the last PWM duty with no
+watchdog running.
 
-STM32FreeRTOS defines the fault handlers as strong symbols, so they cannot
-be overridden at link time; `installFaultHandlers()` (first call in
-`setup()`) copies the vector table to RAM and repoints `VTOR`. Before
-resetting, `fatalError()` leaves a marker at the top of CCM RAM, which the
-linker script never uses and the startup code never clears. On the next
-boot `consumeFaultResetFlag()` sees it and the MAVLink node reports
-"MCU reset after a firmware fault" after the boot banner on every
-connection.
+The fault vectors pass the stacked exception frame to
+`faultFromException()` (`boards/stm32f407/system.cpp`). Before resetting,
+`fatalErrorWithCode()` leaves a 32-byte marker at the top of CCM RAM
+(0x1000FFE0), which the linker script never uses and the startup code never
+clears: a `FaultCode` (assert, stack overflow, out of heap, hard / bus /
+usage / memory-management fault, NMI, clock, exit), the faulting PC for
+exceptions and the task name for a stack overflow. On the next boot
+`consumeFaultInfo()` reads it; the MAVLink node reports "MCU reset after a
+firmware fault" after the boot banner, and `/diagnostics` shows the cause
+(e.g. "hard fault at 0x08012e9e", resolve with `arm-none-eabi-addr2line`).
+
+### Diagnostics (`lib/diagnostics/`, ROSBOT_DIAGNOSTICS)
+
+Once a second the link task sends `ROSBOT_DIAGNOSTICS`; the bridge maps it
+to `/diagnostics` (see ROS_API.md for the statuses and thresholds).
+`lib/diagnostics` samples the MCU itself (CPU idle from the FreeRTOS
+run-time counters between two samples, smallest stack headroom and its
+task, heap, reset cause read from `RCC_CSR` at boot and cleared, fault
+cause); `MavlinkDiagnosticsPublisher` adds the link counters, and each
+board's `mavlink_entities.cpp` fills its hardware part through a function
+pointer (IMU, range sensors, I2C bus resets, motor faults, battery, power
+board, Ethernet). Modules expose counters only through getters
+(`I2c::recoveries()`, `RangeVl53l0x::timeouts()`, `ImuInterface::readErrors()`,
+`MotorArray::faultEvents()`, `MavlinkNode::txDropped()/rxErrors()`), so the
+library layer does not depend on diagnostics.
 
 ### lwIP ownership (rosbot_xl)
 
-lwIP is built with `NO_SYS=1`, so it is not thread-safe. With
-`ETHERNET_USE_FREERTOS`, STM32Ethernet drives it from its own
-`ethernet_scheduler` task (priority 5, every tick): RX, timers and every raw
-API callback run there; no ISR touches lwIP (`ETH_INPUT_USE_IT` is off).
-Any other task that calls lwIP must keep `ethernet_scheduler` out — inside
-`taskENTER_CRITICAL()` or with the scheduler suspended (`vTaskSuspendAll()`,
-which leaves IRQs enabled) — and must not wait for lwIP to make progress
-meanwhile: `MavlinkUdpTransport::write()` suspends the scheduler,
-`sendShutdownRequest()` in `src/rosbot_xl/rtos.cpp` uses a critical
-section. Follow-up work (send, close) belongs in the lwIP callbacks.
+lwIP is built with `NO_SYS=1` (`include/lwipopts.h`), so it is not
+thread-safe. `ethernet::begin()` (`lib/ethernet/ethernet.cpp`) starts the
+`ethernet_scheduler` task (priority 5, every tick) that owns it: RX
+(`ethernetif_input`), timers, a LAN9303 link check every 500 ms, and every
+raw-API callback run there; no ISR touches lwIP (`ETH_INPUT_USE_IT` is
+off). Any other task that calls lwIP must keep `ethernet_scheduler` out —
+inside `taskENTER_CRITICAL()` or with the scheduler suspended
+(`vTaskSuspendAll()`, which leaves IRQs enabled) — and must not wait for
+lwIP to make progress meanwhile: `MavlinkUdpTransport::write()` suspends
+the scheduler, `sendShutdownRequest()` in `src/rosbot_xl/rtos.cpp` uses a
+critical section. Follow-up work (send, close) belongs in the lwIP
+callbacks. Both only work because every lwIP caller runs at a lower
+priority than `ethernet_scheduler` (5): a caller at 5 or above could
+preempt it inside lwIP, where neither guard helps.
 
-Do not use `EthernetClient` from a task: its `connect()` calls lwIP
-unprotected, and the `stm32_eth_scheduler()` it spins on is a no-op under
-FreeRTOS (core ≥ 1.6.1), so it only works because `ethernet_scheduler`
-preempts it. For the same reason it never connects with the scheduler
-suspended.
+`ethernetif.cpp` (ST, with Husarion's LAN9303 support) is vendored in
+`lib/ethernet/`; the rest (static IP with a /24 netmask and `.1` gateway,
+one `dhcp_inform`) lives in `ethernet.cpp`. HAL ETH is the Legacy (pre-1.27
+API) driver; the LAN9303 PHY register remaps it uses live in
+`boards/stm32f407/stm32f4xx_hal_conf.h`.
 
 ### FreeRTOS-safe IRQ priorities
 
@@ -555,29 +572,39 @@ suspended.
 convention: lower number = higher priority. Any IRQ that calls
 `*FromISR()` API must run at priority **≥ 5** numerically.
 
-The framework defaults I2C IRQs to priority 2 (above
-`configMAX_SYSCALL_INTERRUPT_PRIORITY`), which would crash if our
-override of `HAL_I2C_MemRxCpltCallback` ran a `*FromISR` call. The IMU
-DMA path lowers the EV/ER + DMA stream IRQ priority to 5 — canonical
-pattern in `lib/imu/imu_bno055.cpp`. Replicate this if you add another
-HAL-callback-driven path on top of a framework-managed peripheral.
+NVIC priorities reset to 0 (the highest), above
+`configMAX_SYSCALL_INTERRUPT_PRIORITY`: an IRQ enabled without an explicit
+priority would crash the kernel on its first `*FromISR` call. Set the
+priority before `NVIC_EnableIRQ`, as `lib/platform/` does.
 
-**Gotcha (HW-verified 2026-08-26):** that priority change — and linking
-our DMA handle into `s_hi2c` via `__HAL_LINKDMA` — breaks Wire's own
-blocking transactions (`HAL_I2C_Master_Receive_IT`, what
-`Adafruit_BNO055`'s non-DMA calls use). Confirmed by probing the I2C bus
-directly before/after: reads succeed before, fail with a generic HAL
-error immediately after. Boot-time IMU calibration (see "IMU
-calibration" below) needs those blocking calls, so `ImuBno055::init()`
-only brings the chip up (NDOF mode, axis remap) — the DMA/IRQ setup is a
-separate `enableDmaReads()`, called once right before
-`vTaskStartScheduler()`, after calibration is done. `update()` no-ops
-safely (`s_done_sem == nullptr` guard) until then, and no task calls it
-before the scheduler starts anyway.
+The I2C, UART TX and IMU DMA IRQs in `lib/platform/` are all set to 5,
+from init on, for every transfer.
+
+### I2C transfers: IT mode, never polled under the scheduler
+
+Before the scheduler starts (boot, sensor init) transfers are HAL's polled
+calls. After that every transfer is HAL IT (`Mem_Write_IT`,
+`Mem_Read_IT`, `Master_Transmit_IT`/`Receive_IT`) or, for the 32-byte IMU
+block, a sequential IT register write + DMA read, and the calling task
+sleeps on a semaphore. Why:
+
+- The polled calls busy-wait the whole transfer, and the BNO055 stretches
+  the clock: `HAL_I2C_Mem_Read_DMA`'s polled address phase alone costs
+  230-450 us per IMU read (DWT, ROSbot 3), which put the Imu task at
+  3.75 % CPU; in IT mode it is 0.43 %.
+- The polled calls have steps that must follow within a byte time (for a
+  1-byte read, STOP right after ADDR is cleared; HAL 1.8.1 does not mask
+  IRQs there). In IT mode the ISR does them.
+
+Event-driven waking of the link task (producers notifying it after each
+`xQueueOverwrite`) was tried and dropped: in 4 of 4 sessions a front
+VL53L0X stopped answering (NACK at its address, no bus fault) after
+motor tests, never with the fixed-rate link loop (12 clean runs). The
+cause is not understood; do not reintroduce it without finding it.
 
 ### DMA + FreeRTOS handshake
 
-Standard pattern, reused for IMU and (planned) UART TX. Steps:
+Standard HAL pattern (`platform::I2c` uses it; `platform::Uart` does the same on registers). Steps:
 
 1. `__HAL_RCC_DMAx_CLK_ENABLE()`.
 2. Configure `DMA_HandleTypeDef` (direction, increments, sizes).
@@ -588,160 +615,198 @@ Standard pattern, reused for IMU and (planned) UART TX. Steps:
 7. In task: call `HAL_..._DMA(...)` then
    `xSemaphoreTake(timeout)`.
 8. Define `extern "C" void DMAx_StreamY_IRQHandler() {
-     HAL_DMA_IRQHandler(&our_hdma); }` (the framework leaves DMA stream
-   IRQ vectors weak by default).
+     HAL_DMA_IRQHandler(&our_hdma); }` (the CMSIS startup file declares
+   every IRQ vector weak).
 9. Override `HAL_..._CpltCallback` (peripheral-specific) to do
    `xSemaphoreGiveFromISR + portYIELD_FROM_ISR`.
 
-Caveat: some HAL completion callbacks are strong-symbol in the framework
-(e.g. `HAL_I2C_ErrorCallback` in `Wire/utility/twi.c`). When that
-happens, fall back to the timeout in `xSemaphoreTake` and abort the
-transfer manually (`HAL_I2C_Master_Abort_IT` for I2C).
+`platform::I2c` follows this pattern and also handles
+`HAL_I2C_ErrorCallback` (a NACK wakes the reader at once).
 
-### Wire 100 kHz reset gotcha
+### I2C fault recovery
 
-`TwoWire::begin()` in stm32duino unconditionally calls
-`i2c_init(&_i2c, 100000, ...)` — hard-coded 100 kHz. Any third-party
-library that does its own `Wire.begin()` (e.g. Adafruit_BNO055 inside
-its `begin(mode)`) silently drops your previously-configured 400 kHz
-back to 100 kHz.
+A transfer that ends in a bus fault (HAL timeout, `HAL_BUSY` from a stuck
+BUSY flag or a handle left mid-transfer, BERR, ARLO) returns false and then
+`I2c::recover()` runs under the bus lock: NVIC off for the bus IRQs,
+`HAL_DMA_Abort`, `HAL_I2C_DeInit`, `clearI2cBus()` (`i2c_bus_clear.hpp`: up
+to nine 100 kHz SCL pulses on open-drain GPIO until SDA is released, then a
+STOP, UM10204 3.1.16), RCC reset and re-init. A plain NACK (`AF`, e.g. a
+probe of an absent VL53L0X) does not trigger it. A timed-out read cannot
+just call `HAL_I2C_Master_Abort_IT`: HAL 1.8.1 ignores it for a `Mem_Read`
+(`MODE_MEM`) and leaves the handle `BUSY_RX`, so one stuck device would
+fail every later transfer on the bus (on XL also the EEPROM). `HAL_I2C_DeInit` also clears the handle lock that HAL's
+`IsDeviceReady` leaves taken on its `HAL_TIMEOUT` path.
 
-`ImuBno055::init()` re-applies the fast-mode clock after `bno_.begin()`.
-This was documented here long before the code did it, and it mattered:
-at 100 kHz the DMA read took 5-9 ms against a 4 ms timeout, nearly every
-read timed out, and `imuTask` kept republishing the last good sample —
-orientation frozen while the robot was turned by hand (ROSbot 3, 2026-09).
-At 400 kHz: 1.6-6.9 ms, 0 timeouts in 2181 reads. The spread is the
-BNO055's clock stretching plus task wake-up jitter, hence
-`kReadTimeoutMs = 8` (under the 10 ms task period). `update()` now reports
+The bus IRQs are enabled only around IT/DMA transfers, and a transfer gets
+at most 200 IRQs: past that the ISR switches them off, fails the transfer
+and the task resets the bus. Found on ROSbot 3 with the BNO055 unpowered:
+it still answered the boot probe through its I/O pins, the first DMA read
+then left an event flag HAL never clears, and the re-entering IRQ starved
+every task (link silent, no reset). `ImuBno055` also backs off to one read
+a second after 10 failures in a row.
+
+`armTransfer()` clears the RX DMA handle's `XferCpltCallback` before every
+transfer. Only a DMA read that completes clears it in HAL; one that timed
+out leaves it set, and HAL's start-bit handler then sets `DMAEN` for the
+next IT write, whose TXE it never serves while `DMAEN` is set: the IRQ
+budget trips on every IMU read and `recover()` does not help, because the
+callback lives in the handle, not in the peripheral. Found on ROSbot XL
+(2026-11-20, ST-LINK): the IMU never came up after one boot-time timeout.
+
+In the first ~120 ms after the switch to fusion mode the BNO055 stretches
+the clock long enough that 46 bytes took more than 8 ms: with an 8 ms read
+limit every XL boot failed ~12 reads (TCIF set, the DMA IRQ pending, i.e.
+the transfer ended just after the timeout) and reset the bus each time.
+Hence `kReadTimeoutMs = 25` (0 failures, HW 2026-11-20).
+
+### Range sensors that lose power
+
+A brown-out (seen on ROSbot 3 with the wheels stalled against a wall) puts
+every VL53L0X back at its default address, and a sensor that NACKs would
+make the Pololu driver's wait-for-data loop spin on I2C for its whole
+500 ms timeout. How the firmware handles it (HW-tested 2026-11-20 by
+pulsing every XSHUT low for 50 ms at runtime):
+
+- `RangeVl53l0x::update()` reads the interrupt status once instead of the
+  driver's wait. NACK, or no data for `timeout_ms`, counts as a timeout;
+  two in a row mark the sensor lost and it is no longer read. Not waiting
+  also keeps the Range task cheap when the sensors' measurement phase
+  drifts from the task's, as it does after a re-init (the wait cost
+  ~25 % CPU).
+- `RangeArray::update(now_ms)` re-runs `init()` for the whole array while a
+  sensor is lost, 1 s after the loss and then doubling up to 16 s: a
+  brown-out puts every sensor back at the default address, so XSHUT order
+  has to hand the addresses out again. A sensor absent since boot never
+  triggers it. `init()` replaces the driver object, which otherwise keeps
+  the address the previous `setAddress()` gave it.
+- Result on HW: loss detected in ~200 ms, all four back ~1 s later, CPU idle
+  95.3 % throughout. The re-init runs on the Range task's stack, hence
+  `Stack::L` (headroom had dropped to 164 B with `Stack::M`).
+
+### I2C bus speed (400 kHz)
+
+`platform::I2c::init()` sets 400 kHz with the 2:1 fast-mode duty cycle:
+with PCLK1 = 42 MHz, CCR 35 gives exactly 400 kHz and stays inside the
+fast-mode tLOW/tHIGH minimums (the 16/9 duty would round CCR to 5, i.e.
+336 kHz). The bus speed matters for the IMU: the 46-byte read takes
+1.6-6.9 ms at 400 kHz (BNO055 clock stretching plus task wake-up jitter)
+and 5-9 ms at 100 kHz, too long for a 10 ms task period. `update()` reports
 whether it read a fresh sample, and `imuTask` publishes only those.
 
-`setClock(400000)` itself is not 400 kHz either: stm32duino always picks
-the 16/9 duty cycle for fast mode, and with PCLK1 = 42 MHz CCR rounds up
-to 5, i.e. 336 kHz (read back from `I2C->CCR`). Use `setI2cFastMode()`
-(`lib/i2c_fast_mode/`) for every bus: it switches to the 2:1 duty cycle,
-which divides evenly (CCR 35 = exactly 400 kHz) and stays inside the
-fast-mode tLOW/tHIGH minimums.
+### Task timing
 
-### Timing measured on HW (2026-09)
+Checked on HW with every task instrumented (DWT cycle counter, wake-to-wake
+period, per-task CPU from the FreeRTOS run-time stats): all tasks hit their
+configured rate. Rules that keep it that way:
 
-Every task was instrumented (DWT cycle counter, wake-to-wake period and
-execution time, per-task CPU from the FreeRTOS run-time stats) on
-`rosbot_release` / `rosbot_xl_release`. All tasks hit their configured
-rate; idle is ~92% on ROSbot 3 and ~89% on ROSbot XL. Things that did not
-look right, and what changed:
+- Queue-fed MAVLink publishers move their rate gate only on a real
+  publish; IMU, joint state and ranges use `period_ms = 0`, because the
+  producing task already sets the rate. A gate that moved on an early call
+  with an empty queue dropped samples (`_imu/data` at 82 Hz instead of 100
+  on ROSbot 3).
+- Periodic tasks use `vTaskDelayUntil`, so their period does not grow by
+  the execution time.
+- `PowerBoard::update()` never blocks: it drains what the UART holds and
+  keeps a partial frame, and the reply is picked up on a later tick (see
+  "Power board" for the request spacing).
+- The run-time stats read `time_boot_us() >> 4` (62.5 kHz); TIM5 is the
+  1 MHz system clock.
 
-- **Queue-fed MAVLink publishers dropped samples.** `publish()` moved
-  `last_pub_ms_` before it knew the queue held anything, so a call that
-  came a moment early closed the gate for a whole period and the next
-  sample was overwritten in its depth-1 queue. With the 5 ms link loop of
-  ROSbot 3, `_imu/data` arrived at 82 Hz instead of 100 (XL's 1 ms loop hid
-  it). The gate now moves only on a real publish, and IMU / joint state /
-  ranges use `period_ms = 0`: the producing task already sets the rate.
-- **`PowerBoard::update()` spun for 100 ms.** It called `readBytes()`,
-  which busy-waits for the stream timeout after the last byte, so
-  `hwMonitorTask` ran 119 ms once a second. It now drains what the UART
-  holds and keeps a partial frame; the reply is picked up on a later
-  10 Hz tick. The board-info request goes half a second after the battery
-  one: sending both at once lost replies on HW. The cause is unconfirmed —
-  it was put down to a 64 B RX buffer, but the Husarion core fork's ring is
-  512 B (`SERIAL_RX_BUFFER_SIZE`, asserted in `mavlink_serial_transport.cpp`).
-- `rangeTask` and `ledStripTask` used `vTaskDelay`, so their period grew by
-  the execution time (range: 101 ms instead of 100).
-- The run-time stats timer ticks at 50 kHz, not 100 kHz: TIM5 is on APB1
-  (84 MHz timer clock).
-
-Checked and fine: motor PWM 20 kHz on all four timers, XL fan PWM 25 kHz,
+Checked on HW: motor PWM 20 kHz on all four timers, XL fan PWM 25 kHz,
 encoder timers in encoder mode, USART1 923 kbaud for a 921.6 kbaud link
 (+0.16%). The rear-panel USART3 on ROSbot 3 runs +1.27% fast — the best
 BRR gets at 42 MHz, still inside UART tolerance. The XL LED-strip SPI
 asks for 4 MHz and gets 2.625 MHz (the next power-of-two divider).
 
-### Stack and CPU measured on HW (2026-10, `devel` debug build)
+### Measured on HW against jazzy 2.4.0 (2026-11)
 
-Minimum free stack per task (`uxTaskGetStackHighWaterMark`, Monitor
-output) while driving a test profile on a stand; IDLE from the run-time
-stats.
+ROSbot 3 (CORE2) and ROSbot XL (Digital Board v1.2, power board v1.3 with
+firmware v1.0.4), the same board flashed alternately with jazzy 2.4.0 and
+this firmware, wheels in the air unless noted. Identical instrumentation
+in both copies; medians of 3–10 runs. CPU idle was cross-checked by
+sampling the PC over SWD at steady state: it agrees with the FreeRTOS run
+time stats within ~1 point (interrupt time). Full data:
+`~/Husarion/reports/rosbot/cube-fw-metrics-2026-11-19.html` (not in the repo).
 
-| ROSbot 3 | free | ROSbot XL rev 1.2 | free |
-|---|---:|---|---:|
-| Battery | 216 B | HwMonitor | 276 B |
-| Range | 396 B | MotorControl | 488 B |
-| LedIndicator | 380 B | Imu | 500 B |
-| Imu | 596 B | Monitor | 564 B |
-| MotorControl | 600 B | LedStrip | 572 B |
-| Monitor | 656 B | Shutdown | 772 B |
-| Link | 3504 B | Link | 3304 B |
-| IDLE | 92 % | IDLE | 88–91 % |
+| Metric | ROSbot 3 jazzy → new | XL jazzy → new |
+|---|---|---|
+| CPU idle, idle (SWD PC sampling) | 92.5 → 94.4–94.7 % | 90.7 → 94.0 % |
+| CPU idle, driving (run-time stats) | 92.6 → 95.9 % | 88.5 → 94.7 % |
+| Imu task CPU | 3.75 → 0.43 % (no busy-wait on I2C) | 3.72 → 0.45 % |
+| IMU sample → TX queue, mean / max | 5.95 / 10.05 → 3.53 / 6.98 ms | 3.67 / 7.94 → 3.65 / 7.96 ms |
+| Wheel feedback → TX queue, mean | 88 → 65 µs | 95 → 78 µs (driving 265 → 96 µs) |
+| IMU / feedback rate | 99.8 / 199.6 → 100.0 / 200.0 Hz (crystal) | 99.7 / 199.4 → 100.0 / 200.0 Hz |
+| `/battery` | unchanged | 0.9 → 10 Hz (PB firmware >= v1.0.3) |
+| Free heap | 89.4 → 102.5 KB | 44.1 → 55.3 KB |
+| Static RAM / image | 11.4 → 9.3 KB / 88 → 100 KB | 56.0 → 52.6 KB / 123 → 152 KB |
+| TIMESYNC re-seeds in 10 min | ~17 → 0 | ~17 → 0 (clock −9 ppm) |
+| Boot to first MAVLink | 5.6 → 5.3 s | 11.3 s both |
+| Wheel tracking, watchdog stop, gyro noise | unchanged | unchanged |
 
-XL `MotorControl` uses ~536 B of its 1 KB: with the old 576 B (`Stack::XXS`)
-the margin would have been ~40 B. Free heap: 89 KB (ROSbot 3), 44 KB (XL).
+- The largest gap between samples on the host is longer (ROSbot 3: IMU
+  17.5 → 29.2 ms): the new firmware sends a sample as soon as it is read,
+  so the BNO055's variable read time (clock stretching) shows in delivery,
+  while jazzy published on a fixed 5 ms grid at the cost of latency.
+  Sample timestamps are regular in both.
+- No leak: 30 min of wheel commands, LED strip, LEDs, services, UDP
+  garbage and a bridge restart every 5 min. ROSbot 3 free heap constant
+  at 102 504 B; on XL (over SWD) newlib heap use, the `sbrk` top and the
+  lwIP pools did not move. Every allocation happens at startup.
+- Direction reversal is the same in both firmware. A step +2 → −2 rad/s
+  sent straight to `/_motors/cmd` overshoots to ~−3 rad/s and settles in
+  ~110 ms; through the controller (with its acceleration limits) it is
+  smooth. On the floor ROSbot 3 pauses 110–250 ms at zero when reversing
+  rotation (skid-steer friction, the PID starts from zero): see "Open work".
+- Checked by hand on both robots: LEDs, LED strip, buttons, IMU axes
+  (REP-103), boot gestures, IMU calibration window, range sensors, Ethernet
+  replug, fan against the NTC, power board shutdown request, flashing with
+  `rosbot.flash` from the SBC (snap `rosbot` 1.3.1, `jazzy/edge`; 1.3.0
+  accepts only firmware v2.2.1), 10 min with the full stack without a
+  disconnect, LAN9303 rear port ↔ SBC ~90 Mbit/s.
+- Crystal fallback to the RC checked on XL (HSE bypass with no clock); the
+  NMI path checked on ROSbot 3. The clock security system trip itself was
+  not tested: it needs the crystal stopped in hardware.
 
-### USART → DMA mapping (and IRQ-handler symbol collisions)
+### UART driver and DMA stream map
 
-`mavlink_serial_transport` resolves the DMA stream / channel for each Serial at
-runtime via `findTxMap(HardwareSerial*)`. Currently mapped: `&Serial1`
-(USART1) and `&Serial3` (USART3). To extend to another Serial, add an
-entry in the function plus an IRQ handler symbol — but check the table
-below first for stream-IRQ collisions, since `lib/` is shared across
-variants and IRQ handlers are link-time strong symbols.
+`lib/platform/uart.{hpp,cpp}` (`platform::Uart`) drives USART1/2/3 on
+registers: 8N1, BRR computed exactly like HAL's `UART_BRR_SAMPLING16`
+(`uart_math.hpp`, host-tested), TX through a FreeRTOS stream buffer drained
+by DMA, RX by circular DMA into a 512 B buffer read by polling its counter.
+No USART interrupt is enabled: every reader is a periodic task. Text writes (`print`/`printf`, 256 B per call)
+block until queued; before the scheduler runs (and while `createTasks()`
+has interrupts masked) every write is polled byte by byte.
 
-STM32F4 USART/UART TX → DMA mapping (RM0090 Table 43):
-
-| Serial | UART | TX DMA primary | TX DMA alt |
+| UART | Use | TX DMA | RX DMA |
 |---|---|---|---|
-| Serial1 | USART1 | DMA2 Stream 7 Ch4 | — |
-| Serial2 | USART2 | DMA1 Stream 6 Ch4 | — |
-| Serial3 | USART3 | DMA1 Stream 3 Ch4 | DMA1 Stream 4 Ch7 |
-| Serial4 | UART4 | DMA1 Stream 4 Ch4 | — |
-| Serial5 | UART5 | DMA1 Stream 7 Ch4 | — |
-| Serial6 | USART6 | DMA2 Stream 6 Ch5 | DMA2 Stream 7 Ch5 |
-| Serial7 | UART7 | DMA1 Stream 1 Ch5 | — |
-| Serial8 | UART8 | DMA1 Stream 0 Ch5 | — |
+| USART1 | rosbot SBC link / rosbot_xl debug | DMA2 S7 ch4 | DMA2 S2 ch4 |
+| USART2 | rosbot_xl power board | DMA1 S6 ch4 | DMA1 S5 ch4 |
+| USART3 | rosbot FTDI debug / alt link | DMA1 S4 ch7 | DMA1 S1 ch4 |
 
-Already-defined `DMAx_StreamY_IRQHandler` symbols in `lib/`:
+Request mapping cross-checked against ChibiOS's STM32F40x DMA registry
+(RM0090 tables 42/43). USART3 TX uses the Stream 4 alternative because
+Stream 3 is the BNO055 I2C2 RX stream.
+
+`DMAx_StreamY_IRQHandler` symbols defined in `lib/` (all others stay weak):
 
 | Symbol | Defined by | Reason |
 |---|---|---|
-| `DMA1_Stream0_IRQHandler` | `imu_bno055.cpp` | I2C1_RX (placeholder, not used today) |
-| `DMA1_Stream2_IRQHandler` | `imu_bno055.cpp` | I2C3_RX — rosbot IMU |
-| `DMA1_Stream3_IRQHandler` | `imu_bno055.cpp` | I2C2_RX — rosbot_xl IMU |
-| `DMA1_Stream4_IRQHandler` | `mavlink_serial_transport.cpp` | USART3_TX (alt mapping) |
-| `DMA2_Stream7_IRQHandler` | `mavlink_serial_transport.cpp` | USART1_TX |
+| `DMA1_Stream0_IRQHandler` | `platform/i2c.cpp` | I2C1_RX (rosbot range bus, no DMA reads today) |
+| `DMA1_Stream2_IRQHandler` | `platform/i2c.cpp` | I2C3_RX — rosbot IMU |
+| `DMA1_Stream3_IRQHandler` | `platform/i2c.cpp` | I2C2_RX — rosbot_xl IMU |
+| `DMA1_Stream4_IRQHandler` | `platform/uart.cpp` | USART3_TX |
+| `DMA1_Stream6_IRQHandler` | `platform/uart.cpp` | USART2_TX |
+| `DMA2_Stream7_IRQHandler` | `platform/uart.cpp` | USART1_TX |
 
-Picking the alt mapping for USART3_TX (Stream 4 Ch7 instead of the
-primary Stream 3 Ch4) was deliberate: the primary collides with
-`imu_bno055.cpp`'s `DMA1_Stream3_IRQHandler` symbol, which is in the
-link on both variants even though only rosbot_xl uses it.
+The TX stream interrupts on transfer complete and on transfer error (TEIE):
+on an error the hardware disables the stream, the handler drops that chunk
+and starts the next one, so a bus fault costs one bad frame instead of
+stalling TX for good. DMEIE stays off: a direct-mode error does not stop
+the stream, and re-arming it then would corrupt the transfer.
 
-Recipe for adding a new Serial to `mavlink_serial_transport`:
-
-1. Pick a stream (primary or alt) that does not collide with any symbol
-   in the table above.
-2. Add a `findTxMap` entry guarded by `defined(USARTx_BASE) &&
-   defined(ENABLE_HWSERIALx)`:
-   ```cpp
-   if (serial == &SerialN) {
-     static const UartTxDmaMap kMap = {USARTN, DMAx, DMAx_StreamY,
-                                       DMA_CHANNEL_z, DMAx_StreamY_IRQn};
-     return &kMap;
-   }
-   ```
-3. Add the matching IRQ handler at namespace scope:
-   ```cpp
-   extern "C" void DMAx_StreamY_IRQHandler(void) {
-     if (s_hdma_tx.Instance == DMAx_StreamY) HAL_DMA_IRQHandler(&s_hdma_tx);
-   }
-   ```
-4. Add `-D ENABLE_HWSERIALx` to the relevant `[env:...]` in
-   `platformio.ini` if the framework hasn't enabled it already.
-5. Add the new symbol to the "already-defined" table in this section so
-   the next person picking a stream sees it.
-
-If you ever need 4+ DMA-driven peripherals on shared streams, consider
-refactoring the IRQ handlers into a central dispatcher (`dma_dispatch.cpp`)
-where each module registers its own callback; current code keeps it
-simple because the conflict surface is small.
+RX streams run without an IRQ. Adding a UART: pick streams that do not
+collide with this table, add a `kStreams` entry and its TX IRQ handler in
+`uart.cpp`, and update both tables here.
 
 ### Variant universality in `lib/`
 
@@ -762,79 +827,168 @@ help:
 
 ## Build
 
-`platformio.ini` defines a base `[stm32]` section with shared
-`framework-arduinoststm32` (Husarion fork), STM32Ethernet, LwIP,
-STM32FreeRTOS, Adafruit BNO055, VL53L0X. Then four
-concrete envs select variant + debug/release:
+CMake + Ninja + `arm-none-eabi-gcc` (Ubuntu: `apt install cmake
+ninja-build gcc-arm-none-eabi libnewlib-arm-none-eabi
+libstdc++-arm-none-eabi-newlib`, the last two are only Recommends of the
+compiler; CI uses these packages, GCC 13.2). The
+project is `cmake/CMakeLists.txt`, not a root `CMakeLists.txt`: colcon
+would take the whole repo for one package and stop before
+`bridge/rosbot_mavlink_bridge`. `cmake/COLCON_IGNORE` and a
+`COLCON_IGNORE` written into every build dir keep colcon out.
 
-`board = rosbot_stm32f407` is a repo-local definition in `boards/`
-(STM32F407ZGT6, generic `variant_generic.h` exposing all GPIO). It is the
-honestly-named successor to the misleading `rosbot_xl_digital_board` — both
-resolve to the identical generic F407ZG build (`ARDUINO_GENERIC_F407ZGTX`),
-shared by **both** variants. The Husarion `framework-arduinoststm32` fork is
-still required: it bumps the serial RX/TX buffers (64→512) and splits the
-Ethernet pin map into `PinMap_Ethernet_MII/RMII` so RMII mode only claims its
-9 pins (upstream's single `PinMap_Ethernet[]` would grab MII-only GPIO used
-elsewhere on rosbot_xl).
+```bash
+just build rosbot_xl          # or: scripts/build.sh rosbot_xl
+cmake -S cmake --preset release && cmake --build build/release
+just test                     # host unit tests (CTest)
+```
 
-- `[env:rosbot]` — debug, `-D ROSBOT`, `-D ENABLE_HWSERIAL1`,
-  `-D ENABLE_HWSERIAL3`, `build_src_filter = +<rosbot/*> -<rosbot_xl/*>`.
-- `[env:rosbot_release]` — same + `[release_flags]` (`-O2 -D RELEASE`,
-  cortex-m4 / fpv4 flags). Strips `-g`. The `-O2` is not what the compiler
-  ends up using — see "Optimisation level" below.
-- `[env:rosbot_xl]` — debug, `-D ROSBOT_XL`, `-D ENABLE_HWSERIAL1`,
-  `-D ETHERNET_USE_FREERTOS`, `-D LAN9303`,
-  `build_src_filter = -<rosbot/*> +<rosbot_xl/*>`.
-- `[env:rosbot_xl_release]` — release variant of the above.
-- `[env:native]` — host unit tests (`pio test -e native`, `just test`, CI
-  job `test-native`) for hardware-free code: PID, `time_base`, encoder
-  counter delta, NTC conversion. `test/native_stubs/` stands in for
-  `Arduino.h` / `STM32FreeRTOS.h`; its critical-section hook lets a test
-  simulate preemption. Code that touches HAL, FreeRTOS or a peripheral
-  needs a seam before it can be tested here (PowerBoard parser,
-  `persistent_config`, `MavlinkNode`).
+- One preset (`cmake/CMakePresets.json`): `release` → `build/release/`,
+  which builds `rosbot.{elf,bin,map}` and `rosbot_xl.{elf,bin,map}` with
+  `-O2 -funroll-loops -g`. A separate debug build was dropped (2026-11-20)
+  once the debug-only Monitor task was replaced by `/diagnostics`: it
+  differed only by `-funroll-loops`, and gdb works on this one.
+- `scripts/build.sh <rosbot|rosbot_xl>` builds one board for `just`,
+  `flash.sh` and the VS Code tasks, and prints the `.bin` path.
+- Third-party sources are pinned in `cmake/dependencies.cmake` and fetched
+  at configure time (network needed once per build dir): STM32CubeF4 HAL
+  `v1.8.1`, CMSIS device F4 `v2.6.8`, FreeRTOS-Kernel `V10.3.1`, lwIP
+  2.2.1 with ST's port headers (`stm32_mw_lwip` `v2.2.1_20250804`), ETL
+  `20.49.0`. The FetchContent projects are only downloaded, never added,
+  so their own CMake files do not matter.
+- Our code builds with `-Wall -Wextra -Wfatal-errors -Wdouble-promotion
+  -Wshadow` and is warning-free; vendor code is compiled with `-w`.
+- `lib/` is compiled once as OBJECT libraries, not archives: an archive
+  member is only linked when referenced, and IRQ handlers are referenced
+  by nothing but the weak vector table.
+- `set(FW_VERSION "vX.Y.Z-jazzy")` in `cmake/CMakeLists.txt` carries the
+  firmware version. The release workflow (`.github/workflows/release.yaml`)
+  bumps it before tagging and publishes `rosbot-<tag>.bin` /
+  `rosbot_xl-<tag>.bin` from `build/release/`.
+- Host unit tests: `test/CMakeLists.txt` (CTest + Unity 2.6.1, host
+  compiler; `just test`, CI job `test-native`): PID, `time_base`, encoder
+  counter delta, NTC, battery SoC and thresholds, the power board protocol
+  (fake `platform::Uart` defined in the test), LED indicator patterns, boot
+  gestures, fan control, and `lib/platform` drivers against fake register
+  blocks. `test/native_stubs/` stands in for the CMSIS device header, the
+  FreeRTOS headers and the HAL TIM calls `lib/fan` makes; `fake_gpio.hpp`
+  latches BSRR writes into ODR, and the critical-section hook lets a test
+  simulate preemption. A test that needs a driver's `.cpp` includes it and
+  defines whatever that file calls (`time_boot_us()`, `clock::delayMs()`,
+  `Uart` methods). Still untested: `persistent_config`, `MavlinkNode`,
+  the comm manager handshake, the I2C/IMU path.
 
-The release envs list `${stm32.build_unflags}` before `-g`: overriding
-`build_unflags` alone dropped the base `-std=gnu++14` unflag and compiled
-parts of the tree as C++14. All firmware envs build with
-`-Wdouble-promotion -Wshadow`; our code is warning-free with them (the
-third-party libraries are not).
+### Startup and memory
 
-`-D FW_VERSION=\"vX.Y.Z-jazzy\"` carries the firmware version. The release
-workflow (`.github/workflows/release.yaml`) bumps it before tagging.
+`Reset_Handler` (CMSIS template) copies `.data`, clears `.bss`, calls
+`SystemInit` (FPU, `VTOR` = flash) and the static constructors. The first
+constructor (`boardInit`, priority 101) sets NVIC priority grouping 4, runs
+`HAL_Init()` and the clock tree, so every other constructor already sees
+HAL and 168 MHz. `main()` calls `setup()`
+(`src/<variant>/main.cpp`), which ends in `vTaskStartScheduler()`.
 
-### Optimisation level (measured 2026-10, not yet changed)
+Clock: crystal (HSE) → PLL (2 MHz VCO input) → SYSCLK 168 MHz, APB1 42 MHz,
+APB2 84 MHz. CORE2 v1.3+ has an 8 MHz crystal (Q1, value not printed on the
+schematic, measured with TIM11 on HSE/16), the Digital Board v1.1/v1.2 a
+24 MHz one (Q1); `add_firmware(... HSE_HZ ...)` passes it as `HSE_VALUE`
+to the only sources that read it (`system.cpp`, `system_stm32f4xx.c`,
+`stm32f4xx_hal_rcc*.c`, compiled per board); `stm32f4xx_hal_conf.h` has no
+default, so a shared source that used it would not compile. If the crystal
+does not start within `HSE_STARTUP_TIMEOUT` (100 ms) the clock falls back
+to the internal 16 MHz RC with the same output frequencies, and
+`ROSBOT_DIAGNOSTICS.clock_source` reports it (MCU WARN). The clock security
+system is on while the crystal runs: if it stops, the NMI resets with
+`kFaultClock`. The RC alone drifts ~2000 ppm (see "Time
+synchronization").
+`SysTick_Handler` increments `HAL_GetTick()` and, once the scheduler runs,
+calls the FreeRTOS tick.
 
-The stm32duino platform puts its own `-Os` after the env's `build_flags`,
-so every release object is compiled with `-O2 … -Os` and the **effective
-level is `-Os`** (check with `pio run -e rosbot_release -v`). Release text
-size per option (`arm-none-eabi-size`, bytes):
+Flash: the image may use sectors 0–10 (896 KB); sector 11 belongs to
+`lib/persistent_config`, and the linker script fails the link if the image
+grows into it. RAM: one heap for libc and FreeRTOS (`pvPortMalloc()` is
+newlib `malloc()`), from the end of `.bss` up to a 1 KB main stack at the top
+of RAM (and, until the scheduler starts, never past the current SP); the
+main stack serves `setup()` and, after the scheduler starts, every ISR. An
+allocation from an ISR asserts. Nothing is placed in CCM RAM, which is what lets `lib/fault` keep
+its reset marker there; DMA buffers are declared with `alignas(4)` at file
+scope and land in regular SRAM.
 
-| option | rosbot_release | rosbot_xl_release |
-|---|---:|---:|
-| `-Os` (what ships) | 87 328 | 120 496 |
-| `-Os -flto` | 70 208 | 101 504 |
-| real `-O2` (`-Os` unflagged; with `-funroll-loops`) | 184 128 | 221 536 |
-| real `-O2 -flto` | 150 788 | 195 856 |
+### Optimisation level
 
-All four fit the 896 KB application area and build cleanly, LTO included.
-Which is faster, and whether LTO is safe at runtime (the comment in
-`platformio.ini` mentions FreeRTOS issues), needs a HW comparison of task
-timing and idle time — idle is already ~90 % at `-Os`.
+`-O2` (`FW_OPT_LEVEL` cache variable, `-DFW_OPT_LEVEL=s`
+for size). Measured on ROSbot 3, link task at 1 kHz (2026-11-19):
 
-Build output sizes (release, after micro-ROS was removed):
-- rosbot ~88 KB Flash (10 %), ~11 KB static RAM (8 %)
-- rosbot_xl ~125 KB Flash (14 %), ~54 KB static RAM (41 %)
+| option | image | idle | Link task CPU |
+|---|---:|---:|---:|
+| `-Os` | 72 KB | 94.9 % | 3.3 % |
+| `-O2` | 100 KB | 96.1 % | 2.4 % |
 
-With micro-ROS still linked (v2.1.0-jazzy) the same builds were 207 KB /
-53 KB and 244 KB / 95 KB.
+Stack high-water marks shrink a little at `-O2` (Imu 524 → 468 B free,
+Link 2744 → 2584 B free), still far from the limit. LTO was not tried.
 
-Nothing is placed in CCM RAM: the linker script defines the region but
-no section uses it, which is what lets `lib/fault` keep its reset marker
-there. DMA buffers are declared with `alignas(4)` at file scope and land
-in regular SRAM.
+Build output sizes (GCC 13.2, `-O2`, 2026-11):
+- rosbot ~111 KB Flash (12 %), ~9 KB static RAM (7 %)
+- rosbot_xl ~152 KB Flash (17 %), ~52 KB static RAM (40 %)
 
 ---
+
+## Power board (ROSbot XL)
+
+What is known about the power board (PB) and how this firmware talks to it.
+Facts marked *unverified* have not been checked on hardware or in a datasheet.
+
+- **MCU and code.** STM32L051C8T6 (per the PB schematic). Firmware is
+  `husarion/rosbot_xl_pb_firmware` (private, C on STM32Cube LL, built with
+  PlatformIO there; its board `rhf76_052` is an L052 definition).
+- **Link to the digital board (DB).** UART 38400 baud, DB PD5/PD6 to PB USART1
+  (PB6/PB7). Frames are ASCII hex with an XOR checksum: `<CC SS args CC>`. The DB
+  uses two commands (full protocol: `docs/UART_PROTOCOL.md` in the PB repo): 1 = board info (firmware version `args[1..11]`, hardware revision
+  `args[13..24]`), 2 = battery state. The PB never sends on its own. The DB polls
+  at 1 Hz, or at the HwMonitor task rate (10 Hz) when the PB reports firmware
+  >= v1.0.3 (`PowerBoard::supportsFastPolling()`).
+- **Why the old PB is polled slowly.** PB firmware <= v1.0.2 runs everything in one
+  loop with a blocking 750 ms delay: a request is parsed at the end of a pass and
+  answered in the next one (0.75-1.5 s), only one frame is handled per pass, and
+  the frame parser kept its state in a local variable, so a frame that arrived in
+  pieces was dropped. This probably explains the "two requests at once lost
+  replies" note in `hwMonitorTask` (the 500 ms spacing is kept for old PBs).
+  v1.0.3 services UART every millisecond (measured over SWD: reply in 2-4 ms) and
+  refreshes voltage and currents every 100 ms; its charger logic still runs every
+  750 ms. Up to v1.0.4 the PB leaves the percentage byte (`args[13]`) and the
+  capacity (`args[9..10]`) at 0, which is why this DB computes the percentage
+  itself (`SocEstimator`). From v1.0.5 (released as v1.1.0) the PB counts SoC and
+  sends both (`args[13]` = 255 while unknown); this branch still ignores them.
+- **Versions in the field.** A PB v1.3 reported firmware `v1.0.0` (2026-11-09);
+  the PB repository says `v1.0.1`. Version strings are copied from fixed buffers
+  on the PB, so a short string is followed by stale bytes; the DB keeps only the
+  leading printable run (`lib/power_board/version_text.hpp`). Exposed as the
+  `_power_board_info` service (`MAV_CMD_USER_3` -> `ROSBOT_POWER_BOARD`).
+- **Hardware revisions.** v1.3 and v1.4 have an FT230X on the rear USB-C port,
+  wired to PB USART2 (PA2/PA3), with CBUS0 -> BOOT0 and CBUS1 -> NRST (through a
+  MOSFET). v1.2 has no FTDI, only an SWD header (CON12), so users cannot update
+  it; keep the DB compatible with v1.2 firmware indefinitely.
+- **Updating the PB.** The PB powers the SBC and the DB, so resetting its MCU
+  drops them; an update has to run from a separate computer plugged into the rear
+  USB-C. **The PB's FT230X ships with the FTDI default EEPROM** (measured on a
+  v1.3 unit, serial `DK0C4RU8`, 2026-11-09): `cbus_func_0 = TXDEN`,
+  `cbus_func_1 = TXLED`. CBUS bit-bang only drives pins configured as GPIO, so
+  BOOT0/NRST are not controllable until those two are rewritten to `GPIO` (the
+  DB's FT230X already has `GPIO`; `rosbot-snap` `ftdi_eeprom_conf.py` does it).
+  Both devices carry the same product string, `FT230X Basic UART`, so select by
+  serial, never by `ftdi://ftdi:ft-x:/1`. **A PB update must therefore check the
+  FT230X EEPROM and, if CBUS0/1 are not `GPIO`, write them first** (same two
+  properties as the DB; keep a backup of the old EEPROM). Measured on the same
+  unit with CBUS0/1 set to `GPIO`: BOOT0 high + NRST pulse over CBUS enters the
+  ROM bootloader on USART2 at 57600 8E1; `stm32flash` reads
+  `Device ID 0x0417 (STM32L05xxx/06xxx)`, bootloader `0x31`, 64 KiB flash. That
+  reset powers the DB off (its USB device vanished, no ping), and the PB did not
+  power it back on after leaving the bootloader; a power-button press is
+  *probably* needed. *Unverified:* how the PB behaves when a USB host supplies
+  VBUS on the charging port. WebUSB cannot open an FT230X on Windows while the
+  FTDI driver is bound to it.
+- **Same trick on the DB.** The DB is flashed the same way: `rosbot_utils`
+  `McuManagerFTDI` drives CBUS0 = BOOT0 and CBUS1 = RST through pyftdi, then runs
+  `stm32flash`. It opens the FT-X by device, not by pyftdi URL, because the URL
+  lookup reads every FTDI device on the host and fails on an unreadable one.
 
 ## MAVLink link
 
@@ -863,13 +1017,13 @@ comes up.
     forward via `MavlinkNode::sendMessage()`.
   - `subscribers/{wheel_cmd,led,led_strip}_subscriber.hpp` and
     `commands/mcu_id_command.hpp` — dispatched by msgid from the rx loop.
-  - `transport/mavlink_{serial,udp}_transport.{hpp,cpp}` — DMA-TX +
-    yielding-poll RX (serial) / LwIP raw API (UDP), see "Patterns".
+  - `transport/mavlink_{serial,udp}_transport.{hpp,cpp}` — `platform::Uart`
+    (serial) / lwIP raw API (UDP), see "Patterns".
   - `dialect/rosbot.xml` — dialect source of truth. The mavgen C output
     lives inside the bridge package at
     `bridge/rosbot_mavlink_bridge/mavlink_dialect/` (single canonical
     location); the firmware reaches it via the include path in
-    `platformio.ini`.
+    `cmake/CMakeLists.txt`.
 - `src/<variant>/main.cpp` — variant entry point.
 - `src/<variant>/mavlink_entities.cpp` — MAVLink publisher/subscriber
   registration + the `g_mavlink_node` definition.
@@ -921,9 +1075,13 @@ The bridge turns `time_boot_us` into ROS time with `wall = mcu + offset`
   `bridge_now − ts1`, which includes the whole uplink delay. The first
   two-way sample replaces that estimate outright. This keeps any firmware
   and any bridge version interoperable.
-- Not modelled: MCU clock drift (tens of ppm, a few hundred µs of EWMA lag)
-  and the MCU's TX queueing ahead of the reply, which the RTT filter only
-  partly absorbs.
+- Not modelled: MCU clock drift and the MCU's TX queueing ahead of the
+  reply, which the RTT filter only partly absorbs. On the crystal the MCU
+  is within ~10 ppm of the host (XL: −9 ppm over 2 min, DWT vs host clock):
+  10 min with no re-seed, stamp gaps exactly 10 / 5 ms, 0.2–2.6 ms total
+  drift (HW 2026-11-20). On the internal RC (jazzy, or the fallback) it
+  drifted ~1500–2000 ppm: the offset passed the 50 ms re-seed threshold
+  every 30–40 s and stamps jumped ~57 ms forward each time.
 
 ### Telemetry rates and topic mapping
 
@@ -948,8 +1106,7 @@ tree. The dialect headers live inside the package at
 [`bridge/rosbot_mavlink_bridge/mavlink_dialect/`](./bridge/rosbot_mavlink_bridge/mavlink_dialect/)
 — this is the **canonical** mavgen output location, not a mirror. The
 firmware build reads from the same directory via its include path
-(`-I bridge/rosbot_mavlink_bridge/mavlink_dialect/rosbot` in
-`platformio.ini`), so there is no duplication. Keeping the headers
+(`cmake/CMakeLists.txt`), so there is no duplication. Keeping the headers
 inside the package makes the bridge self-contained for bloom releases
 to rosdistro (the source tarball archives only the package subtree).
 Launch files take a `namespace` arg and set `--ros-args -r __ns:=<value>`
@@ -962,26 +1119,34 @@ namespace the host also sends the MCU in the `NS:` handshake line.
 
 These are documented to avoid re-discovery:
 
-- **Link RX path on rosbot is still polling.** TX is DMA-driven, but RX
-  uses a yielding `vTaskDelay(1)` poll because `HardwareSerial::_serial`
-  is private in the framework and `HAL_UART_RxCpltCallback` is a strong
-  symbol — neither lets us register a per-byte semaphore signal without
-  patching the stm32duino fork (or replacing `USARTx_IRQHandler`, also a
-  strong symbol). The poll buys most of the win at zero invasion but
-  leaves the link task with a CPU floor proportional to read activity.
+- **Link RX on rosbot is polled by a periodic task.** RX runs on circular
+  DMA into a 512 B ring and the link task drains it every period; at
+  921600 baud a 5 ms period fills ~460 B, so a longer stall in that task
+  can overrun the ring. An IDLE-line IRQ waking the link task would remove
+  both the poll and the limit, but changes the task's timing: measure on
+  HW first.
 - **No SBC IP auto-discovery.** `SBC_IP` and `CLIENT_IP` are hardcoded in
   `include/rosbot_xl/config.hpp`. True auto-discovery options were
   considered (DHCP server on MCU, broadcast announcement protocol, mDNS)
   but not implemented yet — see commit / chat history for trade-offs.
-- **Race on shared I2C bus** (rosbot_xl `i2c`): IMU DMA path and Wire
-  access from EEPROM init touch the same peripheral. EEPROM is only used
-  during boot setup so the race window is closed before tasks start. No
-  mutex needed today; if a future feature uses I2C2 from a task, add a
-  bus mutex.
-- **`HAL_I2C_ErrorCallback` is a strong symbol** in the framework, so
-  the IMU DMA path cannot signal a "DMA failed" semaphore — relies on
-  the read timeout instead. Acceptable; documented in
-  `imu_bno055.cpp`.
+- **Heap instead of static allocation.** Tasks and queues come from
+  `pvPortMalloc()` (newlib `malloc()`), all at startup.
+  `configSUPPORT_DYNAMIC_ALLOCATION 0` with `xTaskCreateStatic` is a
+  separate change.
+- **No CubeMX `.ioc`.** Every peripheral is set up in `lib/platform/` and the
+  clock tree in `boards/stm32f407/system.cpp`; an `.ioc` could be added as
+  pinout documentation only.
+- **HAL ETH is the Legacy (pre-1.27) driver**, kept from the Arduino core
+  fork. Moving to the new F4 ETH API is a separate change.
+- **`Pin` sets very-high output speed on every pin.** Lowering it (EMI) needs
+  a measurement on HW.
+- **ROSbot 3 pauses at zero when reversing rotation** (110–250 ms on the
+  floor, jazzy too): the PID clears its integral at a zero setpoint and
+  restarts from zero against skid-steer friction. Friction feed-forward or
+  keeping the integral through zero would shorten it.
+- **Crystal only verified on CORE2 v1.3+ and Digital Board v1.1/v1.2.** An
+  older CORE2 without a crystal falls back to the RC; one with a crystal
+  of another frequency would run at the wrong clock.
 
 When closing one of these items, remove the bullet here and add a
 matching entry to the relevant "Patterns" section.

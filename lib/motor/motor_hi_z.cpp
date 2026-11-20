@@ -14,13 +14,12 @@
 
 #include "motor_hi_z.hpp"
 
+#include <algorithm>
 #include <cmath>
 
-// 10-bit ADC, Vref = 3.3V. Matches ADC_MAX_VALUE used elsewhere on the
-// board (e.g. battery_adc).
 static constexpr float kAdcVref = 3.3f;
-static constexpr float kAdcCounts = 1023.0f;
-static constexpr float kAdcToVolt = kAdcVref / kAdcCounts;
+static constexpr float kAdcToVolt =
+    kAdcVref / static_cast<float>(platform::AnalogIn::kMaxValue);
 
 void MotorHiZ::init() {
   setMode(Mode::Neutral);
@@ -29,17 +28,9 @@ void MotorHiZ::init() {
   // doesn't need to coordinate a separate g_encoders.init() pass.
   if (encoder_) encoder_->init();
 
-  PinName pwm_pn = digitalPinToPinName(cfg_.pwm_pin);
-  TIM_TypeDef* tim = (TIM_TypeDef*)pinmap_peripheral(pwm_pn, PinMap_PWM);
-  pwm_channel_ = STM_PIN_CHANNEL(pinmap_function(pwm_pn, PinMap_PWM));
+  pwm_.init(cfg_.pwm_freq);
 
-  pwm_timer_ = new HardwareTimer(tim);
-  pwm_timer_->setPWM(pwm_channel_, pwm_pn, cfg_.pwm_freq, 0);
-  pwm_arr_ = pwm_timer_->getOverflow(TICK_FORMAT);
-
-  if (cfg_.current_sense_pin != 0xFF) {
-    pinMode(cfg_.current_sense_pin, INPUT_ANALOG);
-  }
+  if (cfg_.current_sense) cfg_.current_sense->init();
 }
 
 MotorData MotorHiZ::getData() const {
@@ -58,45 +49,39 @@ void MotorHiZ::setMode(Mode movement) {
   if (movement == current_mode_) return;
   current_mode_ = movement;
 
-  uint8_t pin_a = cfg_.inv_dir ? cfg_.in_b_pin : cfg_.in_a_pin;
-  uint8_t pin_b = cfg_.inv_dir ? cfg_.in_a_pin : cfg_.in_b_pin;
+  const platform::Pin& pin_a = cfg_.inv_dir ? cfg_.in_b_pin : cfg_.in_a_pin;
+  const platform::Pin& pin_b = cfg_.inv_dir ? cfg_.in_a_pin : cfg_.in_b_pin;
 
   switch (movement) {
     case Mode::Forward:
-      pinMode(pin_a, INPUT);  // Hi-Z → receives PWM
-      pinMode(pin_b, OUTPUT);
-      digitalWrite(pin_b, LOW);
+      pin_a.setAsInput();  // Hi-Z → receives PWM
+      pin_b.setAsOutput(false);
       break;
 
     case Mode::Reverse:
-      pinMode(pin_a, OUTPUT);
-      digitalWrite(pin_a, LOW);
-      pinMode(pin_b, INPUT);  // Hi-Z → receives PWM
+      pin_a.setAsOutput(false);
+      pin_b.setAsInput();  // Hi-Z → receives PWM
       break;
 
     case Mode::Brake:
-      pinMode(cfg_.in_a_pin, OUTPUT);
-      pinMode(cfg_.in_b_pin, OUTPUT);
-      digitalWrite(cfg_.in_a_pin, HIGH);
-      digitalWrite(cfg_.in_b_pin, HIGH);
-      pwm_timer_->setCaptureCompare(pwm_channel_, pwm_arr_);
+      cfg_.in_a_pin.setAsOutput(true);
+      cfg_.in_b_pin.setAsOutput(true);
+      pwm_.setCompare(pwm_.period());
       break;
 
     case Mode::Neutral:
     default:
-      pinMode(cfg_.in_a_pin, OUTPUT);
-      pinMode(cfg_.in_b_pin, OUTPUT);
-      digitalWrite(cfg_.in_a_pin, LOW);
-      digitalWrite(cfg_.in_b_pin, LOW);
-      pwm_timer_->setCaptureCompare(pwm_channel_, 0);
+      cfg_.in_a_pin.setAsOutput(false);
+      cfg_.in_b_pin.setAsOutput(false);
+      pwm_.setCompare(0);
       break;
   }
 }
 
 void MotorHiZ::applyPWM(float duty) {
-  // constrain() passes NaN through, and casting NaN to uint16_t is UB.
+  // std::clamp() passes NaN through, and casting NaN to uint32_t is UB.
   if (!std::isfinite(duty)) duty = 0.0f;
-  duty = constrain(duty, -1.0f, 1.0f);
+  duty = std::clamp(duty, -1.0f, 1.0f);
   // Default effort = commanded duty. Overridden below if a current sensor
   // or a back-EMF model is available (then it becomes a torque value).
   current_effort_.store(duty, std::memory_order_relaxed);
@@ -108,11 +93,10 @@ void MotorHiZ::applyPWM(float duty) {
 
   setMode(duty > 0 ? Mode::Forward : Mode::Reverse);
 
-  uint16_t pwm_value = static_cast<uint16_t>(std::fabs(duty) * pwm_arr_);
-  pwm_timer_->setCaptureCompare(pwm_channel_, pwm_value);
+  pwm_.setCompare(static_cast<uint32_t>(std::fabs(duty) * pwm_.period()));
 
   const bool has_sensor = !current_sense_disabled_ &&
-                          cfg_.current_sense_pin != 0xFF &&
+                          cfg_.current_sense.has_value() &&
                           cfg_.current_per_volt > 0.0f;
   if (has_sensor) {
     sampleCurrent();
@@ -122,7 +106,7 @@ void MotorHiZ::applyPWM(float duty) {
 }
 
 void MotorHiZ::sampleCurrent() {
-  const uint16_t raw = analogRead(cfg_.current_sense_pin);
+  const uint16_t raw = cfg_.current_sense->read();
   float i = raw * kAdcToVolt * cfg_.current_per_volt;
   // ISEN output (e.g. MAX22205 CSO) is unipolar — sign comes from the
   // commanded direction.
@@ -157,7 +141,7 @@ void MotorHiZ::applyCurrentSample(float i_motor) {
 }
 
 void MotorHiZ::setVelocity(float vel) {
-  float v = constrain(vel, -cfg_.max_velocity, cfg_.max_velocity);
+  float v = std::clamp(vel, -cfg_.max_velocity, cfg_.max_velocity);
   if (std::fabs(v) < cfg_.min_velocity) v = 0.0f;
   target_velocity_.store(v, std::memory_order_relaxed);
 }

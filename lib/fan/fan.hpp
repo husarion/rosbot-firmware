@@ -14,8 +14,7 @@
 
 #pragma once
 
-#include <Arduino.h>
-
+#include "pin.hpp"
 #include "stm32f4xx_hal.h"
 
 // ─── Types ───────────────────────────────────────────────────────────
@@ -27,7 +26,7 @@ enum class FanMode : uint8_t {
 };
 
 struct FanConfig {
-  uint32_t pin;
+  platform::Pin pin;
   TIM_TypeDef* timer_instance = nullptr;  // e.g. TIM8
   uint32_t timer_channel = 0;             // logical 1-4
   uint8_t gpio_af = 0;                    // e.g. GPIO_AF3_TIM8
@@ -49,6 +48,7 @@ class FanController {
   FanController(const FanController&) = delete;
   FanController& operator=(const FanController&) = delete;
 
+  // Keeps a pointer to config, so it must outlive the controller.
   void init(const FanConfig& config);
   void update(float temp);
   void setDuty(uint8_t duty);
@@ -58,8 +58,6 @@ class FanController {
   bool isRunning() const { return running_; }
 
  private:
-  void enableTimerClock();
-  uint32_t getTimerClockHz() const;
   void configureTimeBase();
   void configureGpio();
   void configureChannel();
@@ -73,7 +71,7 @@ class FanController {
     return (ch >= 1 && ch <= 4) ? (ch - 1) * 4u : 0u;
   }
 
-  FanConfig config_{};
+  const FanConfig* config_ = nullptr;
   TIM_HandleTypeDef htim_{};
   uint8_t current_duty_ = 0;
   bool running_ = false;

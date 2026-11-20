@@ -1,4 +1,4 @@
-// Copyright 2022 Husarion sp. z o.o.
+// Copyright 2026 Husarion sp. z o.o.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -14,12 +14,9 @@
 
 #include "imu_bno055.hpp"
 
-#include <STM32FreeRTOS.h>
-#include <wiring_constants.h>
-
 #include <atomic>
 
-#include "i2c_fast_mode.hpp"
+#include "clock.hpp"
 
 namespace {
 
@@ -32,58 +29,46 @@ constexpr uint8_t kCalibStatReg = 0x35;                        // CALIB_STAT
 constexpr uint16_t kBlockLen = kCalibStatReg - kStartReg + 1;  // 46 bytes
 // 46 B @ 400 kHz is ~1.2 ms on the wire; with the BNO055's clock
 // stretching and the task's own wake-up latency the wait measured 1.6-6.9 ms
-// (2181 reads, HW 2026-09-23). Must stay under the 10 ms task period.
-constexpr uint16_t kReadTimeoutMs = 8;
+// (2181 reads, HW 2026-09-23). For ~120 ms after the switch to fusion mode
+// the chip stretches longer: an 8 ms limit failed ~12 reads (and reset the
+// bus each time) on every XL boot, 25 ms none (HW 2026-11-20). A read past
+// the 10 ms period only makes vTaskDelayUntil() run the next one at once.
+constexpr uint32_t kReadTimeoutMs = 25;
 
+constexpr uint8_t kChipIdReg = 0x00;
+constexpr uint8_t kChipId = 0xA0;
+constexpr uint8_t kPageIdReg = 0x07;
 constexpr uint8_t kOprModeReg = 0x3D;
+constexpr uint8_t kPwrModeReg = 0x3E;
+constexpr uint8_t kSysTriggerReg = 0x3F;
+constexpr uint8_t kAxisMapConfigReg = 0x41;
+constexpr uint8_t kAxisMapSignReg = 0x42;
+constexpr uint8_t kOffsetsReg = 0x55;  // ACC_OFFSET_X_LSB .. MAG_RADIUS_MSB
+constexpr uint8_t kOffsetsLen = 22;
+
 constexpr uint8_t kModeConfig = 0x00;
 constexpr uint8_t kModeNdof = 0x0C;
-constexpr uint8_t kOffsetsReg = 0x55;  // ACC_OFFSET_X_LSB .. MAG_RADIUS_MSB
-constexpr uint16_t kOffsetsLen = 22;
-constexpr uint32_t kPollTimeoutMs = 10;
-// Datasheet Table 3-6: any mode -> CONFIG takes 19 ms, CONFIG -> any 7 ms.
+constexpr uint8_t kPowerNormal = 0x00;
+constexpr uint8_t kSysTriggerReset = 0x20;
+// Internal oscillator: neither board fits the XIN32/XOUT32 crystal
+// (datasheet 5.5); asking for it only costs ~600 ms before the fallback.
+constexpr uint8_t kSysTriggerInternalClock = 0x00;
+
+// Settling times as Adafruit_BNO055 1.6.4 used them (datasheet table 3-6:
+// any mode -> CONFIG 19 ms, CONFIG -> any 7 ms).
+constexpr uint32_t kModeSwitchMs = 30;
 constexpr uint32_t kToConfigMs = 25;
 constexpr uint32_t kFromConfigMs = 20;
+constexpr uint32_t kProbeWindowMs = 850;
+constexpr uint32_t kBootRetryMs = 1000;
+constexpr uint32_t kResetPollMs = 10;
+constexpr uint32_t kResetTimeoutMs = 1000;
 
-// FreeRTOS-safe NVIC priority. Must be numerically >=
-// configLIBRARY_MAX_SYSCALL_INTERRUPT_PRIORITY (5) so ISRs can call the
-// *FromISR API.
-constexpr uint32_t kIrqPriority = 5;
-
-// STM32F4 DMA1 mapping for I2C RX. Reference: RM0090, Table 42.
-struct DmaRxMap {
-  DMA_Stream_TypeDef* stream;
-  uint32_t channel;
-  IRQn_Type irqn;
-};
-
-const DmaRxMap* findRxMap(I2C_TypeDef* inst) {
-#ifdef I2C1
-  static const DmaRxMap kI2C1Rx = {DMA1_Stream0, DMA_CHANNEL_1,
-                                   DMA1_Stream0_IRQn};
-  if (inst == I2C1) return &kI2C1Rx;
-#endif
-#ifdef I2C2
-  static const DmaRxMap kI2C2Rx = {DMA1_Stream3, DMA_CHANNEL_7,
-                                   DMA1_Stream3_IRQn};
-  if (inst == I2C2) return &kI2C2Rx;
-#endif
-#ifdef I2C3
-  static const DmaRxMap kI2C3Rx = {DMA1_Stream2, DMA_CHANNEL_3,
-                                   DMA1_Stream2_IRQn};
-  if (inst == I2C3) return &kI2C3Rx;
-#endif
-  return nullptr;
-}
+constexpr double kDegToRad = 0.017453292519943295769236907684886;
 
 // DMA1 buffers must live in regular SRAM (DMA1 cannot reach CCM on F4).
-// Aligning to 4 bytes is safe for the F4 DMA controller.
 alignas(4) uint8_t s_buf[kBlockLen];
 
-I2C_HandleTypeDef* s_hi2c = nullptr;
-DMA_HandleTypeDef s_hdma_rx = {};
-SemaphoreHandle_t s_done_sem = nullptr;
-volatile bool s_xfer_ok = false;
 // CALIB_STAT as of the last good DMA read: sys[7:6] gyro[5:4] accel[3:2]
 // mag[1:0]. Written by the IMU task, read by MAVLink. The "never read"
 // sentinel sits outside the byte range: 0xFF is a real reading (all four
@@ -110,158 +95,90 @@ void unpackOffsets(const uint8_t* raw, ImuCalibrationOffsets& out) {
 
 }  // namespace
 
-extern "C" void HAL_I2C_MemRxCpltCallback(I2C_HandleTypeDef* hi2c) {
-  if (hi2c != s_hi2c || s_done_sem == nullptr) return;
-  BaseType_t hpw = pdFALSE;
-  s_xfer_ok = true;
-  xSemaphoreGiveFromISR(s_done_sem, &hpw);
-  portYIELD_FROM_ISR(hpw);
+bool ImuBno055::writeByte(uint8_t reg, uint8_t value) {
+  return cfg_.bus->writeReg(cfg_.i2c_addr, reg, &value, 1);
 }
 
-// On NACK/bus errors HAL invokes the framework's HAL_I2C_ErrorCallback in
-// twi.c (strong symbol — cannot be overridden); the I2C state machine
-// resets but the success semaphore is never given, so update() falls
-// through on the xSemaphoreTake timeout below.
-
-// Stream IRQ handlers for the streams we may bind to. Each guards against
-// stray firings by checking that we own that stream.
-extern "C" void DMA1_Stream0_IRQHandler() {
-  if (s_hdma_rx.Instance == DMA1_Stream0) HAL_DMA_IRQHandler(&s_hdma_rx);
-}
-extern "C" void DMA1_Stream2_IRQHandler() {
-  if (s_hdma_rx.Instance == DMA1_Stream2) HAL_DMA_IRQHandler(&s_hdma_rx);
-}
-extern "C" void DMA1_Stream3_IRQHandler() {
-  if (s_hdma_rx.Instance == DMA1_Stream3) HAL_DMA_IRQHandler(&s_hdma_rx);
+bool ImuBno055::readByte(uint8_t reg, uint8_t& value) {
+  return cfg_.bus->readReg(cfg_.i2c_addr, reg, &value, 1);
 }
 
-ImuBno055::ImuBno055(const ImuBno055Config& cfg)
-    : cfg_(cfg), bno_(cfg.sensor_id, cfg.i2c_addr, cfg.bus) {}
+bool ImuBno055::setMode(uint8_t mode) {
+  const bool ok = writeByte(kOprModeReg, mode);
+  platform::clock::delayMs(kModeSwitchMs);
+  return ok;
+}
 
+// Same order as Adafruit_BNO055::begin() + setAxisRemap/Sign() +
+// setExtCrystalUse(false), with the remap and clock source written in the
+// one CONFIG-mode window instead of three more mode switches.
 bool ImuBno055::init() {
-  if (!bno_.begin(OPERATION_MODE_NDOF)) {
-    return false;
-  }
-  // Adafruit's begin() calls Wire.begin(), which re-inits the bus at
-  // 100 kHz and drops the 400 kHz boardPeripheralsInit() set. At 100 kHz
-  // the DMA block took 5-9 ms and nearly every read hit the 4 ms timeout
-  // (HW 2026-09-23, ROSbot 3).
-  setI2cFastMode(*cfg_.bus);
-
-  bno_.setAxisRemap(cfg_.axis_config);
-  bno_.setAxisSign(cfg_.axis_sign);
-
-  // false: neither board revision populates the XIN32/XOUT32 32kHz
-  // crystal footprint (datasheet §5.5, pins 26/27) — asking for it would
-  // still work (the chip self-checks the crystal signal on switch and
-  // falls back to its ~±3% internal oscillator if none is found, per
-  // §5.5.1/5.5.2), but costs ~600ms extra per §5.5.1 for a fallback that
-  // was always going to happen anyway. This was `true` originally and
-  // was NOT the cause of the calibration-freeze bug investigated
-  // alongside this change (see ARCHITECTURE.md "IMU calibration" — that
-  // was the I2C/DMA IRQ-priority conflict, unrelated to the clock
-  // source); it's just correct now that we know there's no crystal.
-  bno_.setExtCrystalUse(false);
-
-  return true;
-}
-
-// Deliberately NOT part of init(): linking our DMA handle to s_hi2c and
-// lowering the I2C event/error IRQ priority breaks Wire's own blocking
-// transactions (HAL_I2C_Master_Receive_IT, used by Adafruit_BNO055's
-// non-DMA calls — getCalibration/getSensorOffsets/setSensorOffsets).
-// HW-verified: raw I2C reads succeed before this call, fail with a
-// generic HAL error immediately after. Call this once, right before
-// vTaskStartScheduler() — after boot-time IMU calibration (which needs
-// those blocking calls) is done, and before update() is ever invoked
-// from a task (its `s_done_sem == nullptr` guard makes calling update()
-// before this a silent no-op, not a crash).
-bool ImuBno055::enableDmaReads() {
-  s_hi2c = cfg_.bus->getHandle();
-  const DmaRxMap* map = findRxMap(s_hi2c->Instance);
-  if (map == nullptr) {
-    return false;
+  initialized_ = false;
+  uint32_t waited = 0;
+  while (!cfg_.bus->probe(cfg_.i2c_addr)) {
+    if (waited >= kProbeWindowMs) return false;
+    platform::clock::delayMs(kResetPollMs);
+    waited += kResetPollMs;
   }
 
-  __HAL_RCC_DMA1_CLK_ENABLE();
-
-  s_hdma_rx.Instance = map->stream;
-  s_hdma_rx.Init.Channel = map->channel;
-  s_hdma_rx.Init.Direction = DMA_PERIPH_TO_MEMORY;
-  s_hdma_rx.Init.PeriphInc = DMA_PINC_DISABLE;
-  s_hdma_rx.Init.MemInc = DMA_MINC_ENABLE;
-  s_hdma_rx.Init.PeriphDataAlignment = DMA_PDATAALIGN_BYTE;
-  s_hdma_rx.Init.MemDataAlignment = DMA_MDATAALIGN_BYTE;
-  s_hdma_rx.Init.Mode = DMA_NORMAL;
-  s_hdma_rx.Init.Priority = DMA_PRIORITY_HIGH;
-  s_hdma_rx.Init.FIFOMode = DMA_FIFOMODE_DISABLE;
-  s_hdma_rx.Init.FIFOThreshold = DMA_FIFO_THRESHOLD_FULL;
-  s_hdma_rx.Init.MemBurst = DMA_MBURST_SINGLE;
-  s_hdma_rx.Init.PeriphBurst = DMA_PBURST_SINGLE;
-
-  if (HAL_DMA_Init(&s_hdma_rx) != HAL_OK) {
-    return false;
+  uint8_t id = 0;
+  if (!readByte(kChipIdReg, id) || id != kChipId) {
+    platform::clock::delayMs(kBootRetryMs);  // still booting
+    if (!readByte(kChipIdReg, id) || id != kChipId) return false;
   }
-  __HAL_LINKDMA(s_hi2c, hdmarx, s_hdma_rx);
 
-  HAL_NVIC_SetPriority(map->irqn, kIrqPriority, 0);
-  HAL_NVIC_EnableIRQ(map->irqn);
+  setMode(kModeConfig);
+  writeByte(kSysTriggerReg, kSysTriggerReset);
+  platform::clock::delayMs(30);
+  waited = 0;
+  while (!readByte(kChipIdReg, id) || id != kChipId) {
+    if (waited >= kResetTimeoutMs) return false;
+    platform::clock::delayMs(kResetPollMs);
+    waited += kResetPollMs;
+  }
+  platform::clock::delayMs(50);
 
-  // Wire's I2C IRQs were configured by the framework at priority 2 (above
-  // configMAX_SYSCALL_INTERRUPT_PRIORITY=5). Lower them so HAL's I2C IRQ
-  // path can call FreeRTOS *FromISR API safely from our overrides.
-  IRQn_Type ev_irq = (IRQn_Type)0;
-  IRQn_Type er_irq = (IRQn_Type)0;
-#ifdef I2C1
-  if (s_hi2c->Instance == I2C1) {
-    ev_irq = I2C1_EV_IRQn;
-    er_irq = I2C1_ER_IRQn;
-  }
-#endif
-#ifdef I2C2
-  if (s_hi2c->Instance == I2C2) {
-    ev_irq = I2C2_EV_IRQn;
-    er_irq = I2C2_ER_IRQn;
-  }
-#endif
-#ifdef I2C3
-  if (s_hi2c->Instance == I2C3) {
-    ev_irq = I2C3_EV_IRQn;
-    er_irq = I2C3_ER_IRQn;
-  }
-#endif
-  HAL_NVIC_SetPriority(ev_irq, kIrqPriority, 0);
-  HAL_NVIC_SetPriority(er_irq, kIrqPriority, 0);
+  bool ok = writeByte(kPwrModeReg, kPowerNormal);
+  platform::clock::delayMs(10);
+  ok = ok && writeByte(kPageIdReg, 0);
+  ok = ok && writeByte(kAxisMapConfigReg, cfg_.axis_config);
+  platform::clock::delayMs(10);
+  ok = ok && writeByte(kAxisMapSignReg, cfg_.axis_sign);
+  platform::clock::delayMs(10);
+  ok = ok && writeByte(kSysTriggerReg, kSysTriggerInternalClock);
+  platform::clock::delayMs(10);
+  ok = ok && setMode(kModeNdof);
+  platform::clock::delayMs(kFromConfigMs);
 
-  s_done_sem = xSemaphoreCreateBinary();
-  return s_done_sem != nullptr;
+  initialized_ = ok;
+  return ok;
 }
 
 bool ImuBno055::update() {
-  if (s_done_sem == nullptr) return false;
-
-  s_xfer_ok = false;
-  // Drain any stale completion left over from a previous timeout.
-  xSemaphoreTake(s_done_sem, 0);
-
-  if (HAL_I2C_Mem_Read_DMA(s_hi2c, cfg_.i2c_addr << 1, kStartReg,
-                           I2C_MEMADD_SIZE_8BIT, s_buf, kBlockLen) != HAL_OK) {
+  if (!initialized_) return false;
+  // A chip that stopped answering costs a bus reset per read; after a
+  // streak of failures try once a second instead of every update.
+  if (fail_streak_ >= kFailStreakBackoff && ++backoff_skips_ < kBackoffSkips) {
     return false;
   }
-
-  if (xSemaphoreTake(s_done_sem, pdMS_TO_TICKS(kReadTimeoutMs)) != pdTRUE) {
-    HAL_I2C_Master_Abort_IT(s_hi2c, cfg_.i2c_addr << 1);
+  backoff_skips_ = 0;
+  const bool ok = cfg_.bus->readRegDma(cfg_.i2c_addr, kStartReg, s_buf,
+                                       kBlockLen, kReadTimeoutMs);
+  recordRead(ok);
+  if (!ok) {
+    if (fail_streak_ < kFailStreakBackoff) ++fail_streak_;
     return false;
   }
-  if (!s_xfer_ok) return false;
+  fail_streak_ = 0;
 
   // Acceleration: 1 LSB = 0.01 m/s²  (offsets 0..5)
   data_.acceleration[0] = le16(&s_buf[0]) / 100.0f;
   data_.acceleration[1] = le16(&s_buf[2]) / 100.0f;
   data_.acceleration[2] = le16(&s_buf[4]) / 100.0f;
 
-  // Gyroscope: 1 LSB = 1/16 deg/s → rad/s  (offsets 12..17)
-  constexpr float kGyroToRad = static_cast<float>(DEG_TO_RAD / 16.0);
+  // Gyroscope, 1 LSB = 1/16 deg/s: UNIT_SEL stays at its reset value 0x80,
+  // as under Adafruit_BNO055 1.6.4 (its UNIT_SEL write is commented out).
+  constexpr float kGyroToRad = static_cast<float>(kDegToRad / 16.0);
   data_.angular_velocity[0] = le16(&s_buf[12]) * kGyroToRad;
   data_.angular_velocity[1] = le16(&s_buf[14]) * kGyroToRad;
   data_.angular_velocity[2] = le16(&s_buf[16]) * kGyroToRad;
@@ -292,89 +209,65 @@ bool ImuBno055::calibrationStatus(ImuCalibrationStatus& out) const {
   return true;
 }
 
-bool ImuBno055::readCalibrationOffsets(ImuCalibrationOffsets& out) {
-  if (s_hi2c == nullptr) return false;
-  const uint16_t addr = cfg_.i2c_addr << 1;
-  uint8_t mode = kModeConfig;
-  if (HAL_I2C_Mem_Write(s_hi2c, addr, kOprModeReg, I2C_MEMADD_SIZE_8BIT, &mode,
-                        1, kPollTimeoutMs) != HAL_OK) {
-    return false;
-  }
-  vTaskDelay(pdMS_TO_TICKS(kToConfigMs));
-
+bool ImuBno055::readOffsetsInConfigMode(ImuCalibrationOffsets& out) {
+  if (!setMode(kModeConfig)) return false;
+  platform::clock::delayMs(kToConfigMs);
   uint8_t raw[kOffsetsLen] = {};
   const bool read_ok =
-      HAL_I2C_Mem_Read(s_hi2c, addr, kOffsetsReg, I2C_MEMADD_SIZE_8BIT, raw,
-                       kOffsetsLen, kPollTimeoutMs) == HAL_OK;
-
+      cfg_.bus->readReg(cfg_.i2c_addr, kOffsetsReg, raw, kOffsetsLen);
   // Back to fusion whatever the read did — a chip left in CONFIG mode
   // outputs no orientation at all.
-  mode = kModeNdof;
-  const bool back_ok =
-      HAL_I2C_Mem_Write(s_hi2c, addr, kOprModeReg, I2C_MEMADD_SIZE_8BIT, &mode,
-                        1, kPollTimeoutMs) == HAL_OK;
-  vTaskDelay(pdMS_TO_TICKS(kFromConfigMs));
+  const bool back_ok = setMode(kModeNdof);
+  platform::clock::delayMs(kFromConfigMs);
   if (!read_ok || !back_ok) return false;
-
   unpackOffsets(raw, out);
   return true;
 }
 
+bool ImuBno055::readCalibrationOffsets(ImuCalibrationOffsets& out) {
+  return initialized_ && readOffsetsInConfigMode(out);
+}
+
 ImuCalibrationStatus ImuBno055::getCalibrationStatus() {
   ImuCalibrationStatus status{};
-  bno_.getCalibration(&status.system, &status.gyro, &status.accel, &status.mag);
+  uint8_t raw = 0;
+  if (!readByte(kCalibStatReg, raw)) return status;
+  status.system = (raw >> 6) & 0x03;
+  status.gyro = (raw >> 4) & 0x03;
+  status.accel = (raw >> 2) & 0x03;
+  status.mag = raw & 0x03;
   return status;
 }
 
 bool ImuBno055::captureCalibrationOffsets(ImuCalibrationOffsets& out) {
   if (!getCalibrationStatus().fullyCalibrated()) return false;
-
-  bno_.setMode(OPERATION_MODE_CONFIG);
-  delay(kToConfigMs);
-  uint8_t raw[kOffsetsLen] = {};
-  bool ok = false;
-  cfg_.bus->beginTransmission(cfg_.i2c_addr);
-  cfg_.bus->write(kOffsetsReg);
-  if (cfg_.bus->endTransmission(false) == 0 &&
-      cfg_.bus->requestFrom(static_cast<uint8_t>(cfg_.i2c_addr),
-                            static_cast<uint8_t>(kOffsetsLen)) == kOffsetsLen) {
-    for (auto& b : raw) b = cfg_.bus->read();
-    ok = true;
-  }
-  bno_.setMode(OPERATION_MODE_NDOF);
-  if (!ok) return false;
-  unpackOffsets(raw, out);
-  return true;
+  return readOffsetsInConfigMode(out);
 }
 
 void ImuBno055::applyCalibrationOffsets(const ImuCalibrationOffsets& offsets) {
-  adafruit_bno055_offsets_t bno_offsets{};
-  bno_offsets.accel_offset_x = offsets.accel[0];
-  bno_offsets.accel_offset_y = offsets.accel[1];
-  bno_offsets.accel_offset_z = offsets.accel[2];
-  bno_offsets.mag_offset_x = offsets.mag[0];
-  bno_offsets.mag_offset_y = offsets.mag[1];
-  bno_offsets.mag_offset_z = offsets.mag[2];
-  bno_offsets.gyro_offset_x = offsets.gyro[0];
-  bno_offsets.gyro_offset_y = offsets.gyro[1];
-  bno_offsets.gyro_offset_z = offsets.gyro[2];
-  bno_offsets.accel_radius = offsets.accel_radius;
-  bno_offsets.mag_radius = offsets.mag_radius;
-  bno_.setSensorOffsets(bno_offsets);
+  const int16_t fields[] = {
+      offsets.accel[0],     offsets.accel[1],  offsets.accel[2],
+      offsets.mag[0],       offsets.mag[1],    offsets.mag[2],
+      offsets.gyro[0],      offsets.gyro[1],   offsets.gyro[2],
+      offsets.accel_radius, offsets.mag_radius};
+  setMode(kModeConfig);
+  platform::clock::delayMs(kToConfigMs);
+  // One write per register, LSB then MSB, as Adafruit_BNO055 did: the chip
+  // latches each pair when its MSB is written.
+  uint8_t reg = kOffsetsReg;
+  for (const int16_t field : fields) {
+    const uint16_t value = static_cast<uint16_t>(field);
+    writeByte(reg++, static_cast<uint8_t>(value & 0xFF));
+    writeByte(reg++, static_cast<uint8_t>(value >> 8));
+  }
+  setMode(kModeNdof);
 }
 
-bool ImuBno055::probeCalibStatRaw(uint8_t& raw_byte, uint8_t& wire_error) {
+bool ImuBno055::probeCalibStatRaw(uint8_t& raw_byte, uint32_t& i2c_error) {
   raw_byte = 0;
-  cfg_.bus->beginTransmission(cfg_.i2c_addr);
-  cfg_.bus->write(kCalibStatReg);
-  wire_error = cfg_.bus->endTransmission(false);  // repeated start, no stop
-  if (wire_error != 0) return false;
-
-  if (cfg_.bus->requestFrom(static_cast<uint8_t>(cfg_.i2c_addr),
-                            static_cast<uint8_t>(1)) != 1) {
-    wire_error = 0xFF;  // not a real Wire code — flags the requestFrom miss
-    return false;
-  }
-  raw_byte = cfg_.bus->read();
-  return true;
+  i2c_error = 0;
+  if (readByte(kCalibStatReg, raw_byte)) return true;
+  raw_byte = 0;
+  i2c_error = cfg_.bus->lastError();
+  return false;
 }

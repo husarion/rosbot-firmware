@@ -12,27 +12,26 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#include <Arduino.h>
-
 #include <cstring>
 
 #include "battery_adc.hpp"
 #include "battery_interface.hpp"
 #include "boot_option.hpp"
+#include "clock.hpp"
 #include "communication_manager.hpp"
-#include "config.hpp"
 #include "fault.hpp"
 #include "hardware_encoder.hpp"
-#include "i2c_fast_mode.hpp"
 #include "imu_bno055.hpp"
 #include "imu_calibration_boot.hpp"
 #include "led_indicator.hpp"
 #include "mavlink_node.hpp"
+#include "mcu_health.hpp"
 #include "motor_array.hpp"
 #include "motor_hi_z.hpp"
 #include "persistent_config.hpp"
 #include "range_array.hpp"
 #include "range_vl53l0.hpp"
+#include "rosbot/config.hpp"
 #include "rtos.hpp"
 
 // ───────── Battery ─────────
@@ -53,9 +52,6 @@ static MotorHiZ motor_fr(motor_fr_config, &enc_fr, PIDController(pid_config));
 static MotorHiZ motor_rl(motor_rl_config, &enc_rl, PIDController(pid_config));
 static MotorHiZ motor_rr(motor_rr_config, &enc_rr, PIDController(pid_config));
 static MotorInterface* motors[] = {&motor_fl, &motor_fr, &motor_rl, &motor_rr};
-static constexpr uint8_t MOTOR_COUNT = sizeof(motors) / sizeof(motors[0]);
-static constexpr uint8_t DRIVER_GROUP_COUNT =
-    sizeof(driver_groups) / sizeof(driver_groups[0]);
 
 // ───────── Ranges ─────────
 RangeVl53l0x range_fl(range_fl_config);
@@ -64,15 +60,13 @@ RangeVl53l0x range_rl(range_rl_config);
 RangeVl53l0x range_rr(range_rr_config);
 static RangeInterface* range_sensors[] = {&range_fl, &range_fr, &range_rl,
                                           &range_rr};
-static constexpr uint8_t RANGE_COUNT =
-    sizeof(range_sensors) / sizeof(range_sensors[0]);
 
 // ───────── Extern variables ─────────
 BatteryInterface* g_battery = &battery_adc;
 ImuInterface* g_imu = &imu_bno055;
 LedIndicator g_indicator(led_status_config);
-MotorArray g_motors(motors, MOTOR_COUNT, driver_groups, DRIVER_GROUP_COUNT);
-RangeArray g_ranges(range_sensors, RANGE_COUNT);
+MotorArray g_motors(motors, driver_groups);
+RangeArray g_ranges(range_sensors);
 
 // Resolved once by resolveBootAction() at the very start of setup(),
 // before anything else reads PUSH_BUTTON1/2 — see boot_option.hpp.
@@ -97,50 +91,48 @@ static float supplyVoltage() { return g_battery->getData().voltage; }
 
 void boardPeripheralsInit() {
   // Initialize Buttons
-  pinMode(PUSH_BUTTON1, INPUT_PULLUP);
-  pinMode(PUSH_BUTTON2, INPUT_PULLUP);
+  PUSH_BUTTON1.setAsInput(platform::Pull::kUp);
+  PUSH_BUTTON2.setAsInput(platform::Pull::kUp);
 
   // Initialize LEDs
-  pinMode(RED_LED, OUTPUT);
-  pinMode(GRN_LED, OUTPUT);
-  pinMode(GRN_LED2, OUTPUT);
-  digitalWrite(RED_LED, HIGH);
+  RED_LED.setAsOutput(true);
+  GRN_LED.setAsOutput(false);
+  GRN_LED2.setAsOutput(false);
 
   // Select BNO055 I2C address 0x29 before powering the sensor: COM3 must
   // have a defined level at boot and the line has no pull resistor.
-  pinMode(IMU_ADDR_SEL, OUTPUT);
-  digitalWrite(IMU_ADDR_SEL, HIGH);
+  IMU_ADDR_SEL.setAsOutput(true);
 
   // Enable power for IMU sensor
-  pinMode(IMU_POWER_ON, OUTPUT);
-  digitalWrite(IMU_POWER_ON, HIGH);
+  IMU_POWER_ON.setAsOutput(true);
 
   // Initialize I2C
-  imu_i2c.begin();
-  setI2cFastMode(imu_i2c);
-  range_i2c.begin();
-  setI2cFastMode(range_i2c);
+  imu_i2c.init();
+  range_i2c.init();
 
-  delay(20);
+  platform::clock::delayMs(20);
 }
 
 // Lives in .data so g_comm_mgr's ns_default pointer stays valid.
 static persistent_config::Config s_persistent;
 
 /*───────── Setup ─────────*/
-void setup() {
-  installFaultHandlers();
+// Called from main() (boards/stm32f407/system.cpp).
+extern "C" void setup() {
+  platform::clock::init();
+  const FaultInfo fault = consumeFaultInfo();
+  const bool fault_reset = fault.fault_reset;
+  diagnostics::captureResetCause(fault.fault_reset, fault.code, fault.pc,
+                                 fault.task);
   boardPeripheralsInit();
 
   // Resolve the boot gesture before anything else touches the buttons —
   // see boot_option.hpp. rosbot has two interchangeable buttons; either
   // one qualifies.
-  const uint8_t boot_buttons[] = {PUSH_BUTTON1, PUSH_BUTTON2};
+  static constexpr Pin boot_buttons[] = {PUSH_BUTTON1, PUSH_BUTTON2};
   const BootOptionConfig boot_option_config = {
       .buttons = boot_buttons,
-      .button_count = 2,
-      .green_led = GRN_LED,
-      .green_led2 = GRN_LED2,
+      .green_leds = green_leds,
   };
   const BootAction boot_action = resolveBootAction(boot_option_config);
   s_transport_diagnostic_requested =
@@ -168,24 +160,29 @@ void setup() {
   // The debug UART is a rear-panel header with no SBC wiring, so calibration
   // progress is mirrored onto the SBC link as well — see
   // imu_calibration_boot.hpp. Skipped when the FTDI itself is the link.
-  HardwareSerial* link_serial =
-      (transport != nullptr && g_comm_mgr.hasDebugSerial()) ? transport->serial
+  platform::Uart* link_serial =
+      (transport != nullptr && g_comm_mgr.hasDebugSerial()) ? transport->uart
                                                             : nullptr;
 
   battery_adc.init();
   const bool imu_ready = imu_bno055.init();
   if (imu_ready) {
-    if (now.has_imu_calibration) {
-      imu_bno055.applyCalibrationOffsets(now.imu_calibration);
-    }
+    // The saved offsets go in after the window, and only if it failed:
+    // loaded before it, they made the chip report gyro/accel/mag 3 at once,
+    // so the window "succeeded" instantly and saved them again (HW, ROSbot
+    // XL, 2026-11-20).
+    bool calibrated_now = false;
     if (imu_calibration_requested) {
       ImuCalibrationOffsets captured{};
-      if (imu_calibration_boot::run(imu_bno055, RED_LED, GRN_LED, GRN_LED2,
-                                    captured, g_comm_mgr.debugSerial(),
-                                    link_serial)) {
+      if (imu_calibration_boot::run(imu_bno055, RED_LED, green_leds, captured,
+                                    g_comm_mgr.debugSerial(), link_serial)) {
         now.has_imu_calibration = true;
         now.imu_calibration = captured;
+        calibrated_now = true;
       }
+    }
+    if (now.has_imu_calibration && !calibrated_now) {
+      imu_bno055.applyCalibrationOffsets(now.imu_calibration);
     }
   } else {
     if (g_comm_mgr.hasDebugSerial()) {
@@ -209,37 +206,13 @@ void setup() {
   g_mavlink_node.setNamespace(g_comm_mgr.getNamespace());
   g_mavlink_node.setDiagnosticSerial(g_comm_mgr.debugSerial(),
                                      g_comm_mgr.debugMutex());
-  if (consumeFaultResetFlag()) {
+  if (fault_reset) {
     g_mavlink_node.setBootNotice("MCU reset after a firmware fault");
   }
   g_mavlink_node.begin();
-
-  // Must run after any boot-time IMU calibration and before the
-  // scheduler starts — see enableDmaReads()'s doc comment.
-  if (imu_ready) {
-    imu_bno055.enableDmaReads();
-  }
 
   // RTOS
   createQueues();
   createTasks();
   vTaskStartScheduler();
-}
-
-/*───────── Loop ─────────*/
-void loop() {}
-
-/*───────── Runtime stats ─────────*/
-HardwareTimer RunTimeStatsTimer(TIM5);
-
-void vConfigureTimerForRunTimeStats(void) {
-  // TIM5 sits on APB1: 84 MHz timer clock / 1680 = 50 kHz (20 us per count).
-  RunTimeStatsTimer.setPrescaleFactor(1680);
-  RunTimeStatsTimer.setOverflow(0xFFFFFFFF);
-  RunTimeStatsTimer.refresh();
-  RunTimeStatsTimer.resume();
-}
-
-uint32_t vGetTimerValueForRunTimeStats(void) {
-  return RunTimeStatsTimer.getCount();
 }

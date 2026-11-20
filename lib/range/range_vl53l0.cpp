@@ -14,18 +14,31 @@
 
 #include "range_vl53l0.hpp"
 
-#include <Arduino.h>
+#include <cmath>
+
+#include "clock.hpp"
 
 static constexpr uint8_t RESULT_READY_MASK = 0x07;
+static constexpr uint8_t kLostAfterTimeouts = 2;
 
 RangeVl53l0x::RangeVl53l0x(const RangeVl53l0xConfig& cfg) : cfg_(cfg) {}
 
 void RangeVl53l0x::init() {
+  timeout_streak_ = 0;
+  not_ready_streak_ = 0;
   powerOn();
 
+  // XSHUT put the sensor back at the default address; the driver object
+  // still holds the one setAddress() gave it on the previous init().
+  driver_ = VL53L0X();
   driver_.setBus(cfg_.bus);
   driver_.setTimeout(cfg_.timeout_ms);
-  if (!driver_.init()) return;
+  // A sensor that once answered stays lost until it answers again, so
+  // RangeArray keeps retrying; one absent since boot is never retried.
+  if (!driver_.init()) {
+    lost_ = answered_once_;
+    return;
+  }
 
   driver_.setAddress(cfg_.i2c_address);
   driver_.setSignalRateLimit(cfg_.signal_rate_limit);
@@ -37,6 +50,8 @@ void RangeVl53l0x::init() {
   driver_.startContinuous(cfg_.continuous_period_ms);
 
   initialized_ = true;
+  answered_once_ = true;
+  lost_ = false;
 }
 
 void RangeVl53l0x::update() {
@@ -45,20 +60,49 @@ void RangeVl53l0x::update() {
     return;
   }
 
-  uint16_t range_mm = driver_.readRangeContinuousMillimeters();
-  data_.range =
-      driver_.timeoutOccurred() ? NAN : static_cast<float>(range_mm) / 1000.0f;
+  // One status read instead of the driver's wait: it polls the register
+  // until data is ready, which is up to a whole measurement period of I2C
+  // traffic when the sensors' phase drifts from this task's (seen as ~25 %
+  // CPU after a re-init on HW) and the full timeout for a dead sensor.
+  const uint8_t status = driver_.readReg(VL53L0X::RESULT_INTERRUPT_STATUS);
+  if (driver_.last_status != 0) {
+    onTimeout();
+    return;
+  }
+  if ((status & RESULT_READY_MASK) == 0) {
+    // Keep the last reading; give up after about timeout_ms without data.
+    if (++not_ready_streak_ * cfg_.continuous_period_ms >= cfg_.timeout_ms) {
+      not_ready_streak_ = 0;
+      onTimeout();
+    }
+    return;
+  }
+  not_ready_streak_ = 0;
+  const uint16_t range_mm = driver_.readRangeContinuousMillimeters();
+  if (driver_.timeoutOccurred()) {
+    onTimeout();
+    return;
+  }
+  timeout_streak_ = 0;
+  data_.range = static_cast<float>(range_mm) / 1000.0f;
+}
+
+void RangeVl53l0x::onTimeout() {
+  ++timeouts_;
+  data_.range = NAN;
+  if (++timeout_streak_ >= kLostAfterTimeouts) {
+    lost_ = true;
+    initialized_ = false;
+  }
 }
 
 void RangeVl53l0x::powerOff() {
-  pinMode(cfg_.xshut_pin, OUTPUT);
-  digitalWrite(cfg_.xshut_pin, LOW);
+  cfg_.xshut_pin.setAsOutput(false);
   initialized_ = false;
-  delay(10);
+  platform::clock::delayMs(10);
 }
 
 void RangeVl53l0x::powerOn() {
-  pinMode(cfg_.xshut_pin, OUTPUT);
-  digitalWrite(cfg_.xshut_pin, HIGH);
-  delay(20);
+  cfg_.xshut_pin.setAsOutput(true);
+  platform::clock::delayMs(20);
 }

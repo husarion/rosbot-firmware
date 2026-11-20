@@ -17,9 +17,9 @@ serves every ROS 2 distro the bridge is built for.
 Day-to-day workflow on the ROSbot SBC uses [`just`](./justfile):
 
 ```bash
-just install-deps         # one-time: pymavlink + platformio in a venv
-just build rosbot_xl      # one env; envs: rosbot[_xl], rosbot[_xl]_release
-just build-all            # all four envs
+just install-deps         # one-time: pymavlink in a venv (mavgen only)
+just build rosbot_xl      # one board: rosbot or rosbot_xl
+just build-all            # both boards
 just flash rosbot_xl      # builds and flashes via rosbot_utils
 just mavgen               # regen MAVLink dialect headers
 just --list               # every recipe

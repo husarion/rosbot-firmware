@@ -14,6 +14,8 @@
 
 #include "power_board.hpp"
 
+#include "time_base.hpp"
+
 // ═══════════════════════════════════════════════════════════════════
 //  Constructor — stores config, does NOT touch hardware
 // ═══════════════════════════════════════════════════════════════════
@@ -27,7 +29,7 @@ PowerBoard::PowerBoard(const PowerBoardConfig& config)
 //  init() — configures UART, call after HAL/clock init
 // ═══════════════════════════════════════════════════════════════════
 
-void PowerBoard::init() { cfg_.serial.begin(cfg_.baudrate); }
+void PowerBoard::init() { cfg_.uart.open(cfg_.baudrate); }
 
 // ═══════════════════════════════════════════════════════════════════
 //  update() — read incoming data and parse frames
@@ -38,8 +40,8 @@ void PowerBoard::init() { cfg_.serial.begin(cfg_.baudrate); }
 // stream timeout after every reply (HW-measured: hwMonitorTask ran 119 ms
 // once a second on ROSbot XL).
 void PowerBoard::update() {
-  while (rx_len_ < RX_BUF_SIZE && cfg_.serial.available() > 0) {
-    rx_buf_[rx_len_++] = static_cast<uint8_t>(cfg_.serial.read());
+  while (rx_len_ < RX_BUF_SIZE && cfg_.uart.available() > 0) {
+    rx_buf_[rx_len_++] = static_cast<uint8_t>(cfg_.uart.read());
   }
   if (rx_len_ == 0) return;
 
@@ -140,7 +142,7 @@ void PowerBoard::sendFrame(uint8_t cmd, const uint8_t* args,
   p += 2;
   *p++ = FRAME_END;
 
-  cfg_.serial.write(tx, static_cast<size_t>(p - tx));
+  cfg_.uart.write(tx, static_cast<size_t>(p - tx));
 }
 
 // ═══════════════════════════════════════════════════════════════════
@@ -221,6 +223,7 @@ bool PowerBoard::parseNextFrame(const uint8_t* data, size_t len, size_t& pos,
 // ═══════════════════════════════════════════════════════════════════
 
 void PowerBoard::dispatch(const Frame& frame) {
+  last_frame_ms_ = time_boot_ms();
   switch (frame.cmd) {
     case CMD_BOARD_INFO:
       handleBoardInfo(frame);
@@ -265,10 +268,19 @@ void PowerBoard::handleBoardInfo(const Frame& frame) {
 //  args[ 7.. 8] -> charge current   (uint16, x0.001 A)
 //  args[11..12] -> design capacity  (uint16, x0.001 Ah)
 //  args[14]     -> status
-//  args[15]     -> health
+//  args[15]     -> health (v1.0.3+: 0 ok, 1..8 = BATTERY_HEALTH_*)
 //  args[16]     -> technology
 //  args[17]     -> present
 // ═══════════════════════════════════════════════════════════════════
+
+uint8_t PowerBoard::healthFromReply(uint8_t raw) const {
+  // Older PBs always send 0 here, which cannot be told from "ok".
+  if (!supportsFastPolling()) return POWER_SUPPLY_HEALTH_UNKNOWN;
+  if (raw == 0) return POWER_SUPPLY_HEALTH_GOOD;
+  return raw <= POWER_SUPPLY_HEALTH_SAFETY_TIMER_EXPIRE
+             ? raw
+             : POWER_SUPPLY_HEALTH_UNKNOWN;
+}
 
 void PowerBoard::handleBatteryState(const Frame& frame) {
   if (frame.arg_size != BATTERY_STATE_ARG_LEN) return;
@@ -290,7 +302,7 @@ void PowerBoard::handleBatteryState(const Frame& frame) {
   data_.current = charge - discharge;
 
   // Percentage is not part of this protocol; estimate it from V and I.
-  const uint32_t now_ms = millis();
+  const uint32_t now_ms = time_boot_ms();
   const float dt_s =
       (last_battery_ms_ == 0)
           ? 0.0f
@@ -299,7 +311,7 @@ void PowerBoard::handleBatteryState(const Frame& frame) {
   data_.percentage = soc_.update(data_.voltage, data_.current, dt_s);
 
   data_.status = a[14];
-  data_.health = a[15];
+  data_.health = healthFromReply(a[15]);
   data_.present = static_cast<bool>(a[17]);
 
   battery_updated_ = true;

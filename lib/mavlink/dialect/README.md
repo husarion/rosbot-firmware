@@ -5,8 +5,8 @@ The **generated C headers** live inside the bridge package at
 [`bridge/rosbot_mavlink_bridge/mavlink_dialect/`](../../../bridge/rosbot_mavlink_bridge/mavlink_dialect/)
 — single canonical location. Both consumers reach them from there:
 
-- **Firmware** — via the `-I bridge/rosbot_mavlink_bridge/mavlink_dialect/rosbot`
-  flag in [`platformio.ini`](../../../platformio.ini).
+- **Firmware** — via the include path in
+  [`cmake/CMakeLists.txt`](../../../cmake/CMakeLists.txt).
 - **Bridge node** — via its own `CMakeLists.txt` (the headers ship inside
   the package, which keeps the bridge self-contained for bloom releases).
 
@@ -25,10 +25,10 @@ firmware does not require running `mavgen` on the build machine.
 ## Regenerate after editing `rosbot.xml`
 
 Pre-requisite: `pymavlink` >= 2.4 in a virtualenv. The repo's `justfile` has
-an `install-deps` recipe that creates `~/.venv-mavlink` for you:
+an `install-deps` recipe that creates `~/.venv-rosbot-fw` for you:
 
 ```bash
-just install-deps        # one-time: pymavlink + platformio in ~/.venv-mavlink
+just install-deps        # one-time: pymavlink in ~/.venv-rosbot-fw
 just mavgen              # regenerate headers into bridge/.../mavlink_dialect/
 ```
 
@@ -36,7 +36,7 @@ Equivalent without `just`:
 
 ```bash
 rm -rf bridge/rosbot_mavlink_bridge/mavlink_dialect
-~/.venv-mavlink/bin/mavgen.py \
+~/.venv-rosbot-fw/bin/mavgen.py \
   --lang=C --wire-protocol=2.0 \
   --output=bridge/rosbot_mavlink_bridge/mavlink_dialect \
   lib/mavlink/dialect/rosbot.xml

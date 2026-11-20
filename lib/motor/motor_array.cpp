@@ -14,16 +14,16 @@
 
 #include "motor_array.hpp"
 
-#include <Arduino.h>
-#include <FreeRTOS.h>
+#include <etl/algorithm.h>
 
-MotorArray::MotorArray(MotorInterface** motors, uint8_t count,
-                       const DriverGroupConfig* drivers,
-                       uint8_t num_driver_groups)
-    : motors_(motors),
-      count_(count),
-      drivers_(drivers),
-      num_drivers_(num_driver_groups) {}
+#include "clock.hpp"
+#include "freertos.hpp"
+#include "time_base.hpp"
+
+MotorArray::MotorArray(etl::span<MotorInterface* const> motors,
+                       etl::span<const DriverGroupConfig> drivers)
+    : motors_(motors.first(etl::min(motors.size(), size_t{MAX_NUM_MOTORS}))),
+      drivers_(drivers) {}
 
 // ─── init ─────────────────────────────────────────────────────────
 
@@ -32,38 +32,36 @@ void MotorArray::init() {
   configASSERT(mutex_ != nullptr);
 
   // Setup driver control pins
-  for (uint8_t i = 0; i < num_drivers_; ++i) {
-    pinMode(drivers_[i].sleep_pin, OUTPUT);
-    pinMode(drivers_[i].fault_pin, INPUT_PULLUP);
+  for (const auto& driver : drivers_) {
+    driver.sleep_pin.setAsOutput(false);
+    driver.fault_pin.setAsInput(platform::Pull::kUp);
   }
   disableDrivers();
 
   // Init all motors
-  data_.count = count_;
-  for (uint8_t i = 0; i < count_; ++i) motors_[i]->init();
+  data_.count = count();
+  for (auto* motor : motors_) motor->init();
 
-  last_update_us_ = micros();
+  last_update_us_ = platform::clock::counterUs();
   enableDrivers();
 }
 
 // ─── driver control ───────────────────────────────────────────────
 
 void MotorArray::enableDrivers() {
-  for (uint8_t i = 0; i < num_drivers_; ++i)
-    digitalWrite(drivers_[i].sleep_pin, HIGH);
+  for (const auto& driver : drivers_) driver.sleep_pin.set();
   drivers_enabled_.store(true, std::memory_order_relaxed);
-  delayMicroseconds(100);  // DRV8848 wake-up
+  platform::clock::delayUs(100);  // DRV8848 wake-up
 }
 
 void MotorArray::disableDrivers() {
-  for (uint8_t i = 0; i < num_drivers_; ++i)
-    digitalWrite(drivers_[i].sleep_pin, LOW);
+  for (const auto& driver : drivers_) driver.sleep_pin.reset();
   drivers_enabled_.store(false, std::memory_order_relaxed);
 }
 
 bool MotorArray::checkFaults() const {
-  for (uint8_t i = 0; i < num_drivers_; ++i)
-    if (!digitalRead(drivers_[i].fault_pin)) return true;
+  for (const auto& driver : drivers_)
+    if (!driver.fault_pin.read()) return true;
   return false;
 }
 
@@ -71,7 +69,8 @@ bool MotorArray::checkFaults() const {
 
 void MotorArray::setVelocities(const float* velocities) {
   if (xSemaphoreTake(mutex_, pdMS_TO_TICKS(10)) == pdTRUE) {
-    for (uint8_t i = 0; i < count_; ++i) motors_[i]->setVelocity(velocities[i]);
+    for (size_t i = 0; i < motors_.size(); ++i)
+      motors_[i]->setVelocity(velocities[i]);
     feedWatchdog();
     xSemaphoreGive(mutex_);
   }
@@ -82,14 +81,14 @@ void MotorArray::setVelocities(const float* velocities) {
 void MotorArray::update() {
   if (!isDriversEnabled()) return;
 
-  const uint32_t now_us = micros();
+  const uint32_t now_us = platform::clock::counterUs();
   const float dt = (now_us - last_update_us_) * 1e-6f;
   last_update_us_ = now_us;
 
-  const bool fault = updateFaultLatch(millis());
+  const bool fault = updateFaultLatch(time_boot_ms());
 
   if (xSemaphoreTake(mutex_, pdMS_TO_TICKS(5)) == pdTRUE) {
-    for (uint8_t i = 0; i < count_; ++i) {
+    for (size_t i = 0; i < motors_.size(); ++i) {
       // update(dt, false) brakes, which zeroes the target and the PID every
       // cycle: setpoints that arrive during a fault are dropped, and the
       // wheels move again only on a fresh one, without a stale integral.
@@ -108,7 +107,10 @@ bool MotorArray::updateFaultLatch(uint32_t now_ms) {
   if (checkFaults()) {
     last_fault_ms_ = now_ms;
     if (fault_cycles_ < kFaultAssertCycles) ++fault_cycles_;
-    if (fault_cycles_ >= kFaultAssertCycles) latched = true;
+    if (fault_cycles_ >= kFaultAssertCycles) {
+      if (!latched) fault_events_.fetch_add(1, std::memory_order_relaxed);
+      latched = true;
+    }
   } else {
     fault_cycles_ = 0;
     if (latched && now_ms - last_fault_ms_ >= kFaultClearMs) latched = false;
@@ -120,12 +122,12 @@ bool MotorArray::updateFaultLatch(uint32_t now_ms) {
 // ─── watchdog ────────────────────────────────────────────────────
 
 void MotorArray::feedWatchdog() {
-  last_cmd_time_.store(millis(), std::memory_order_relaxed);
+  last_cmd_time_.store(time_boot_ms(), std::memory_order_relaxed);
   watchdog_enabled_.store(true, std::memory_order_relaxed);
 }
 
 bool MotorArray::isWatchdogExpired() const {
   if (!watchdog_enabled_.load(std::memory_order_relaxed)) return false;
-  return (millis() - last_cmd_time_.load(std::memory_order_relaxed)) >
+  return (time_boot_ms() - last_cmd_time_.load(std::memory_order_relaxed)) >
          WATCHDOG_TIMEOUT_MS;
 }

@@ -14,14 +14,14 @@
 
 #pragma once
 
-#include <VL53L0X.h>
-#include <Wire.h>
-
+#include "VL53L0X.h"
+#include "i2c.hpp"
+#include "pin.hpp"
 #include "range_interface.hpp"
 
 struct RangeVl53l0xConfig {
-  TwoWire* bus;
-  uint8_t xshut_pin;
+  platform::I2c* bus;
+  platform::Pin xshut_pin;
   uint8_t i2c_address;
   const char* frame_id = "range";
   uint16_t timeout_ms = 500;
@@ -40,10 +40,22 @@ class RangeVl53l0x : public RangeInterface {
   void update() override;
   void powerOff() override;
   void powerOn() override;
+
+  bool initialized() const { return initialized_; }
+  // Reads that hit the driver timeout since boot.
+  uint32_t timeouts() const { return timeouts_; }
   const char* name() const override { return cfg_.frame_id; }
+  bool lost() const override { return lost_; }
 
  private:
+  void onTimeout();
+
   VL53L0X driver_;
   const RangeVl53l0xConfig cfg_;
   bool initialized_ = false;
+  bool lost_ = false;
+  bool answered_once_ = false;
+  uint8_t timeout_streak_ = 0;
+  uint32_t not_ready_streak_ = 0;
+  uint32_t timeouts_ = 0;
 };

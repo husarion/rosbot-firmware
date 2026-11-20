@@ -14,18 +14,19 @@
 
 #include "rtos.hpp"
 
-#include <STM32FreeRTOS.h>
-
 #include "battery_interface.hpp"
 #include "communication_manager.hpp"
-#include "config.hpp"
 #include "critical_state.hpp"
+#include "freertos.hpp"
 #include "imu_calibration_runtime.hpp"
 #include "imu_interface.hpp"
 #include "led_indicator.hpp"
 #include "mavlink_node.hpp"
 #include "mavlink_types.hpp"
 #include "motor_array.hpp"
+#include "publishers/range_publisher.hpp"
+#include "rosbot/config.hpp"
+#include "time_base.hpp"
 
 void createQueues() {
   battery_queue = xQueueCreate(1, sizeof(BatteryStamped));
@@ -37,7 +38,6 @@ void createQueues() {
 void batteryTask(void* p);
 void imuTask(void* p);
 void ledIndicatorTask(void* p);
-void monitorTask(void* p);
 void motorControlTask(void* p);
 void rangeTask(void* p);
 void linkTask(void* p);
@@ -46,12 +46,9 @@ inline TaskConfig tasks[] = {
     {"Battery", Priority::SENSORS, Stack::XS, 10, batteryTask},
     {"Imu", Priority::SENSORS, Stack::M, 100, imuTask},
     {"LedIndicator", Priority::OBSERVING, Stack::XS, 20, ledIndicatorTask},
-#ifndef RELEASE
-    {"Monitor", Priority::BLOCKING, Stack::XL, 1, monitorTask},
-#endif
     {"MotorControl", Priority::CONTROL, Stack::M, 200, motorControlTask},
-    {"Range", Priority::SENSORS, Stack::M, 10, rangeTask},
-    {"Link", Priority::COMMUNICATION, Stack::XXL, 200, linkTask},
+    {"Range", Priority::SENSORS, Stack::L, 10, rangeTask},
+    {"Link", Priority::COMMUNICATION, Stack::XXL, 1000, linkTask},
 };
 
 inline TaskHandleWrapper taskHandles[sizeof(tasks) / sizeof(tasks[0])];
@@ -69,7 +66,7 @@ void batteryTask(void* p) {
 
   while (true) {
     data.timestamp_ns = rtos_timestamp_ns();
-    g_battery->update();  // TODO: DMA should be used
+    g_battery->update();
     data.data = g_battery->getData();
 
     xQueueOverwrite(battery_queue, &data);
@@ -107,7 +104,7 @@ void ledIndicatorTask(void* p) {
     bool battery_low = g_battery->isLow();
     const bool error_state = g_motors.hasFault();
 
-    if (imu_calibration::sessionActive(millis())) {
+    if (imu_calibration::sessionActive(time_boot_ms())) {
       ImuCalibrationStatus calib{};
       g_indicator.calibrating(g_imu->calibrationStatus(calib) &&
                               calib.fullyCalibrated());
@@ -115,32 +112,6 @@ void ledIndicatorTask(void* p) {
       g_indicator.update(battery_low, !g_mavlink_node.isConnected(),
                          error_state);
     }
-    vTaskDelayUntil(&wake_time, period);
-  }
-}
-
-void monitorTask(void* p) {
-  TickType_t period = taskGetPeriod(p);
-  TickType_t wake_time = xTaskGetTickCount();
-  char buf[768];
-
-  while (true) {
-    vTaskGetRunTimeStats(buf);
-    if (g_comm_mgr.hasDebugSerial()) {
-      DebugSerialLock lock(g_comm_mgr.debugMutex());
-      g_comm_mgr.debugSerial()->printf("%s\r\n", buf);
-
-      for (size_t i = 0; i < sizeof(taskHandles) / sizeof(taskHandles[0]);
-           i++) {
-        g_comm_mgr.debugSerial()->printf(
-            "%-16s %-6u B\r\n", tasks[i].name,
-            uxTaskGetStackHighWaterMark(taskHandles[i].handle) *
-                sizeof(StackType_t));
-      }
-      g_comm_mgr.debugSerial()->printf("\r\nFree heap memory: %u B\r\n",
-                                       (unsigned)xPortGetFreeHeapSize());
-    }
-
     vTaskDelayUntil(&wake_time, period);
   }
 }
@@ -168,7 +139,7 @@ void rangeTask(void* p) {
 
   while (true) {
     data.timestamp_ns = rtos_timestamp_ns();
-    g_ranges.update();
+    g_ranges.update(time_boot_ms());
     data.data = g_ranges.getData();
 
     xQueueOverwrite(ranges_queue, &data);

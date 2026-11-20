@@ -13,7 +13,7 @@ install/
 log/
 
 # Staged MAVLink firmware binaries for the rosbot-snap build (populated by
-# `just stage-snap-firmware`). The .pio/ source files are the truth.
+# `just stage-snap-firmware`). build/release/ is the source of truth.
 bridge/rosbot_mavlink_bridge/firmware/*.bin
 
 # Local scratch dir for screenshots, paste targets, ad-hoc files.

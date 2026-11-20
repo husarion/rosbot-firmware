@@ -14,19 +14,19 @@
 
 #pragma once
 
-#include <Arduino.h>
-
 #include <cmath>
 #include <cstring>
 
 #include "battery_interface.hpp"
+#include "pb_polling.hpp"
 #include "soc_estimator.hpp"
+#include "uart.hpp"
 #include "version_text.hpp"
 
 // ── Configuration ───────────────────────────────────────────────────
 
 struct PowerBoardConfig {
-  HardwareSerial& serial;
+  platform::Uart& uart;
   uint32_t baudrate = 115200;
   uint8_t num_cells = 3;
   float capacity_ah = 7.8f;
@@ -62,8 +62,21 @@ class PowerBoard : public BatteryInterface {
 
   const BoardInfo& boardInfo() const { return board_info_; }
 
+  bool supportsFastPolling() const {
+    return pbSupportsFastPolling(board_info_.firmware_version);
+  }
+
+  uint32_t batteryPollPeriodMs() const {
+    return pbBatteryPollPeriodMs(board_info_.firmware_version);
+  }
+
   bool hasBoardInfoUpdate();
   bool hasBatteryUpdate();
+
+  // A valid frame arrived within the last `window_ms`.
+  bool answering(uint32_t now_ms, uint32_t window_ms = 3000) const {
+    return last_frame_ms_ != 0 && now_ms - last_frame_ms_ < window_ms;
+  }
 
  private:
   // ── Protocol constants ──────────────────────────────────────────
@@ -108,6 +121,7 @@ class PowerBoard : public BatteryInterface {
 
   void handleBoardInfo(const Frame& frame);
   void handleBatteryState(const Frame& frame);
+  uint8_t healthFromReply(uint8_t raw) const;
 
   // ── Byte-order helpers ──────────────────────────────────────────
 
@@ -130,5 +144,6 @@ class PowerBoard : public BatteryInterface {
   uint32_t last_battery_ms_ = 0;
 
   bool battery_updated_ = false;
+  uint32_t last_frame_ms_ = 0;
   bool board_info_updated_ = false;
 };

@@ -16,6 +16,7 @@ wire side.
 
 ## Topics
 
+[diagnostic_msgs/DiagnosticArray]: https://docs.ros.org/en/jazzy/p/diagnostic_msgs/msg/DiagnosticArray.html
 [sensor_msgs/BatteryState]: https://docs.ros.org/en/jazzy/p/sensor_msgs/msg/BatteryState.html
 [sensor_msgs/Image]: https://docs.ros.org/en/jazzy/p/sensor_msgs/msg/Image.html
 [sensor_msgs/Imu]: https://docs.ros.org/en/jazzy/p/sensor_msgs/msg/Imu.html
@@ -28,10 +29,11 @@ wire side.
 | Rb  | Rb XL | TOPIC                  | DESCRIPTION                                                 |
 | --- | ----- | ---------------------- | ----------------------------------------------------------- |
 | ✅  | ✅    | **`battery`**          | Battery status. <br /> _[sensor_msgs/BatteryState]_         |
-| ✅  | ✅    | **`buttons`**          | Button states. <br /> _[std_msgs/UInt8]_                    |
+| ✅  | ✅    | **`buttons`**          | Pressed buttons, bit 0 = button 1, bit 1 = button 2 (ROSbot; XL has only button 1). <br /> _[std_msgs/UInt8]_ |
+| ✅  | ✅    | **`diagnostics`**      | MCU and hardware health, 1 Hz — see below. <br /> _[diagnostic_msgs/DiagnosticArray]_ |
 | ❌  | ✅    | **`led_strip`**        | LED strip command. <br /> _[sensor_msgs/Image]_             |
 | ✅  | ✅    | **`leds`**             | Rear panel LEDs command. <br /> _[std_msgs/UInt8]_          |
-| ✅  | ❌    | **`ranges`**           | Range sensor data. <br /> _[sensor_msgs/Range]_             |
+| ✅  | ❌    | **`ranges`**           | Range sensor data, one message per sensor (`frame_id`). NaN = no reading (sensor lost or timed out), −inf / +inf = below / above the measurable range (REP-117). <br /> _[sensor_msgs/Range]_ |
 | ✅  | ✅    | **`_imu/data`**        | Raw IMU data. <br /> _[sensor_msgs/Imu]_                    |
 | ✅  | ✅    | **`_imu/calibration`** | BNO055 calibration status, 5 Hz — see below. <br /> _[std_msgs/UInt8MultiArray]_ |
 | ✅  | ✅    | **`_motors/cmd`**      | Wheel speed commands. <br /> _[std_msgs/Float32MultiArray]_ |
@@ -48,6 +50,40 @@ wire side.
 | **`_imu/start_calibration`**  | Start a calibration session (red LED fast blink, 180 s). <br /> _[std_srvs/Trigger]_ |
 | **`_imu/stop_calibration`**   | End the session early. <br /> _[std_srvs/Trigger]_             |
 | **`_imu/save_calibration`**   | Persist the chip's current offsets to flash. <br /> _[std_srvs/Trigger]_ |
+
+## Diagnostics
+
+The MCU sends its health once a second and the bridge publishes it on
+`diagnostics` (in the robot namespace, like the other rosbot_ros
+diagnostics), readable with `rqt_robot_monitor` or a
+`diagnostic_aggregator`. Every status is named `<hardware_id>: <part>`, where
+`hardware_id` is `rosbot_mcu` (or `rosbot_mcu <namespace>`, so statuses of
+several robots stay apart once merged). Counters
+are since the MCU booted; "recent" means the counter grew within the last
+10 s (an MCU reboot starts the history over).
+
+| Status | ERROR | WARN | Values |
+| --- | --- | --- | --- |
+| `MCU` | smallest stack headroom < 64 B | headroom < 128 B, heap never used < 4 KB, CPU idle < 20 %, last reset was a firmware fault, running on the internal oscillator because the crystal did not start | clock source, uptime, last reset cause, CPU idle %, heap, stack headroom and its task |
+| `IMU` | IMU not initialised or last read failed | recent read errors or bus resets | read errors, bus resets |
+| `Range sensors` (ROSbot) | a sensor did not initialise, or stopped answering (the firmware re-initialises the sensors, 1 s to 16 s apart) | a sensor recently timing out, recent bus resets | timeouts per sensor, bus resets |
+| `Motors` | driver fault active | recent driver faults | fault events |
+| `Link` | — | MCU recently dropped telemetry (TX queue full) or got corrupted frames | dropped frames both ways, connections |
+| `Power` | battery critical, power board not answering (XL) | battery low | power board answering, Ethernet link (XL) |
+
+## Battery
+
+`battery` fields that need a note (ROSbot XL; ROSbot 2/3 keep NaN / UNKNOWN):
+
+- `temperature` — pack temperature in Celsius from the power board NTC; NaN
+  when the power board reports nothing usable.
+- `power_supply_health` — `GOOD` with power board firmware >= v1.0.3 and no
+  fault; `COLD` when charging is inhibited below 0 C; `UNSPEC_FAILURE` after
+  charger I2C errors; `OVERHEAT`, `DEAD`; `UNKNOWN` with older power board
+  firmware, an older bridge, or an unrecognised value.
+
+On the wire this rides in `BATTERY_STATUS` `temperature` (cdegC) and
+`charge_state` / `fault_bitmask`; no message change.
 
 ## IMU calibration
 

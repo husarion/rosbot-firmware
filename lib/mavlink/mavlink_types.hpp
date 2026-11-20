@@ -19,29 +19,14 @@
 #include "battery_interface.hpp"
 #include "imu_interface.hpp"
 #include "motor_array.hpp"
-#ifdef ROSBOT
-#include "range_array.hpp"
-#endif
 
 // Sensor samples handed from the producing tasks to the MAVLink publishers.
-struct BatteryStamped {
-  BatteryData data;
+template <typename T>
+struct Stamped {
+  T data;
   int64_t timestamp_ns;
 };
 
-struct ImuStamped {
-  ImuData data;
-  int64_t timestamp_ns;
-};
-
-struct JointStateStamped {
-  MotorsData data;
-  int64_t timestamp_ns;
-};
-
-#ifdef ROSBOT
-struct RangesStamped {
-  RangesData data;
-  int64_t timestamp_ns;
-};
-#endif
+using BatteryStamped = Stamped<BatteryData>;
+using ImuStamped = Stamped<ImuData>;
+using JointStateStamped = Stamped<MotorsData>;

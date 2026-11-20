@@ -14,12 +14,12 @@
 
 #pragma once
 
-#include <Arduino.h>
+#include "pin.hpp"
 
 /// Configuration for a status LED indicator.
 struct LedIndicatorConfig {
-  uint8_t pin;               // GPIO pin number
-  uint8_t initial_state;     // LOW or HIGH at startup
+  platform::Pin pin;
+  bool initial_on;
   uint16_t blink_period_ms;  // blink interval [ms]
   const char* label;         // e.g. "STATUS"
 };
@@ -31,7 +31,6 @@ struct LedIndicatorConfig {
 ///   - OFF          = all OK
 class LedIndicator {
  public:
-  LedIndicator() = default;
   explicit LedIndicator(const LedIndicatorConfig& cfg) : cfg_(cfg) {}
 
   /// Initialize GPIO pin and set initial state.
@@ -48,7 +47,6 @@ class LedIndicator {
   void calibrating(bool fully_calibrated);
 
   const char* name() const { return cfg_.label; }
-  bool isAvailable() const { return cfg_.pin != 0; }
 
  private:
   void handleBlink(uint32_t now);
@@ -58,7 +56,7 @@ class LedIndicator {
   static constexpr uint8_t kMinSosCycles = 2;
   void resetSOS() { sos_step_ = kSosIdle; }
 
-  LedIndicatorConfig cfg_ = {};
+  LedIndicatorConfig cfg_;
   uint32_t last_toggle_ = 0;
   uint8_t sos_step_ = kSosIdle;
   uint8_t sos_cycles_left_ = 0;

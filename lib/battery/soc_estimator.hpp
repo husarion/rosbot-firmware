@@ -19,7 +19,7 @@
 #include <cstdint>
 
 struct SocEstimatorConfig {
-  uint8_t num_cells = 3;
+  uint8_t num_cells = 3;  // series count; parallel cells only add capacity
   float capacity_ah = 7.8f;
   // Pack resistance used to undo load sag. Generic estimate, not measured on
   // hardware: the OCV correction is weighted down under load, so an error

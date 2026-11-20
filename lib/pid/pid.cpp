@@ -14,8 +14,6 @@
 
 #include "pid.hpp"
 
-#include <Arduino.h>
-
 #include <algorithm>
 #include <cmath>
 
@@ -71,7 +69,7 @@ float PIDController::compute(float setpoint, float measurement, float dt) {
     integral_ = 0.0f;
   } else if (!saturating_high && !saturating_low) {
     integral_ += error * dt;
-    integral_ = constrain(integral_, -cfg_.max_integral, cfg_.max_integral);
+    integral_ = std::clamp(integral_, -cfg_.max_integral, cfg_.max_integral);
   }
   const float i = cfg_.ki * integral_;
 
@@ -92,7 +90,7 @@ float PIDController::compute(float setpoint, float measurement, float dt) {
     output += ((output > 0) ? 1 : -1) * inertiaCompensation(measurement);
   }
 
-  return constrain(output, cfg_.min_output, cfg_.max_output);
+  return std::clamp(output, cfg_.min_output, cfg_.max_output);
 }
 
 float PIDController::calculateRampedSetpoint(float setpoint, float dt) {

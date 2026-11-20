@@ -574,6 +574,85 @@ static void mavlink_test_rosbot_power_board(uint8_t system_id, uint8_t component
 #endif
 }
 
+static void mavlink_test_rosbot_diagnostics(uint8_t system_id, uint8_t component_id, mavlink_message_t *last_msg)
+{
+#ifdef MAVLINK_STATUS_FLAG_OUT_MAVLINK1
+    mavlink_status_t *status = mavlink_get_channel_status(MAVLINK_COMM_0);
+        if ((status->flags & MAVLINK_STATUS_FLAG_OUT_MAVLINK1) && MAVLINK_MSG_ID_ROSBOT_DIAGNOSTICS >= 256) {
+            return;
+        }
+#endif
+    mavlink_message_t msg;
+        uint8_t buffer[MAVLINK_MAX_PACKET_LEN];
+        uint16_t i;
+    mavlink_rosbot_diagnostics_t packet_in = {
+        963497464,963497672,963497880,963498088,963498296,963498504,963498712,18691,18795,18899,{ 19003, 19004, 19005, 19006 },{ 19419, 19420 },19627,19731,"YZABCDEFGHIJKLM",75,142,209,"RSTUVWXYZABCDEF",68,135
+    };
+    mavlink_rosbot_diagnostics_t packet1, packet2;
+        memset(&packet1, 0, sizeof(packet1));
+        packet1.uptime_ms = packet_in.uptime_ms;
+        packet1.heap_free = packet_in.heap_free;
+        packet1.heap_min_free = packet_in.heap_min_free;
+        packet1.imu_errors = packet_in.imu_errors;
+        packet1.link_tx_dropped = packet_in.link_tx_dropped;
+        packet1.link_rx_errors = packet_in.link_rx_errors;
+        packet1.fault_pc = packet_in.fault_pc;
+        packet1.reset_cause = packet_in.reset_cause;
+        packet1.cpu_idle = packet_in.cpu_idle;
+        packet1.stack_min_free = packet_in.stack_min_free;
+        packet1.motor_faults = packet_in.motor_faults;
+        packet1.link_reconnects = packet_in.link_reconnects;
+        packet1.imu_ok = packet_in.imu_ok;
+        packet1.range_ok = packet_in.range_ok;
+        packet1.fault_code = packet_in.fault_code;
+        packet1.flags = packet_in.flags;
+        packet1.clock_source = packet_in.clock_source;
+        
+        mav_array_memcpy(packet1.range_timeouts, packet_in.range_timeouts, sizeof(uint16_t)*4);
+        mav_array_memcpy(packet1.i2c_recoveries, packet_in.i2c_recoveries, sizeof(uint16_t)*2);
+        mav_array_memcpy(packet1.stack_min_task, packet_in.stack_min_task, sizeof(char)*16);
+        mav_array_memcpy(packet1.fault_task, packet_in.fault_task, sizeof(char)*16);
+        
+#ifdef MAVLINK_STATUS_FLAG_OUT_MAVLINK1
+        if (status->flags & MAVLINK_STATUS_FLAG_OUT_MAVLINK1) {
+           // cope with extensions
+           memset(MAVLINK_MSG_ID_ROSBOT_DIAGNOSTICS_MIN_LEN + (char *)&packet1, 0, sizeof(packet1)-MAVLINK_MSG_ID_ROSBOT_DIAGNOSTICS_MIN_LEN);
+        }
+#endif
+        memset(&packet2, 0, sizeof(packet2));
+    mavlink_msg_rosbot_diagnostics_encode(system_id, component_id, &msg, &packet1);
+    mavlink_msg_rosbot_diagnostics_decode(&msg, &packet2);
+        MAVLINK_ASSERT(memcmp(&packet1, &packet2, sizeof(packet1)) == 0);
+
+        memset(&packet2, 0, sizeof(packet2));
+    mavlink_msg_rosbot_diagnostics_pack(system_id, component_id, &msg , packet1.uptime_ms , packet1.heap_free , packet1.heap_min_free , packet1.imu_errors , packet1.link_tx_dropped , packet1.link_rx_errors , packet1.reset_cause , packet1.cpu_idle , packet1.stack_min_free , packet1.range_timeouts , packet1.i2c_recoveries , packet1.motor_faults , packet1.link_reconnects , packet1.stack_min_task , packet1.imu_ok , packet1.range_ok , packet1.fault_pc , packet1.fault_code , packet1.fault_task , packet1.flags , packet1.clock_source );
+    mavlink_msg_rosbot_diagnostics_decode(&msg, &packet2);
+        MAVLINK_ASSERT(memcmp(&packet1, &packet2, sizeof(packet1)) == 0);
+
+        memset(&packet2, 0, sizeof(packet2));
+    mavlink_msg_rosbot_diagnostics_pack_chan(system_id, component_id, MAVLINK_COMM_0, &msg , packet1.uptime_ms , packet1.heap_free , packet1.heap_min_free , packet1.imu_errors , packet1.link_tx_dropped , packet1.link_rx_errors , packet1.reset_cause , packet1.cpu_idle , packet1.stack_min_free , packet1.range_timeouts , packet1.i2c_recoveries , packet1.motor_faults , packet1.link_reconnects , packet1.stack_min_task , packet1.imu_ok , packet1.range_ok , packet1.fault_pc , packet1.fault_code , packet1.fault_task , packet1.flags , packet1.clock_source );
+    mavlink_msg_rosbot_diagnostics_decode(&msg, &packet2);
+        MAVLINK_ASSERT(memcmp(&packet1, &packet2, sizeof(packet1)) == 0);
+
+        memset(&packet2, 0, sizeof(packet2));
+        mavlink_msg_to_send_buffer(buffer, &msg);
+        for (i=0; i<mavlink_msg_get_send_buffer_length(&msg); i++) {
+            comm_send_ch(MAVLINK_COMM_0, buffer[i]);
+        }
+    mavlink_msg_rosbot_diagnostics_decode(last_msg, &packet2);
+        MAVLINK_ASSERT(memcmp(&packet1, &packet2, sizeof(packet1)) == 0);
+        
+        memset(&packet2, 0, sizeof(packet2));
+    mavlink_msg_rosbot_diagnostics_send(MAVLINK_COMM_1 , packet1.uptime_ms , packet1.heap_free , packet1.heap_min_free , packet1.imu_errors , packet1.link_tx_dropped , packet1.link_rx_errors , packet1.reset_cause , packet1.cpu_idle , packet1.stack_min_free , packet1.range_timeouts , packet1.i2c_recoveries , packet1.motor_faults , packet1.link_reconnects , packet1.stack_min_task , packet1.imu_ok , packet1.range_ok , packet1.fault_pc , packet1.fault_code , packet1.fault_task , packet1.flags , packet1.clock_source );
+    mavlink_msg_rosbot_diagnostics_decode(last_msg, &packet2);
+        MAVLINK_ASSERT(memcmp(&packet1, &packet2, sizeof(packet1)) == 0);
+
+#ifdef MAVLINK_HAVE_GET_MESSAGE_INFO
+    MAVLINK_ASSERT(mavlink_get_message_info_by_name("ROSBOT_DIAGNOSTICS") != NULL);
+    MAVLINK_ASSERT(mavlink_get_message_info_by_id(MAVLINK_MSG_ID_ROSBOT_DIAGNOSTICS) != NULL);
+#endif
+}
+
 static void mavlink_test_rosbot(uint8_t system_id, uint8_t component_id, mavlink_message_t *last_msg)
 {
     mavlink_test_rosbot_imu(system_id, component_id, last_msg);
@@ -585,6 +664,7 @@ static void mavlink_test_rosbot(uint8_t system_id, uint8_t component_id, mavlink
     mavlink_test_rosbot_led_strip(system_id, component_id, last_msg);
     mavlink_test_rosbot_mcu_id(system_id, component_id, last_msg);
     mavlink_test_rosbot_power_board(system_id, component_id, last_msg);
+    mavlink_test_rosbot_diagnostics(system_id, component_id, last_msg);
 }
 
 #ifdef __cplusplus

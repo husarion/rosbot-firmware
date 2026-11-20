@@ -14,14 +14,15 @@
 
 #include "commands/imu_calibration_command.hpp"
 #include "commands/mcu_id_command.hpp"
-#include "config.hpp"
 #include "mavlink_node.hpp"
 #include "publishers/battery_publisher.hpp"
 #include "publishers/buttons_publisher.hpp"
+#include "publishers/diagnostics_publisher.hpp"
 #include "publishers/imu_calibration_publisher.hpp"
 #include "publishers/imu_publisher.hpp"
 #include "publishers/joint_state_publisher.hpp"
 #include "publishers/range_publisher.hpp"
+#include "rosbot/config.hpp"
 #include "subscribers/led_subscriber.hpp"
 #include "subscribers/wheel_cmd_subscriber.hpp"
 #include "transport/mavlink_serial_transport.hpp"
@@ -46,12 +47,37 @@ static MavlinkRangePublisher range_pub({.queue = ranges_queue,
                                         .max_range_m = 0.9f,
                                         .period_ms = 0});
 static MavlinkButtonsPublisher buttons_pub({.pins = buttons_pins,
-                                            .num_buttons = sizeof(buttons_pins),
                                             .period_ms = 50});
 
+extern RangeVl53l0x range_fl, range_fr, range_rl, range_rr;
+
+static uint16_t sat16(uint32_t v) {
+  return v > UINT16_MAX ? UINT16_MAX : static_cast<uint16_t>(v);
+}
+
+static void fillDiagnostics(mavlink_rosbot_diagnostics_t& d) {
+  d.imu_errors = g_imu->readErrors();
+  d.imu_ok = g_imu->healthy() ? 1 : 0;
+  const RangeVl53l0x* ranges[] = {&range_fl, &range_fr, &range_rl, &range_rr};
+  for (size_t i = 0; i < 4; ++i) {
+    d.range_timeouts[i] = sat16(ranges[i]->timeouts());
+    if (ranges[i]->initialized()) d.range_ok |= 1U << i;
+  }
+  d.i2c_recoveries[0] = sat16(imu_i2c.recoveries());
+  d.i2c_recoveries[1] = sat16(range_i2c.recoveries());
+  d.motor_faults = sat16(g_motors.faultEvents());
+  d.flags = ROSBOT_DIAG_HAS_RANGES;
+  if (g_battery->lowLatched()) d.flags |= ROSBOT_DIAG_BATTERY_LOW;
+  if (g_battery->criticalLatched()) d.flags |= ROSBOT_DIAG_BATTERY_CRITICAL;
+  if (g_motors.hasFault()) d.flags |= ROSBOT_DIAG_MOTOR_FAULT;
+}
+
+static MavlinkDiagnosticsPublisher diagnostics_pub({.fill = fillDiagnostics,
+                                                    .period_ms = 1000});
+
 static MavlinkPublisherInterface* s_publishers[] = {
-    &battery_pub,     &imu_pub,   &imu_calibration_pub,
-    &joint_state_pub, &range_pub, &buttons_pub};
+    &battery_pub, &imu_pub,     &imu_calibration_pub, &joint_state_pub,
+    &range_pub,   &buttons_pub, &diagnostics_pub};
 
 // Subscribers (commands: bridge → MCU)
 static const PanelLedConfig s_panel_leds[] = {
@@ -59,8 +85,7 @@ static const PanelLedConfig s_panel_leds[] = {
     {.pin = GRN_LED2, .bit_mask = 0x02},
 };
 static WheelCmdSubscriber wheel_cmd_sub(g_motors);
-static PanelLedSubscriber leds_sub(s_panel_leds, sizeof(s_panel_leds) /
-                                                     sizeof(s_panel_leds[0]));
+static PanelLedSubscriber leds_sub(s_panel_leds);
 static McuIdCommand mcu_id_cmd;
 static ImuCalibrationCommand imu_calibration_cmd;
 

@@ -11,10 +11,11 @@ Run `just` (no args) for a recipe list.
 Most-used recipes:
 
 ```bash
-just build rosbot                # Build one PlatformIO env
-just build-all                   # Build all four envs
+just build rosbot                # Build one board: rosbot or rosbot_xl
+just build-all                   # Both boards
+just test                        # Host unit tests (CTest)
 just flash rosbot_xl             # Build + flash on the connected robot
-just clean                       # Wipe PlatformIO build outputs
+just clean                       # Wipe CMake build outputs
 just lint                        # Run pre-commit hooks against the tree
 ```
 
@@ -23,17 +24,22 @@ point used by [rosbot-snap](https://github.com/husarion/rosbot-snap)'s
 `flash_launcher.sh`), via the wrapper in [`scripts/flash.sh`](scripts/flash.sh).
 The wrapper:
 
-- maps the PlatformIO env name to the `--robot-model` argument
+- maps the target name to the `--robot-model` argument
   (`rosbot_xl*` → `rosbot_xl`, otherwise `rosbot`),
 - auto-selects USB/FTDI flashing for ROSbot XL (or when `SERIAL_TYPE_USB=True`),
 - auto-detects the FTDI tty by USB VID:PID `0403:6015` (override with
   `SERIAL_PORT=/dev/ttyUSBx`),
-- points `flash_firmware` at the freshly built `.pio/build/<env>/firmware.bin`
-  instead of the binary bundled in `rosbot_utils`.
+- builds with [`scripts/build.sh`](scripts/build.sh) and points
+  `flash_firmware` at the fresh `build/release/<board>.bin` instead of
+  the binary bundled in `rosbot_utils`.
 
 Prerequisites on the ROSbot SBC:
 
-- `platformio` on `PATH` (`pip3 install -U platformio`).
+- `cmake`, `ninja-build` and the Arm toolchain with newlib
+  (`sudo apt install cmake ninja-build gcc-arm-none-eabi
+  libnewlib-arm-none-eabi libstdc++-arm-none-eabi-newlib`). The first build
+  downloads the pinned HAL / FreeRTOS / lwIP / ETL sources, so it needs
+  network once.
 - A sourced ROS 2 environment with `rosbot_utils` available (i.e. the
   `rosbot_ros` overlay built and sourced, or run from inside the snap).
 - For USB flashing: udev rules from `ros2 run rosbot_utils install_udev_rules`
@@ -46,12 +52,16 @@ To simplify the development process, we have prepared a set of VS Code tasks tha
 To use these tasks, open the Command Palette (Ctrl+Shift+P) and search for "Run Task". You will see a list of available tasks, including:
 
 - **ROSbot: Build firmware**
-- **ROSbot (Debug): Build and deploy firmware**
-- **ROSbot (Release): Build and deploy firmware**
+- **ROSbot: Build and flash firmware**
 - **ROSbot XL: Build firmware**
-- **ROSbot XL (Debug): Build and deploy firmware**
-- **ROSbot XL (Release): Build and deploy firmware**
-- **Build Releases**
+- **ROSbot XL: Build and flash firmware**
+- **Build both boards**
+- **Host unit tests**
+
+Each runs the matching `just` recipe; flashing goes through the bootloader
+like `just flash`. With an ST-LINK on the SWD header use `just flash-swd
+<board>`, and the "ST-LINK" launch configurations (Cortex-Debug extension,
+OpenOCD) to debug.
 
 ## Dev mode
 

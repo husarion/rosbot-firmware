@@ -14,21 +14,18 @@
 
 #pragma once
 
-#include <HardwareSerial.h>
-#include <STM32FreeRTOS.h>
-
 #include <array>
 #include <cstddef>
 #include <cstdint>
 
+#include "freertos.hpp"
+#include "uart.hpp"
+
 enum class TransportType { kSerial, kEthernet };
 
 struct SerialConfig {
-  HardwareSerial* serial;
+  platform::Uart* uart;
   uint32_t baudrate;
-  uint8_t rxPin;
-  uint8_t txPin;
-  uint32_t timeout_ms;
   const char* name;
 };
 
@@ -73,7 +70,7 @@ class CommunicationManager {
 
   // True when diagnostic serial is free for debug printing.
   bool hasDebugSerial() const { return debug_available_; }
-  HardwareSerial* debugSerial();
+  platform::Uart* debugSerial();
   // Shared by every task that writes to debugSerial(); see DebugSerialLock.
   SemaphoreHandle_t debugMutex();
 
@@ -84,11 +81,11 @@ class CommunicationManager {
 
  private:
   void initSerial(const SerialConfig& cfg);
-  bool waitForHostConfig(HardwareSerial& serial, uint32_t timeout_ms);
-  bool parseAndStoreNamespace(HardwareSerial& serial, const char* buf,
+  bool waitForHostConfig(platform::Uart& serial, uint32_t timeout_ms);
+  bool parseAndStoreNamespace(platform::Uart& serial, const char* buf,
                               size_t len);
-  bool parseBackend(HardwareSerial& serial, const char* buf, size_t len);
-  bool parseEnd(HardwareSerial& serial, const char* buf, size_t len);
+  bool parseBackend(platform::Uart& serial, const char* buf, size_t len);
+  bool parseEnd(platform::Uart& serial, const char* buf, size_t len);
 
   CommunicationManagerConfig cfg_;
   TransportType selected_type_ = TransportType::kSerial;

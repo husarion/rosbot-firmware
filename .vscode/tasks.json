@@ -4,98 +4,78 @@
     {
       "label": "ROSbot: Build firmware",
       "type": "shell",
-      "command": "platformio",
+      "command": "just",
       "args": [
-        "run",
-        "-e",
+        "build",
         "rosbot"
       ],
       "group": "build",
-      "problemMatcher": ["$platformio"]
+      "problemMatcher": [
+        "$gcc"
+      ]
     },
     {
-      "label": "ROSbot (Debug): Build and deploy firmware",
+      "label": "ROSbot: Build and flash firmware",
       "type": "shell",
-      "command": "platformio",
+      "command": "just",
       "args": [
-        "run",
-        "-e",
-        "rosbot",
-        "--target",
-        "upload"
+        "flash",
+        "rosbot"
       ],
       "group": "build",
-      "problemMatcher": ["$platformio"]
+      "problemMatcher": [
+        "$gcc"
+      ]
     },
-    {
-      "label": "ROSbot (Release): Build and deploy firmware",
-      "type": "shell",
-      "command": "platformio",
-      "args": [
-        "run",
-        "-e",
-        "rosbot_release",
-        "--target",
-        "upload"
-      ],
-      "group": "build",
-      "problemMatcher": ["$platformio"]
-    },
-
     {
       "label": "ROSbot XL: Build firmware",
       "type": "shell",
-      "command": "platformio",
+      "command": "just",
       "args": [
-        "run",
-        "-e",
+        "build",
         "rosbot_xl"
       ],
       "group": "build",
-      "problemMatcher": ["$platformio"]
+      "problemMatcher": [
+        "$gcc"
+      ]
     },
     {
-      "label": "ROSbot XL (Debug): Build and deploy firmware",
+      "label": "ROSbot XL: Build and flash firmware",
       "type": "shell",
-      "command": "platformio",
+      "command": "just",
       "args": [
-        "run",
-        "-e",
-        "rosbot_xl",
-        "--target",
-        "upload"
+        "flash",
+        "rosbot_xl"
       ],
       "group": "build",
-      "problemMatcher": ["$platformio"]
+      "problemMatcher": [
+        "$gcc"
+      ]
     },
     {
-      "label": "ROSbot XL (Release): Build and deploy firmware",
+      "label": "Build both boards",
       "type": "shell",
-      "command": "platformio",
+      "command": "just",
       "args": [
-        "run",
-        "-e",
-        "rosbot_xl_release",
-        "--target",
-        "upload"
+        "build-all"
       ],
       "group": "build",
-      "problemMatcher": ["$platformio"]
+      "problemMatcher": [
+        "$gcc"
+      ]
     },
-
     {
-      "label": "Build Releases",
+      "label": "Host unit tests",
       "type": "shell",
-      "command": "platformio",
+      "command": "just",
       "args": [
-        "run",
-        "-e",
-        "rosbot_release",
-        "-e",
-        "rosbot_xl_release"
+        "test"
       ],
-      "group": "build",
-      "problemMatcher": ["$platformio"]
-    },
+      "group": "test",
+      "problemMatcher": [
+        "$gcc"
+      ]
+    }
   ]
 }

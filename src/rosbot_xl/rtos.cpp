@@ -14,7 +14,6 @@
 
 #include "rtos.hpp"
 
-#include <STM32FreeRTOS.h>
 #include <lwip/tcp.h>
 
 #include <cstring>
@@ -22,9 +21,9 @@
 #include "animations/led_animations.hpp"
 #include "battery_interface.hpp"
 #include "communication_manager.hpp"
-#include "config.hpp"
 #include "critical_state.hpp"
 #include "fan.hpp"
+#include "freertos.hpp"
 #include "imu_calibration_runtime.hpp"
 #include "imu_interface.hpp"
 #include "led_indicator.hpp"
@@ -34,6 +33,8 @@
 #include "motor_array.hpp"
 #include "ntc.hpp"
 #include "power_board.hpp"
+#include "rosbot_xl/config.hpp"
+#include "time_base.hpp"
 
 extern FanController g_fan;
 extern PowerBoard power_board;
@@ -49,18 +50,14 @@ void hwMonitorTask(
     void* p);  // Bat + Fan + Indicator: Merged due limited stack size
 void imuTask(void* p);
 void ledStripTask(void* p);
-void monitorTask(void* p);
 void motorControlTask(void* p);
 void shutdownTask(void* p);
 void linkTask(void* p);
 
 TaskConfig tasks[] = {
-    {"HwMonitor", Priority::OBSERVING, Stack::S, 10, hwMonitorTask},
+    {"HwMonitor", Priority::OBSERVING, Stack::M, 10, hwMonitorTask},
     {"Imu", Priority::SENSORS, Stack::M, 100, imuTask},
     {"LedStrip", Priority::OBSERVING, Stack::M, 30, ledStripTask},
-#ifndef RELEASE
-    {"Monitor", Priority::BLOCKING, Stack::XL, 1, monitorTask},
-#endif
     {"MotorControl", Priority::CONTROL, Stack::M, 200, motorControlTask},
     {"Shutdown", Priority::OBSERVING, Stack::M, 3, shutdownTask},
     {"Link", Priority::COMMUNICATION, Stack::XXL, 1000, linkTask},
@@ -79,13 +76,14 @@ void hwMonitorTask(void* p) {
   TickType_t wake_time = xTaskGetTickCount();
   BatteryStamped data = {};
   TickType_t last_battery_update = 0;
+  TickType_t last_fan_update = 0;
   bool board_info_pending = false;
 
   while (true) {
     // LED Indicator
     bool battery_low = g_battery->isLow();
     const bool error_state = g_motors.hasFault();
-    if (imu_calibration::sessionActive(millis())) {
+    if (imu_calibration::sessionActive(time_boot_ms())) {
       ImuCalibrationStatus calib{};
       g_indicator.calibrating(g_imu->calibrationStatus(calib) &&
                               calib.fullyCalibrated());
@@ -103,11 +101,15 @@ void hwMonitorTask(void* p) {
     }
 
     const TickType_t now = xTaskGetTickCount();
-    if (now - last_battery_update > pdMS_TO_TICKS(1000)) {
-      // Fan
+    if (now - last_fan_update > pdMS_TO_TICKS(1000)) {
       float temp = ntc.readCelsius();
       g_fan.update(temp);
+      last_fan_update = now;
+    }
 
+    const TickType_t battery_period =
+        pdMS_TO_TICKS(power_board.batteryPollPeriodMs());
+    if (now - last_battery_update > battery_period) {
       power_board.requestBatteryState();
       last_battery_update = now;
       board_info_pending = !power_board.boardInfo().isValid();
@@ -188,32 +190,6 @@ void ledStripTask(void* p) {
   }
 }
 
-void monitorTask(void* p) {
-  TickType_t period = taskGetPeriod(p);
-  TickType_t wake_time = xTaskGetTickCount();
-  char buf[768];
-
-  while (true) {
-    vTaskGetRunTimeStats(buf);
-    if (g_comm_mgr.hasDebugSerial()) {
-      DebugSerialLock lock(g_comm_mgr.debugMutex());
-      g_comm_mgr.debugSerial()->printf("\r\n%s\r\n", buf);
-
-      for (size_t i = 0; i < sizeof(taskHandles) / sizeof(taskHandles[0]);
-           i++) {
-        g_comm_mgr.debugSerial()->printf(
-            "%-16s %-6u B\r\n", tasks[i].name,
-            uxTaskGetStackHighWaterMark(taskHandles[i].handle) *
-                sizeof(StackType_t));
-      }
-      g_comm_mgr.debugSerial()->printf("\r\nFree heap memory: %u B\r\n",
-                                       (unsigned)xPortGetFreeHeapSize());
-    }
-
-    vTaskDelayUntil(&wake_time, period);
-  }
-}
-
 void motorControlTask(void* p) {
   TickType_t period = taskGetPeriod(p);
   TickType_t wake_time = xTaskGetTickCount();
@@ -235,7 +211,7 @@ namespace {
 // Served by rosbot-snap's db-server on the SBC.
 constexpr uint16_t kShutdownPort = 3000;
 
-// Runs in STM32Ethernet's ethernet_scheduler task, which owns lwIP.
+// Runs in the ethernet_scheduler task (lib/ethernet), which owns lwIP.
 err_t onShutdownConnected(void* /*arg*/, tcp_pcb* pcb, err_t /*err*/) {
   constexpr char kHead[] = "GET /shutdown HTTP/1.1\r\nHost: ";
   constexpr char kTail[] = "\r\nConnection: close\r\n\r\n";
@@ -251,13 +227,11 @@ err_t onShutdownConnected(void* /*arg*/, tcp_pcb* pcb, err_t /*err*/) {
   return ERR_OK;
 }
 
-// lwIP (NO_SYS) is not thread-safe and EthernetClient cannot be used from
-// here: its connect() only waits for ethernet_scheduler to make progress.
-// Start the connection under a critical section (connect() does not wait, so
-// masking the tick is fine) and let the callback send the request.
+// lwIP (NO_SYS) is not thread-safe: start the connection under a critical
+// section (tcp_connect() does not wait, so masking the tick is fine) and let
+// the callback send the request from the ethernet_scheduler task.
 void sendShutdownRequest() {
-  ip_addr_t addr =
-      IPADDR4_INIT_BYTES(SBC_IP[0], SBC_IP[1], SBC_IP[2], SBC_IP[3]);
+  ip_addr_t addr = SBC_IP;
   taskENTER_CRITICAL();
   tcp_pcb* pcb = tcp_new();
   if (pcb != nullptr &&
@@ -274,11 +248,11 @@ void shutdownTask(void* p) {
   TickType_t wake_time = xTaskGetTickCount();
 
   while (true) {
-    if (digitalRead(PB_SHD_DETECT) == HIGH) {
+    if (PB_SHD_DETECT.read()) {
       sendShutdownRequest();
 
       vTaskDelay(pdMS_TO_TICKS(SHUTDOWN_WAIT_MS));
-      digitalWrite(PB_SHD_CONFIRM, HIGH);
+      PB_SHD_CONFIRM.set();
       vTaskSuspend(nullptr);
     }
     vTaskDelayUntil(&wake_time, period);

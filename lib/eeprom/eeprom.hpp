@@ -14,15 +14,14 @@
 
 #pragma once
 
-#include <Arduino.h>
-#include <Wire.h>
-
 #include <cstdint>
 #include <cstring>
 
+#include "i2c.hpp"
+
 // ─── Config ──────────────────────────────────────────────
 struct EepromConfig {
-  TwoWire& i2c_bus;
+  platform::I2c& i2c_bus;
   uint8_t dev_id;
   uint8_t page_size;
   uint8_t write_delay_ms = 5;
@@ -45,7 +44,7 @@ class Eeprom {
                         uint8_t size);
 
  private:
-  TwoWire& i2c_bus_;
+  platform::I2c& i2c_bus_;
   uint8_t dev_id_;
   uint8_t page_size_;
   uint8_t write_delay_ms_;

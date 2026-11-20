@@ -15,14 +15,14 @@
 #
 # Sequential jobs:
 #   1. bump-tag       — find latest v*-<distro> tag, compute next version,
-#                       rewrite FW_VERSION in platformio.ini and the
+#                       rewrite FW_VERSION in cmake/CMakeLists.txt and the
 #                       <version> in bridge/rosbot_mavlink_bridge/package.xml
 #                       (same numeric, bridge version tracks firmware
 #                       semver without the `-${distro}` suffix), commit,
 #                       push, tag.
-#   2. firmware-release — build 2 release envs (`rosbot_release`,
-#                       `rosbot_xl_release` — single binary per platform
-#                       since runtime picks the comm backend), publish
+#   2. firmware-release — build both boards with the CMake `release`
+#                       preset (single binary per platform since runtime
+#                       picks the comm backend), publish
 #                       GitHub Release with auto-generated notes + the
 #                       .bin artefacts attached.
 #   3. bridge-release  — bridge package source tarball for ROS jazzy,
@@ -179,13 +179,13 @@ jobs:
           } >> "$GITHUB_OUTPUT"
           echo "New tag: $tag_name (prerelease=$is_prerelease)"
 
-      - name: Update FW_VERSION in platformio.ini
+      - name: Update FW_VERSION in cmake/CMakeLists.txt
         run: |
           TAG="${{ steps.bump.outputs.tag_name }}"
           echo "Setting FW_VERSION to ${TAG}"
-          sed -i "s/-D FW_VERSION=\\\\\"[^\"]*\\\\\"/-D FW_VERSION=\\\\\"${TAG}\\\\\"/" platformio.ini
+          sed -i -E "s/^set\(FW_VERSION \"[^\"]*\"\)/set(FW_VERSION \"${TAG}\")/" cmake/CMakeLists.txt
           echo "--- Verify ---"
-          grep "FW_VERSION" platformio.ini
+          grep -F "set(FW_VERSION \"${TAG}\")" cmake/CMakeLists.txt
 
       - name: Update bridge package.xml version
         # Bridge version mirrors the firmware semver without the
@@ -207,7 +207,7 @@ jobs:
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
 
-          git add platformio.ini bridge/rosbot_mavlink_bridge/package.xml
+          git add cmake/CMakeLists.txt bridge/rosbot_mavlink_bridge/package.xml
           git commit -m "bump FW_VERSION to ${TAG}"
           git push
 
@@ -248,24 +248,26 @@ jobs:
 
       - name: Verify FW_VERSION matches tag
         run: |
-          expected="-D FW_VERSION=\\\"${TAG_NAME}\\\""
-          grep -F -- "${expected}" platformio.ini \
-            || { echo "::error::FW_VERSION in platformio.ini doesn't match tag ${TAG_NAME}"; grep FW_VERSION platformio.ini; exit 1; }
+          expected="set(FW_VERSION \"${TAG_NAME}\")"
+          grep -F -- "${expected}" cmake/CMakeLists.txt \
+            || { echo "::error::FW_VERSION in cmake/CMakeLists.txt doesn't match tag ${TAG_NAME}"; grep FW_VERSION cmake/CMakeLists.txt; exit 1; }
 
-      - name: Install PlatformIO
-        run: pip3 install -U platformio
+      - name: Install toolchain
+        run: sudo apt-get update && sudo apt-get install -y --no-install-recommends cmake ninja-build
+          gcc-arm-none-eabi libnewlib-arm-none-eabi libstdc++-arm-none-eabi-newlib
 
-      - name: Build all release envs
+      - name: Build release images
         run: |
-          pio run -e rosbot_release -e rosbot_xl_release
+          cmake -S cmake --preset release
+          cmake --build build/release
 
       - name: Rename binaries
         run: |
           # Single binary per platform. -${TAG_NAME} keeps the -<distro>
           # suffix the downstream bundles and version checks expect.
           mkdir -p release
-          cp .pio/build/rosbot_release/firmware.bin    "release/rosbot-${TAG_NAME}.bin"
-          cp .pio/build/rosbot_xl_release/firmware.bin "release/rosbot_xl-${TAG_NAME}.bin"
+          cp build/release/rosbot.bin    "release/rosbot-${TAG_NAME}.bin"
+          cp build/release/rosbot_xl.bin "release/rosbot_xl-${TAG_NAME}.bin"
           ls -la release/
 
       - name: Compute SHA-256

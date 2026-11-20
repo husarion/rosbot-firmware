@@ -14,11 +14,9 @@
 
 #pragma once
 
-#include <Arduino.h>
-#include <STM32Ethernet.h>
-
 #include "communication_manager.hpp"
 #include "eeprom.hpp"
+#include "ethernet.hpp"
 #include "fan.hpp"
 #include "hardware_encoder.hpp"
 #include "imu_bno055.hpp"
@@ -28,30 +26,42 @@
 #include "motor_hi_z.hpp"
 #include "ntc.hpp"
 #include "pid.hpp"
+#include "pin.hpp"
 #include "power_board.hpp"
 #include "transport/spi_transport.hpp"
 
-// ───────── Arduino settings ─────────
+using platform::AnalogIn;
+using platform::Pin;
+using platform::Port;
+
+// Same value as Arduino's PI, so RAD_PER_TICK keeps its float bits.
+inline constexpr double kPi = 3.1415926535897932384626433832795;
+
+// ───────── ADC (platform::AnalogIn, 10-bit) ─────────
 inline constexpr uint32_t ADC_MAX_VALUE =
     1023;  // 10-bit ADC resolution (0-1023)
 
 // ───────── Board Peripherals ─────────
-inline constexpr uint8_t AUDIO_SHDN = PB2;
-inline constexpr uint8_t AUDIO_DAC_OUT = PA4;
-inline constexpr uint8_t EN_LOC_5V = PF13;
-inline constexpr uint8_t GPIO_HUB_NRST = PE1;
+inline constexpr Pin AUDIO_SHDN{Port::B, 2};
+inline constexpr Pin AUDIO_DAC_OUT{Port::A, 4};
+inline constexpr Pin EN_LOC_5V{Port::F, 13};
+inline constexpr Pin GPIO_HUB_NRST{Port::E, 1};
 
-inline constexpr uint8_t I2C_SDA = PF0;
-inline constexpr uint8_t I2C_SCL = PF1;
-inline TwoWire i2c(I2C_SDA, I2C_SCL);
+// Shared by the IMU and the EEPROM.
+inline platform::I2c i2c({.instance = I2C2,
+                          .scl = Pin{Port::F, 1},
+                          .sda = Pin{Port::F, 0},
+                          .af = GPIO_AF4_I2C2});
 
-inline constexpr uint8_t PB_SERIAL_RX = PD6;
-inline constexpr uint8_t PB_SERIAL_TX = PD5;
-inline HardwareSerial pb_serial(PB_SERIAL_RX, PB_SERIAL_TX);
+inline platform::Uart pb_uart({.usart = USART2,
+                               .tx = Pin{Port::D, 5},
+                               .rx = Pin{Port::D, 6},
+                               .af = GPIO_AF7_USART2,
+                               .tx_queue_bytes = 256});
 
 // ───────── Buttons ─────────
-inline constexpr uint8_t PUSH_BUTTON1 = PF11;
-inline constexpr uint8_t PUSH_BUTTON2 = PF12;  // MCU reset button
+inline constexpr Pin PUSH_BUTTON1{Port::F, 11};
+inline constexpr Pin PUSH_BUTTON2{Port::F, 12};  // MCU reset button
 
 // ───────── EEPROM ─────────
 inline constexpr EepromConfig eeprom_config = {
@@ -75,12 +85,12 @@ inline constexpr float GEAR_RATIO = 50.0f;
 inline constexpr uint16_t ENCODER_CPR = 64;
 inline constexpr float TICKS_PER_REVOLUTION = ENCODER_CPR * GEAR_RATIO;
 inline constexpr float RAD_PER_TICK =
-    static_cast<float>(2.0 * PI / static_cast<double>(TICKS_PER_REVOLUTION));
+    static_cast<float>(2.0 * kPi / static_cast<double>(TICKS_PER_REVOLUTION));
 inline constexpr float LOW_PASS_ALPHA = 0.25f;
 
 inline constexpr HardwareEncoderConfig enc_fl_config = {
-    .pin_a = PD12,
-    .pin_b = PD13,
+    .pin_a = Pin{Port::D, 12},
+    .pin_b = Pin{Port::D, 13},
     .timer = TIM4,
     .inv_dir = true,
     .rad_per_tick = RAD_PER_TICK,
@@ -89,8 +99,8 @@ inline constexpr HardwareEncoderConfig enc_fl_config = {
 };
 
 inline constexpr HardwareEncoderConfig enc_fr_config = {
-    .pin_a = PC6,
-    .pin_b = PC7,
+    .pin_a = Pin{Port::C, 6},
+    .pin_b = Pin{Port::C, 7},
     .timer = TIM3,
     .inv_dir = false,
     .rad_per_tick = RAD_PER_TICK,
@@ -99,8 +109,8 @@ inline constexpr HardwareEncoderConfig enc_fr_config = {
 };
 
 inline constexpr HardwareEncoderConfig enc_rl_config = {
-    .pin_a = PA15,
-    .pin_b = PB3,
+    .pin_a = Pin{Port::A, 15},
+    .pin_b = Pin{Port::B, 3},
     .timer = TIM2,
     .inv_dir = true,
     .rad_per_tick = RAD_PER_TICK,
@@ -109,8 +119,8 @@ inline constexpr HardwareEncoderConfig enc_rl_config = {
 };
 
 inline constexpr HardwareEncoderConfig enc_rr_config = {
-    .pin_a = PE9,
-    .pin_b = PE11,
+    .pin_a = Pin{Port::E, 9},
+    .pin_b = Pin{Port::E, 11},
     .timer = TIM1,
     .inv_dir = false,
     .rad_per_tick = RAD_PER_TICK,
@@ -119,46 +129,45 @@ inline constexpr HardwareEncoderConfig enc_rr_config = {
 };
 
 // ───────── Extra GPIO ─────────
-inline constexpr uint8_t CAN1_TX = PD1;  // External transceiver needed
-inline constexpr uint8_t CAN1_RX = PD0;  // External transceiver needed
+inline constexpr Pin CAN1_TX{Port::D, 1};  // External transceiver needed
+inline constexpr Pin CAN1_RX{Port::D, 0};  // External transceiver needed
 
-inline constexpr uint8_t EXT_ADC1 = PF3;
-inline constexpr uint8_t EXT_ADC2 = PF4;
-inline constexpr uint8_t EXT_ADC3 = PF5;
+inline constexpr Pin EXT_ADC1{Port::F, 3};
+inline constexpr Pin EXT_ADC2{Port::F, 4};
+inline constexpr Pin EXT_ADC3{Port::F, 5};
 
-inline constexpr uint8_t EXT_GPIO1 = PG2;
-inline constexpr uint8_t EXT_GPIO2 = PG3;
-inline constexpr uint8_t EXT_GPIO3 = PG4;
+inline constexpr Pin EXT_GPIO1{Port::G, 2};
+inline constexpr Pin EXT_GPIO2{Port::G, 3};
+inline constexpr Pin EXT_GPIO3{Port::G, 4};
 
-inline constexpr uint8_t EXT_PWM1 = PE5;
-inline constexpr uint8_t EXT_PWM2 = PE6;
-inline constexpr uint8_t EXT_PWM3 = PB14;
+inline constexpr Pin EXT_PWM1{Port::E, 5};
+inline constexpr Pin EXT_PWM2{Port::E, 6};
+inline constexpr Pin EXT_PWM3{Port::B, 14};
 
-inline constexpr uint8_t I2C1_SDA = PB7;  // External pull-up needed
-inline constexpr uint8_t I2C1_SCL = PB6;  // External pull-up needed
-inline constexpr uint8_t I2C3_SDA = PC9;  // External pull-up needed
-inline constexpr uint8_t I2C3_SCL = PA8;  // External pull-up needed
+inline constexpr Pin I2C1_SDA{Port::B, 7};  // External pull-up needed
+inline constexpr Pin I2C1_SCL{Port::B, 6};  // External pull-up needed
+inline constexpr Pin I2C3_SDA{Port::C, 9};  // External pull-up needed
+inline constexpr Pin I2C3_SCL{Port::A, 8};  // External pull-up needed
 
-inline constexpr uint8_t SPI1_MOSI = PB5;
-inline constexpr uint8_t SPI1_MISO = PA6;
-inline constexpr uint8_t SPI1_SCK = PA5;
+inline constexpr Pin SPI1_MOSI{Port::B, 5};
+inline constexpr Pin SPI1_MISO{Port::A, 6};
+inline constexpr Pin SPI1_SCK{Port::A, 5};
 
-inline constexpr uint8_t USART6_RX = PG9;
-inline constexpr uint8_t USART6_TX = PG14;
+inline constexpr Pin USART6_RX{Port::G, 9};
+inline constexpr Pin USART6_TX{Port::G, 14};
 
 // ───────── Fan and temperature ─────────
 inline constexpr NtcConfig ntc_cfg{
-    .pin = PB1,
     .pullup_resistance = 5230.0f,
     .c1 = 1.112613927e-03f,
     .c2 = 2.37277392e-04f,
     .c3 = 7.1670e-08f,
     .offset = 273.15 + 3,  // Kelvin to Celsius offset + calibration offset
     .adc_max = 1023.0f};
-inline Ntc ntc(ntc_cfg);
+inline Ntc ntc(AnalogIn{Pin{Port::B, 1}, 9}, ntc_cfg);
 
-inline constexpr uint8_t FAN_PP_PIN = PC13;
-inline constexpr uint8_t FAN_PWM_PIN = PB0;
+inline constexpr Pin FAN_PP_PIN{Port::C, 13};
+inline constexpr Pin FAN_PWM_PIN{Port::B, 0};
 
 inline constexpr FanConfig rev1_2_fan_config{
     .pin = FAN_PWM_PIN,
@@ -180,19 +189,19 @@ inline constexpr FanConfig rev1_1_fan_config{.pin = FAN_PP_PIN,
 inline constexpr ImuBno055Config imu_bno055_config = {
     .bus = &i2c,
     .i2c_addr = 0x29,
-    .sensor_id = 0x37,
-    .int_pin = PF2,
-    .axis_config = Adafruit_BNO055::REMAP_CONFIG_P1,
-    .axis_sign = Adafruit_BNO055::REMAP_SIGN_P2,
+    .int_pin = Pin{Port::F, 2},
+    .axis_config = bno055::kRemapConfigP1,
+    .axis_sign = bno055::kRemapSignP2,
 };
 
 // ───────── LEDs ─────────
-inline constexpr uint8_t RED_LED = PE4;
-inline constexpr uint8_t GRN_LED = PE3;
+inline constexpr Pin RED_LED{Port::E, 4};
+inline constexpr Pin GRN_LED{Port::E, 3};
+inline constexpr Pin green_leds[] = {GRN_LED};
 
 inline constexpr LedIndicatorConfig led_status_config = {
     .pin = RED_LED,
-    .initial_state = HIGH,
+    .initial_on = true,
     .blink_period_ms = 500,
     .label = "STATUS",
 };
@@ -202,13 +211,14 @@ inline constexpr uint16_t IDLE_ANIMATION_CHANGE_MS = 3000;
 inline constexpr uint16_t IDLE_ANIMATION_INTERVAL_MS = 35;
 inline constexpr uint16_t LED_STRIP_TIMEOUT_MS = 1000;
 
-inline constexpr SpiTransportConfig spi_config = {
-    .mosi_pin = PB15,
-    .miso_pin = PB14,
-    .sck_pin = PB10,
-    .spi_speed = 4000000,
-    .bit_order = MSBFIRST,
-    .spi_mode = SPI_MODE3,
+inline constexpr platform::SpiConfig spi_config = {
+    .instance = SPI2,
+    .mosi = Pin{Port::B, 15},
+    .miso = Pin{Port::B, 14},
+    .sck = Pin{Port::B, 10},
+    .af = GPIO_AF5_SPI2,
+    .max_hz = 4000000,  // SPI2 on 42 MHz APB1: runs at 2.625 MHz
+    .mode = 3,
 };
 
 inline constexpr SwapPair swaps[] = {
@@ -231,10 +241,10 @@ inline constexpr float MIN_VELOCITY = 0.0f;
 
 // Table 2:
 // https://www.analog.com/media/en/technical-documentation/data-sheets/max22205.pdf
-inline constexpr uint8_t ILIM1 = PE10;
-inline constexpr uint8_t ILIM2 = PG15;
-inline constexpr uint8_t ILIM3 = PG7;
-inline constexpr uint8_t ILIM4 = PD14;
+inline constexpr Pin ILIM1{Port::E, 10};
+inline constexpr Pin ILIM2{Port::G, 15};
+inline constexpr Pin ILIM3{Port::G, 7};
+inline constexpr Pin ILIM4{Port::D, 14};
 
 // MAX22205 current-sense (rev 1.2 only). The CSO/ISEN pin sources
 //   I_isen = I_motor / KISEN          (KISEN = 7500 A/A, datasheet)
@@ -262,15 +272,18 @@ inline constexpr float MOTOR_SUPPLY_VOLTAGE = 12.0f;   // [V] nominal
 // (GPIO_HUB_NRST).
 
 inline constexpr MotorHiZConfig motor_fl_config = {
-    .pwm_pin = PF9,
-    .in_a_pin = PD10,
-    .in_b_pin = PD11,
+    .pwm = {.pin = Pin{Port::F, 9},
+            .timer = TIM14,
+            .channel = 1,
+            .af = GPIO_AF9_TIM14},
+    .in_a_pin = Pin{Port::D, 10},
+    .in_b_pin = Pin{Port::D, 11},
     .inv_dir = true,
     .max_velocity = MAX_VELOCITY,
     .min_velocity = MIN_VELOCITY,
     .pwm_freq = MOTOR_PWM_FREQ,
     .frame_id = "fl_wheel_joint",
-    .current_sense_pin = PA0,
+    .current_sense = AnalogIn{Pin{Port::A, 0}, 0},
     .current_per_volt = MOTOR_CURRENT_PER_VOLT,
     .torque_constant = MOTOR_TORQUE_CONSTANT,
     .gear_ratio = GEAR_RATIO,
@@ -280,15 +293,18 @@ inline constexpr MotorHiZConfig motor_fl_config = {
 };
 
 inline constexpr MotorHiZConfig motor_fr_config = {
-    .pwm_pin = PF8,
-    .in_a_pin = PG5,
-    .in_b_pin = PG6,
+    .pwm = {.pin = Pin{Port::F, 8},
+            .timer = TIM13,
+            .channel = 1,
+            .af = GPIO_AF9_TIM13},
+    .in_a_pin = Pin{Port::G, 5},
+    .in_b_pin = Pin{Port::G, 6},
     .inv_dir = false,
     .max_velocity = MAX_VELOCITY,
     .min_velocity = MIN_VELOCITY,
     .pwm_freq = MOTOR_PWM_FREQ,
     .frame_id = "fr_wheel_joint",
-    .current_sense_pin = PA3,
+    .current_sense = AnalogIn{Pin{Port::A, 3}, 3},
     .current_per_volt = MOTOR_CURRENT_PER_VOLT,
     .torque_constant = MOTOR_TORQUE_CONSTANT,
     .gear_ratio = GEAR_RATIO,
@@ -298,15 +314,18 @@ inline constexpr MotorHiZConfig motor_fr_config = {
 };
 
 inline constexpr MotorHiZConfig motor_rl_config = {
-    .pwm_pin = PF7,
-    .in_a_pin = PG11,
-    .in_b_pin = PG12,
+    .pwm = {.pin = Pin{Port::F, 7},
+            .timer = TIM11,
+            .channel = 1,
+            .af = GPIO_AF3_TIM11},
+    .in_a_pin = Pin{Port::G, 11},
+    .in_b_pin = Pin{Port::G, 12},
     .inv_dir = true,
     .max_velocity = MAX_VELOCITY,
     .min_velocity = MIN_VELOCITY,
     .pwm_freq = MOTOR_PWM_FREQ,
     .frame_id = "rl_wheel_joint",
-    .current_sense_pin = PC3,
+    .current_sense = AnalogIn{Pin{Port::C, 3}, 13},
     .current_per_volt = MOTOR_CURRENT_PER_VOLT,
     .torque_constant = MOTOR_TORQUE_CONSTANT,
     .gear_ratio = GEAR_RATIO,
@@ -316,15 +335,18 @@ inline constexpr MotorHiZConfig motor_rl_config = {
 };
 
 inline constexpr MotorHiZConfig motor_rr_config = {
-    .pwm_pin = PF6,
-    .in_a_pin = PE12,
-    .in_b_pin = PE13,
+    .pwm = {.pin = Pin{Port::F, 6},
+            .timer = TIM10,
+            .channel = 1,
+            .af = GPIO_AF3_TIM10},
+    .in_a_pin = Pin{Port::E, 12},
+    .in_b_pin = Pin{Port::E, 13},
     .inv_dir = false,
     .max_velocity = MAX_VELOCITY,
     .min_velocity = MIN_VELOCITY,
     .pwm_freq = MOTOR_PWM_FREQ,
     .frame_id = "rr_wheel_joint",
-    .current_sense_pin = PC2,
+    .current_sense = AnalogIn{Pin{Port::C, 2}, 12},
     .current_per_volt = MOTOR_CURRENT_PER_VOLT,
     .torque_constant = MOTOR_TORQUE_CONSTANT,
     .gear_ratio = GEAR_RATIO,
@@ -346,9 +368,14 @@ inline constexpr PIDConfig pid_config = {
 };
 
 // ───────── Ethernet ─────────
-inline byte MAC[6] = {0x02, 0x47, 0x00, 0x00, 0x00, 0x01};
-inline IPAddress CLIENT_IP = {192, 168, 77, 3};
-inline IPAddress SBC_IP = {192, 168, 77, 2};
+// Netmask and gateway as Arduino's Ethernet.begin(mac, ip) derived them.
+inline constexpr ethernet::Config ETHERNET_CONFIG = {
+    .mac = {0x02, 0x47, 0x00, 0x00, 0x00, 0x01},
+    .ip = IPADDR4_INIT_BYTES(192, 168, 77, 3),
+    .netmask = IPADDR4_INIT_BYTES(255, 255, 255, 0),
+    .gateway = IPADDR4_INIT_BYTES(192, 168, 77, 1),
+};
+inline constexpr ip_addr_t SBC_IP = IPADDR4_INIT_BYTES(192, 168, 77, 2);
 
 // ───────── Publishers ─────────
 inline QueueHandle_t battery_queue;
@@ -356,35 +383,38 @@ inline QueueHandle_t imu_queue;
 inline QueueHandle_t joint_state_queue;
 inline QueueHandle_t led_strip_queue;
 
-inline constexpr uint8_t BATTERY_NUM_CELLS = 3;
+// HCP18650ZC-3S3P: 3 series groups of 3 parallel cells, 3.7 V / 2.6 Ah each.
+inline constexpr uint8_t BATTERY_SERIES_CELLS = 3;
+inline constexpr uint8_t BATTERY_PARALLEL_CELLS = 3;
 inline constexpr float BATTERY_CELL_CAPACITY = 2.6f;  // Ah
 inline constexpr float BATTERY_DESIGN_CAPACITY =
-    BATTERY_NUM_CELLS * BATTERY_CELL_CAPACITY;
-inline constexpr uint8_t buttons_pins[] = {PUSH_BUTTON1};
+    BATTERY_PARALLEL_CELLS * BATTERY_CELL_CAPACITY;
+inline constexpr Pin buttons_pins[] = {PUSH_BUTTON1};
 
 // Publisher configs live in src/rosbot_xl/mavlink_entities.cpp.
 
 // ───────── Power Board - Battery ─────────
 inline constexpr PowerBoardConfig power_board_config = {
-    .serial = pb_serial,
+    .uart = pb_uart,
     .baudrate = 38400,
-    .num_cells = BATTERY_NUM_CELLS,
+    .num_cells = BATTERY_SERIES_CELLS,
     .capacity_ah = BATTERY_DESIGN_CAPACITY,
 };
 
 // ───────── Power Board - Shutdown ─────────
 // Power Board send high signal when shutdown button is pressed
-inline constexpr uint8_t PB_SHD_DETECT = PD4;
+inline constexpr Pin PB_SHD_DETECT{Port::D, 4};
 // Power Board monitors if signal is high to confirm shutdown
-inline constexpr uint8_t PB_SHD_CONFIRM = PD7;
+inline constexpr Pin PB_SHD_CONFIRM{Port::D, 7};
 
 // ───────── SBC Interface ─────────
 // SBC has few seconds to shutdown after receiving shutdown command
 inline constexpr uint16_t SHUTDOWN_WAIT_MS = 10000;
+// Debug text only: rosbot_xl's MAVLink link is Ethernet.
+inline platform::Uart ftdi_uart({.usart = USART1,
+                                 .tx = Pin{Port::A, 9},
+                                 .rx = Pin{Port::A, 10},
+                                 .af = GPIO_AF7_USART1,
+                                 .tx_queue_bytes = 1024});
 inline constexpr SerialConfig DIAGNOSTIC_SERIAL_CONFIG = {
-    .serial = &Serial1,
-    .baudrate = 921600,
-    .rxPin = PA10,
-    .txPin = PA9,
-    .timeout_ms = 1,
-    .name = "FTDI_SERIAL"};
+    .uart = &ftdi_uart, .baudrate = 921600, .name = "FTDI_SERIAL"};

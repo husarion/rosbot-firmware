@@ -14,13 +14,15 @@
 
 #pragma once
 
-#include <STM32FreeRTOS.h>
-
+#include "freertos.hpp"
 #include "mavlink.h"
 #include "mavlink_types.hpp"
 #include "publisher_interface.hpp"
+#include "range_array.hpp"
+#include "range_wire.hpp"
+#include "time_base.hpp"
 
-#ifdef ROSBOT
+using RangesStamped = Stamped<RangesData>;
 
 struct MavlinkRangePublisherConfig {
   QueueHandle_t& queue;
@@ -35,7 +37,7 @@ class MavlinkRangePublisher : public MavlinkPublisherInterface {
       : cfg_(cfg) {}
 
   void publish(MavlinkNode& node) override {
-    const uint32_t now = millis();
+    const uint32_t now = time_boot_ms();
     if ((now - last_pub_ms_) < cfg_.period_ms && last_pub_ms_ != 0) return;
 
     RangesStamped data;
@@ -49,16 +51,14 @@ class MavlinkRangePublisher : public MavlinkPublisherInterface {
 
     float quaternion[4] = {0.0f, 0.0f, 0.0f, 0.0f};
     for (uint8_t i = 0; i < data.data.count && i < 4; ++i) {
-      const uint16_t current_cm =
-          static_cast<uint16_t>(data.data.range[i] * 100.0f);
+      const range_wire::Reading r = range_wire::encode(data.data.range[i]);
       mavlink_message_t m;
       mavlink_msg_distance_sensor_pack(
-          node.sysid(), node.compid(), &m, t_ms, min_cm, max_cm, current_cm,
+          node.sysid(), node.compid(), &m, t_ms, min_cm, max_cm, r.current_cm,
           MAV_DISTANCE_SENSOR_LASER, /*id=*/i, MAV_SENSOR_ROTATION_NONE,
           /*covariance=*/UINT8_MAX,
           /*horizontal_fov=*/0.0f,
-          /*vertical_fov=*/0.0f, quaternion,
-          /*signal_quality=*/0);
+          /*vertical_fov=*/0.0f, quaternion, r.signal_quality);
       node.sendMessage(m);
     }
   }
@@ -67,5 +67,3 @@ class MavlinkRangePublisher : public MavlinkPublisherInterface {
   MavlinkRangePublisherConfig cfg_;
   uint32_t last_pub_ms_ = 0;
 };
-
-#endif  // ROSBOT

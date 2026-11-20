@@ -67,5 +67,31 @@
       <field type="char[12]" name="firmware_version">Power board firmware version, e.g. v1.0.1.</field>
       <field type="char[12]" name="board_version">Power board hardware revision, e.g. v1.4.</field>
     </message>
+
+    <message id="11030" name="ROSBOT_DIAGNOSTICS">
+      <description>MCU and hardware health, sent once a second. Counters run since MCU boot and only grow, so a host compares them between messages.</description>
+      <field type="uint32_t" name="uptime_ms" units="ms">Time since MCU boot.</field>
+      <field type="uint32_t" name="heap_free" units="bytes">Free heap now.</field>
+      <field type="uint32_t" name="heap_min_free" units="bytes">Heap never handed out since boot, a lower bound of the free heap.</field>
+      <field type="uint32_t" name="imu_errors">Failed IMU reads.</field>
+      <field type="uint32_t" name="link_tx_dropped">Telemetry frames dropped because the link TX queue was full.</field>
+      <field type="uint32_t" name="link_rx_errors">Incoming MAVLink frames the parser dropped (CRC or framing).</field>
+      <field type="uint16_t" name="reset_cause">Cause of the last MCU reset, bitmask: 1 reset pin, 2 power-on or brown-out, 4 software, 8 independent watchdog, 16 window watchdog, 32 low-power, 64 firmware fault (fatalError).</field>
+      <field type="uint16_t" name="cpu_idle" units="d%">CPU idle over the last report period, 0.1 % units; 65535 in the first message after boot (no period yet).</field>
+      <field type="uint16_t" name="stack_min_free" units="bytes">Smallest stack headroom of any task since boot.</field>
+      <field type="uint16_t[4]" name="range_timeouts">Range sensor reads that timed out, order FL, FR, RL, RR (ROSbot; zero elsewhere).</field>
+      <field type="uint16_t[2]" name="i2c_recoveries">I2C bus resets after faults: IMU bus, sensor/EEPROM bus.</field>
+      <field type="uint16_t" name="motor_faults">Motor driver fault events (nFAULT asserted).</field>
+      <field type="uint16_t" name="link_reconnects">Times the bridge connection was (re)established.</field>
+      <field type="char[16]" name="stack_min_task">Name of the task with the smallest stack headroom.</field>
+      <field type="uint8_t" name="imu_ok">1 when the IMU initialised and its last read succeeded.</field>
+      <field type="uint8_t" name="range_ok">Bitmask of range sensors that initialised, bit 0 = FL.</field>
+      <field type="uint32_t" name="fault_pc">Program counter of the exception that caused the last firmware fault, 0 if not an exception.</field>
+      <field type="uint8_t" name="fault_code">Why the last firmware fault reset happened: 0 none or unknown, 1 assert, 2 stack overflow, 3 out of heap, 4 hard fault, 5 memory-management fault, 6 bus fault, 7 usage fault, 8 NMI, 9 clock failure (did not start, or the crystal stopped), 10 libc exit.</field>
+      <field type="char[16]" name="fault_task">Task whose stack overflowed (fault_code 2).</field>
+      <field type="uint8_t" name="flags">Bitmask: 1 battery low, 2 battery critical, 4 motor fault active, 8 power board answering, 16 Ethernet link up, 32 board has range sensors, 64 board has a power board, 128 board has Ethernet.</field>
+      <extensions/>
+      <field type="uint8_t" name="clock_source">What clocks the MCU: 0 unknown (older firmware), 1 crystal, 2 internal RC oscillator because the crystal did not start.</field>
+    </message>
   </messages>
 </mavlink>

@@ -12,26 +12,25 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#include <Arduino.h>
-
 #include <cstring>
 
 #include "battery_interface.hpp"
 #include "boot_option.hpp"
+#include "clock.hpp"
 #include "communication_manager.hpp"
-#include "config.hpp"
 #include "fault.hpp"
 #include "hardware_encoder.hpp"
-#include "i2c_fast_mode.hpp"
 #include "imu_bno055.hpp"
 #include "imu_calibration_boot.hpp"
 #include "led_indicator.hpp"
 #include "led_strip.hpp"
 #include "mavlink_node.hpp"
+#include "mcu_health.hpp"
 #include "motor_array.hpp"
 #include "motor_hi_z.hpp"
 #include "persistent_config.hpp"
 #include "power_board.hpp"
+#include "rosbot_xl/config.hpp"
 #include "rtos.hpp"
 
 // ───────── Board Revision ─────────
@@ -53,13 +52,11 @@ ImuBno055 imu_bno055(imu_bno055_config);
 static SpiTransport s_transport(spi_config);
 
 // ───────── Motors (compatible with MAX22205) ─────────
-// TODO: Can be improved and used tourque control
 static MotorHiZ motor_fl(motor_fl_config, &enc_fl, PIDController(pid_config));
 static MotorHiZ motor_fr(motor_fr_config, &enc_fr, PIDController(pid_config));
 static MotorHiZ motor_rl(motor_rl_config, &enc_rl, PIDController(pid_config));
 static MotorHiZ motor_rr(motor_rr_config, &enc_rr, PIDController(pid_config));
 static MotorInterface* motors[] = {&motor_fl, &motor_fr, &motor_rl, &motor_rr};
-static constexpr uint8_t MOTOR_COUNT = sizeof(motors) / sizeof(motors[0]);
 
 // ───────── Power Board ─────────
 PowerBoard power_board(power_board_config);
@@ -69,7 +66,7 @@ BatteryInterface* g_battery = &power_board;
 ImuInterface* g_imu = &imu_bno055;
 LedIndicator g_indicator(led_status_config);
 LedStrip g_led_strip;
-MotorArray g_motors(motors, MOTOR_COUNT);
+MotorArray g_motors(motors);
 
 // Resolved once by resolveBootAction() at the very start of setup(),
 // before anything else reads PUSH_BUTTON1 — see boot_option.hpp.
@@ -94,59 +91,45 @@ static float supplyVoltage() { return g_battery->getData().voltage; }
 
 void boardPeripheralsInit() {
   // Audio
-  pinMode(AUDIO_SHDN, OUTPUT);
-  digitalWrite(AUDIO_SHDN, HIGH);
+  AUDIO_SHDN.setAsOutput(true);
 
   // Active-low hub reset; the pull-up keeps the hub running.
-  pinMode(GPIO_HUB_NRST, INPUT_PULLUP);
+  GPIO_HUB_NRST.setAsInput(platform::Pull::kUp);
 
   // Buttons
-  pinMode(PUSH_BUTTON1, INPUT_PULLUP);
-  pinMode(PUSH_BUTTON2, INPUT_PULLUP);
+  PUSH_BUTTON1.setAsInput(platform::Pull::kUp);
+  PUSH_BUTTON2.setAsInput(platform::Pull::kUp);
 
   // Fan
-  pinMode(FAN_PP_PIN, OUTPUT);
-  digitalWrite(FAN_PP_PIN, LOW);
+  FAN_PP_PIN.setAsOutput(false);
 
   // LEDs
-  pinMode(RED_LED, OUTPUT);
-  pinMode(GRN_LED, OUTPUT);
-  digitalWrite(RED_LED, HIGH);
+  RED_LED.setAsOutput(true);
+  GRN_LED.setAsOutput(false);
 
   // Peripheral Power
-  pinMode(EN_LOC_5V, OUTPUT);
-  digitalWrite(EN_LOC_5V, HIGH);
+  EN_LOC_5V.setAsOutput(true);
 
   // Power board
-  pinMode(PB_SHD_DETECT, INPUT_PULLUP);
-  pinMode(PB_SHD_CONFIRM, OUTPUT);
-  digitalWrite(PB_SHD_CONFIRM, LOW);
+  PB_SHD_DETECT.setAsInput(platform::Pull::kUp);
+  PB_SHD_CONFIRM.setAsOutput(false);
 
   // I2C
-  i2c.begin();
-  setI2cFastMode(i2c);
+  i2c.init();
 
-  delay(50);
+  platform::clock::delayMs(50);
 }
 
 void setMaxMotorsCurrent(Revision rev) {
   switch (rev) {
     case Revision::V1_2:
-      pinMode(ILIM1, INPUT);
-      pinMode(ILIM2, INPUT);
-      pinMode(ILIM3, INPUT);
-      pinMode(ILIM4, INPUT);
+      for (const Pin& ilim : {ILIM1, ILIM2, ILIM3, ILIM4}) ilim.setAsInput();
       break;
 
     case Revision::V1_1:
-      pinMode(ILIM1, OUTPUT);
-      pinMode(ILIM2, OUTPUT);
-      pinMode(ILIM3, OUTPUT);
-      pinMode(ILIM4, OUTPUT);
-      digitalWrite(ILIM1, HIGH);
-      digitalWrite(ILIM2, HIGH);
-      digitalWrite(ILIM3, HIGH);
-      digitalWrite(ILIM4, HIGH);
+      for (const Pin& ilim : {ILIM1, ILIM2, ILIM3, ILIM4}) {
+        ilim.setAsOutput(true);
+      }
       // V1_1 uses DRV8870 do not have a real current sensor.
       motor_fl.disableCurrentSensor();
       motor_fr.disableCurrentSensor();
@@ -163,19 +146,21 @@ void setMaxMotorsCurrent(Revision rev) {
 static persistent_config::Config s_persistent;
 
 /*───────── Setup ─────────*/
-void setup() {
-  installFaultHandlers();
+// Called from main() (boards/stm32f407/system.cpp).
+extern "C" void setup() {
+  platform::clock::init();
+  const FaultInfo fault = consumeFaultInfo();
+  const bool fault_reset = fault.fault_reset;
+  diagnostics::captureResetCause(fault.fault_reset, fault.code, fault.pc,
+                                 fault.task);
   boardPeripheralsInit();
 
   // Resolve the boot gesture before anything else touches the button —
   // see boot_option.hpp. rosbot_xl only exposes PUSH_BUTTON1 as a
-  // readable GPIO (PUSH_BUTTON2 is wired to MCU NRST) and has a single
-  // green LED, so green_led2 is left unused (0).
-  const uint8_t boot_buttons[] = {PUSH_BUTTON1};
+  // readable GPIO (PUSH_BUTTON2 is wired to MCU NRST).
   const BootOptionConfig boot_option_config = {
-      .buttons = boot_buttons,
-      .button_count = 1,
-      .green_led = GRN_LED,
+      .buttons = buttons_pins,
+      .green_leds = green_leds,
   };
   const BootAction boot_action = resolveBootAction(boot_option_config);
   s_transport_diagnostic_requested =
@@ -204,26 +189,31 @@ void setup() {
   board_revision.init();
   auto rev = board_revision.revision();
   setMaxMotorsCurrent(rev);
-  auto fan_config =
+  const FanConfig& fan_config =
       (rev == Revision::V1_1) ? rev1_1_fan_config : rev1_2_fan_config;
 
-  Ethernet.begin(MAC, CLIENT_IP);
+  ethernet::begin(ETHERNET_CONFIG);
   ntc.init();
   g_fan.init(fan_config);
 
   const bool imu_ready = imu_bno055.init();
   if (imu_ready) {
-    if (now.has_imu_calibration) {
-      imu_bno055.applyCalibrationOffsets(now.imu_calibration);
-    }
+    // The saved offsets go in after the window, and only if it failed:
+    // loaded before it, they made the chip report gyro/accel/mag 3 at once,
+    // so the window "succeeded" instantly and saved them again (HW, ROSbot
+    // XL, 2026-11-20).
+    bool calibrated_now = false;
     if (imu_calibration_requested) {
       ImuCalibrationOffsets captured{};
-      if (imu_calibration_boot::run(imu_bno055, RED_LED, GRN_LED,
-                                    /*green_led2=*/0, captured,
+      if (imu_calibration_boot::run(imu_bno055, RED_LED, green_leds, captured,
                                     g_comm_mgr.debugSerial())) {
         now.has_imu_calibration = true;
         now.imu_calibration = captured;
+        calibrated_now = true;
       }
+    }
+    if (now.has_imu_calibration && !calibrated_now) {
+      imu_bno055.applyCalibrationOffsets(now.imu_calibration);
     }
   }
   persistent_config::save(now);
@@ -239,37 +229,13 @@ void setup() {
   g_mavlink_node.setNamespace(g_comm_mgr.getNamespace());
   g_mavlink_node.setDiagnosticSerial(g_comm_mgr.debugSerial(),
                                      g_comm_mgr.debugMutex());
-  if (consumeFaultResetFlag()) {
+  if (fault_reset) {
     g_mavlink_node.setBootNotice("MCU reset after a firmware fault");
   }
   g_mavlink_node.begin();
-
-  // Must run after any boot-time IMU calibration and before the
-  // scheduler starts — see enableDmaReads()'s doc comment.
-  if (imu_ready) {
-    imu_bno055.enableDmaReads();
-  }
 
   // RTOS
   createQueues();
   createTasks();
   vTaskStartScheduler();
-}
-
-/*───────── Loop ─────────*/
-void loop() {}
-
-/*───────── Runtime stats ─────────*/
-HardwareTimer RunTimeStatsTimer(TIM5);
-
-void vConfigureTimerForRunTimeStats(void) {
-  // TIM5 sits on APB1: 84 MHz timer clock / 1680 = 50 kHz (20 us per count).
-  RunTimeStatsTimer.setPrescaleFactor(1680);
-  RunTimeStatsTimer.setOverflow(0xFFFFFFFF);
-  RunTimeStatsTimer.refresh();
-  RunTimeStatsTimer.resume();
-}
-
-uint32_t vGetTimerValueForRunTimeStats(void) {
-  return RunTimeStatsTimer.getCount();
 }

@@ -18,6 +18,7 @@
 #include <cstring>
 
 #include "rclcpp/qos.hpp"
+#include "rosbot_mavlink_bridge/range_value.hpp"
 
 namespace rosbot_mavlink_bridge
 {
@@ -77,6 +78,12 @@ BridgeNode::BridgeNode(
   // Topics + QoS: see ROS_API.md.
   battery_pub_ = this->create_publisher<sensor_msgs::msg::BatteryState>(
       "battery", bestEffortDepth1());
+  // Relative, like rosbot_ros, which remaps /diagnostics to diagnostics.
+  diagnostics_pub_ = this->create_publisher<diagnostic_msgs::msg::DiagnosticArray>(
+      "diagnostics", 10);
+  const std::string ns = this->get_namespace();
+  diagnostics_mapper_ = std::make_unique<DiagnosticsMapper>(
+      ns == "/" ? std::string("rosbot_mcu") : "rosbot_mcu " + ns);
   imu_pub_ = this->create_publisher<sensor_msgs::msg::Imu>("_imu/data",
                                                            bestEffortDepth1());
   joint_state_pub_ = this->create_publisher<sensor_msgs::msg::JointState>(
@@ -293,6 +300,9 @@ void BridgeNode::onMavlinkMessage(const mavlink_message_t & msg)
     case MAVLINK_MSG_ID_ROSBOT_POWER_BOARD:
       onRosbotPowerBoard(msg);
       break;
+    case MAVLINK_MSG_ID_ROSBOT_DIAGNOSTICS:
+      onRosbotDiagnostics(msg);
+      break;
     case MAVLINK_MSG_ID_ROSBOT_IMU_CALIBRATION:
       onRosbotImuCalibration(msg);
       break;
@@ -396,6 +406,30 @@ void BridgeNode::onStatustext(const mavlink_message_t & msg)
   }
 }
 
+// Inverse of battery_wire::healthToWire() in the firmware.
+static uint8_t healthFromMavlink(uint8_t charge_state, uint32_t faults)
+{
+  using BatteryState = sensor_msgs::msg::BatteryState;
+  if (faults & MAV_BATTERY_FAULT_UNDER_TEMPERATURE) {
+    return BatteryState::POWER_SUPPLY_HEALTH_COLD;
+  }
+  if (faults & MAV_BATTERY_FAULT_OVER_TEMPERATURE) {
+    return BatteryState::POWER_SUPPLY_HEALTH_OVERHEAT;
+  }
+  if (faults & MAV_BATTERY_FAULT_CELL_FAIL) {
+    return BatteryState::POWER_SUPPLY_HEALTH_DEAD;
+  }
+  if (faults != 0 || charge_state == MAV_BATTERY_CHARGE_STATE_FAILED ||
+    charge_state == MAV_BATTERY_CHARGE_STATE_UNHEALTHY)
+  {
+    return BatteryState::POWER_SUPPLY_HEALTH_UNSPEC_FAILURE;
+  }
+  if (charge_state == MAV_BATTERY_CHARGE_STATE_OK) {
+    return BatteryState::POWER_SUPPLY_HEALTH_GOOD;
+  }
+  return BatteryState::POWER_SUPPLY_HEALTH_UNKNOWN;
+}
+
 void BridgeNode::onBatteryStatus(const mavlink_message_t & msg)
 {
   if (!peer_alive_.load()) {return;}
@@ -422,14 +456,16 @@ void BridgeNode::onBatteryStatus(const mavlink_message_t & msg)
   out.percentage = (bs.battery_remaining < 0) ?
     std::numeric_limits<float>::quiet_NaN() :
     static_cast<float>(bs.battery_remaining) * 1e-2f;
-  out.temperature = std::numeric_limits<float>::quiet_NaN();
+  out.temperature = (bs.temperature == INT16_MAX) ?
+    std::numeric_limits<float>::quiet_NaN() :
+    static_cast<float>(bs.temperature) * 1e-2f;
   out.charge = std::numeric_limits<float>::quiet_NaN();
   out.capacity = std::numeric_limits<float>::quiet_NaN();
   out.design_capacity = 7.8f;  // BATTERY_DESIGN_CAPACITY, include/*/config.hpp
   out.power_supply_status =
     sensor_msgs::msg::BatteryState::POWER_SUPPLY_STATUS_UNKNOWN;
   out.power_supply_health =
-    sensor_msgs::msg::BatteryState::POWER_SUPPLY_HEALTH_UNKNOWN;
+    healthFromMavlink(bs.charge_state, bs.fault_bitmask);
   out.power_supply_technology =
     sensor_msgs::msg::BatteryState::POWER_SUPPLY_TECHNOLOGY_LION;
   out.present = true;
@@ -515,14 +551,8 @@ void BridgeNode::onDistanceSensor(const mavlink_message_t & msg)
   out.field_of_view = 0.26f;
   out.min_range = static_cast<float>(d.min_distance) * 1e-2f;
   out.max_range = static_cast<float>(d.max_distance) * 1e-2f;
-  const float range_m = static_cast<float>(d.current_distance) * 1e-2f;
-  if (range_m > out.max_range) {
-    out.range = std::numeric_limits<float>::infinity();
-  } else if (range_m < out.min_range) {
-    out.range = -std::numeric_limits<float>::infinity();
-  } else {
-    out.range = range_m;
-  }
+  out.range = rangeFromDistanceSensor(
+    d.current_distance, d.min_distance, d.max_distance, d.signal_quality);
   range_pub_->publish(out);
 }
 
@@ -550,6 +580,16 @@ void BridgeNode::onRosbotPowerBoard(const mavlink_message_t & msg)
     power_board_received_ = true;
   }
   power_board_cv_.notify_all();
+}
+
+void BridgeNode::onRosbotDiagnostics(const mavlink_message_t & msg)
+{
+  mavlink_rosbot_diagnostics_t d;
+  mavlink_msg_rosbot_diagnostics_decode(&msg, &d);
+  const rclcpp::Time now = this->now();
+  auto out = diagnostics_mapper_->map(d, now.nanoseconds());
+  out.header.stamp = now;
+  diagnostics_pub_->publish(out);
 }
 
 void BridgeNode::onCommandAck(const mavlink_message_t & msg)

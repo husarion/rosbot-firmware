@@ -16,27 +16,28 @@
 
 #include <cmath>
 
+#include "timer.hpp"
+
 FanController::~FanController() {
   stop();
-  if (initialized_ && config_.mode != FanMode::AlwaysOn) {
+  if (initialized_ && config_->mode != FanMode::AlwaysOn) {
     HAL_TIM_PWM_DeInit(&htim_);
   }
 }
 
 void FanController::init(const FanConfig& config) {
   if (initialized_) return;
-  config_ = config;
+  config_ = &config;
 
-  if (config_.mode == FanMode::AlwaysOn) {
-    pinMode(config_.pin, OUTPUT);
-    digitalWrite(config_.pin, HIGH);
+  if (config_->mode == FanMode::AlwaysOn) {
+    config_->pin.setAsOutput(true);
     current_duty_ = 100;
     running_ = true;
     initialized_ = true;
     return;
   }
 
-  enableTimerClock();
+  platform::enableTimerClock(config_->timer_instance);
   configureTimeBase();
   configureGpio();
   configureChannel();
@@ -46,92 +47,20 @@ void FanController::init(const FanConfig& config) {
   initialized_ = true;
 }
 
-void FanController::enableTimerClock() {
-  TIM_TypeDef* t = config_.timer_instance;
-
-  if (t == TIM1) {
-    __HAL_RCC_TIM1_CLK_ENABLE();
-  } else if (t == TIM2) {
-    __HAL_RCC_TIM2_CLK_ENABLE();
-  } else if (t == TIM3) {
-    __HAL_RCC_TIM3_CLK_ENABLE();
-  } else if (t == TIM4) {
-    __HAL_RCC_TIM4_CLK_ENABLE();
-  } else if (t == TIM5) {
-    __HAL_RCC_TIM5_CLK_ENABLE();
-  } else if (t == TIM8) {
-    __HAL_RCC_TIM8_CLK_ENABLE();
-  }
-#ifdef TIM9
-  else if (t == TIM9) {
-    __HAL_RCC_TIM9_CLK_ENABLE();
-  }
-#endif
-#ifdef TIM10
-  else if (t == TIM10) {
-    __HAL_RCC_TIM10_CLK_ENABLE();
-  }
-#endif
-#ifdef TIM11
-  else if (t == TIM11) {
-    __HAL_RCC_TIM11_CLK_ENABLE();
-  }
-#endif
-#ifdef TIM12
-  else if (t == TIM12) {
-    __HAL_RCC_TIM12_CLK_ENABLE();
-  }
-#endif
-}
-
-uint32_t FanController::getTimerClockHz() const {
-  // STM32F4 timer clock rules:
-  //   APB2 timers: TIM1, TIM8, TIM9, TIM10, TIM11
-  //   APB1 timers: TIM2-5, TIM12-14
-  //   If APBx prescaler > 1 → timer_clk = 2 × APBx_clk
-  //   If APBx prescaler = 1 → timer_clk = APBx_clk
-
-  RCC_ClkInitTypeDef clk{};
-  uint32_t latency;
-  HAL_RCC_GetClockConfig(&clk, &latency);
-
-  TIM_TypeDef* t = config_.timer_instance;
-
-  const bool is_apb2 = (t == TIM1 || t == TIM8
-#ifdef TIM9
-                        || t == TIM9
-#endif
-#ifdef TIM10
-                        || t == TIM10
-#endif
-#ifdef TIM11
-                        || t == TIM11
-#endif
-  );
-
-  if (is_apb2) {
-    const uint32_t pclk2 = HAL_RCC_GetPCLK2Freq();
-    return (clk.APB2CLKDivider == RCC_HCLK_DIV1) ? pclk2 : pclk2 * 2;
-  }
-
-  const uint32_t pclk1 = HAL_RCC_GetPCLK1Freq();
-  return (clk.APB1CLKDivider == RCC_HCLK_DIV1) ? pclk1 : pclk1 * 2;
-}
-
 void FanController::configureTimeBase() {
-  const uint32_t tim_clk = getTimerClockHz();
+  const uint32_t tim_clk = platform::timerClockHz(config_->timer_instance);
 
   // Find smallest PSC so that ARR fits in 16 bits (0xFFFF).
   // f_pwm = tim_clk / (PSC+1) / (ARR+1)
   uint32_t psc = 0;
-  uint32_t arr = (tim_clk / config_.pwm_frequency) - 1;
+  uint32_t arr = (tim_clk / config_->pwm_frequency) - 1;
 
   while (arr > 0xFFFF && psc < 0xFFFF) {
     ++psc;
-    arr = tim_clk / ((psc + 1) * config_.pwm_frequency) - 1;
+    arr = tim_clk / ((psc + 1) * config_->pwm_frequency) - 1;
   }
 
-  htim_.Instance = config_.timer_instance;
+  htim_.Instance = config_->timer_instance;
   htim_.Init.Prescaler = psc;
   htim_.Init.CounterMode = TIM_COUNTERMODE_UP;
   htim_.Init.Period = arr;
@@ -147,28 +76,8 @@ void FanController::configureTimeBase() {
 // ═══════════════════════════════════════════════════════════════════════
 
 void FanController::configureGpio() {
-  GPIO_TypeDef* port = digitalPinToPort(config_.pin);
-
-  // Enable port clock
-  if (port == GPIOA) {
-    __HAL_RCC_GPIOA_CLK_ENABLE();
-  } else if (port == GPIOB) {
-    __HAL_RCC_GPIOB_CLK_ENABLE();
-  } else if (port == GPIOC) {
-    __HAL_RCC_GPIOC_CLK_ENABLE();
-  } else if (port == GPIOD) {
-    __HAL_RCC_GPIOD_CLK_ENABLE();
-  } else if (port == GPIOE) {
-    __HAL_RCC_GPIOE_CLK_ENABLE();
-  }
-
-  GPIO_InitTypeDef gpio{};
-  gpio.Pin = digitalPinToBitMask(config_.pin);
-  gpio.Mode = GPIO_MODE_AF_PP;
-  gpio.Pull = GPIO_NOPULL;
-  gpio.Speed = GPIO_SPEED_FREQ_LOW;
-  gpio.Alternate = config_.gpio_af;  // forced — bypasses pinmap
-  HAL_GPIO_Init(port, &gpio);
+  config_->pin.setAsAlternate(config_->gpio_af, platform::Pull::kNone,
+                              platform::Speed::kLow);
 }
 
 // ═══════════════════════════════════════════════════════════════════════
@@ -176,14 +85,14 @@ void FanController::configureGpio() {
 // ═══════════════════════════════════════════════════════════════════════
 
 void FanController::configureChannel() {
-  const uint32_t ch = toHalChannel(config_.timer_channel);
+  const uint32_t ch = toHalChannel(config_->timer_channel);
 
   TIM_OC_InitTypeDef oc{};
   oc.OCMode = TIM_OCMODE_PWM1;
   oc.Pulse = 0;
   oc.OCPolarity = TIM_OCPOLARITY_HIGH;
   oc.OCNPolarity =
-      config_.complementary ? TIM_OCNPOLARITY_HIGH : TIM_OCNPOLARITY_LOW;
+      config_->complementary ? TIM_OCNPOLARITY_HIGH : TIM_OCNPOLARITY_LOW;
   oc.OCFastMode = TIM_OCFAST_DISABLE;
   oc.OCIdleState = TIM_OCIDLESTATE_RESET;
   oc.OCNIdleState = TIM_OCNIDLESTATE_RESET;
@@ -196,24 +105,24 @@ void FanController::configureChannel() {
 // ═══════════════════════════════════════════════════════════════════════
 
 void FanController::startPwm() {
-  const uint32_t ch = toHalChannel(config_.timer_channel);
+  const uint32_t ch = toHalChannel(config_->timer_channel);
 
-  if (config_.complementary) {
+  if (config_->complementary) {
     HAL_TIMEx_PWMN_Start(&htim_, ch);
   } else {
     HAL_TIM_PWM_Start(&htim_, ch);
   }
 
   // Advanced timers (TIM1, TIM8) require Master Output Enable
-  if (IS_TIM_BREAK_INSTANCE(config_.timer_instance)) {
+  if (IS_TIM_BREAK_INSTANCE(config_->timer_instance)) {
     __HAL_TIM_MOE_ENABLE(&htim_);
   }
 }
 
 void FanController::stopPwm() {
-  const uint32_t ch = toHalChannel(config_.timer_channel);
+  const uint32_t ch = toHalChannel(config_->timer_channel);
 
-  if (config_.complementary) {
+  if (config_->complementary) {
     HAL_TIMEx_PWMN_Stop(&htim_, ch);
   } else {
     HAL_TIM_PWM_Stop(&htim_, ch);
@@ -227,7 +136,7 @@ void FanController::stopPwm() {
 void FanController::applyDuty(uint8_t duty) {
   current_duty_ = (duty > 100) ? 100 : duty;
 
-  const uint32_t ch = toHalChannel(config_.timer_channel);
+  const uint32_t ch = toHalChannel(config_->timer_channel);
   const uint32_t arr = __HAL_TIM_GET_AUTORELOAD(&htim_);
   const uint32_t ccr = (static_cast<uint32_t>(current_duty_) * arr) / 100;
 
@@ -235,7 +144,7 @@ void FanController::applyDuty(uint8_t duty) {
 }
 
 void FanController::setDuty(uint8_t duty) {
-  if (!initialized_ || config_.mode == FanMode::AlwaysOn) return;
+  if (!initialized_ || config_->mode == FanMode::AlwaysOn) return;
   applyDuty(duty);
   running_ = (current_duty_ > 0);
 }
@@ -245,7 +154,7 @@ void FanController::setDuty(uint8_t duty) {
 // ═══════════════════════════════════════════════════════════════════════
 
 void FanController::update(float temp) {
-  if (!initialized_ || config_.mode == FanMode::AlwaysOn) return;
+  if (!initialized_ || config_->mode == FanMode::AlwaysOn) return;
 
   if (!std::isfinite(temp)) {
     applyDuty(100);
@@ -253,11 +162,11 @@ void FanController::update(float temp) {
     return;
   }
 
-  if (config_.mode == FanMode::Threshold) {
-    if (!running_ && temp >= config_.temp_high) {
+  if (config_->mode == FanMode::Threshold) {
+    if (!running_ && temp >= config_->temp_high) {
       applyDuty(100);
       running_ = true;
-    } else if (running_ && temp <= config_.temp_low) {
+    } else if (running_ && temp <= config_->temp_low) {
       applyDuty(0);
       running_ = false;
     }
@@ -265,17 +174,17 @@ void FanController::update(float temp) {
   }
 
   // Proportional
-  if (temp <= config_.temp_low) {
+  if (temp <= config_->temp_low) {
     applyDuty(0);
     running_ = false;
-  } else if (temp >= config_.temp_high) {
+  } else if (temp >= config_->temp_high) {
     applyDuty(100);
     running_ = true;
   } else {
-    const auto range = config_.temp_high - config_.temp_low;
-    const auto normalized = (temp - config_.temp_low) / range;
+    const auto range = config_->temp_high - config_->temp_low;
+    const auto normalized = (temp - config_->temp_low) / range;
     applyDuty(static_cast<uint8_t>(
-        (normalized * (100u - config_.duty_min) + config_.duty_min)));
+        (normalized * (100u - config_->duty_min) + config_->duty_min)));
     running_ = true;
   }
 }
@@ -287,8 +196,8 @@ void FanController::update(float temp) {
 void FanController::stop() {
   if (!initialized_) return;
 
-  if (config_.mode == FanMode::AlwaysOn) {
-    digitalWrite(config_.pin, LOW);
+  if (config_->mode == FanMode::AlwaysOn) {
+    config_->pin.reset();
   } else {
     applyDuty(0);
     stopPwm();

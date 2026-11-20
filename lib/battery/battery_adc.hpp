@@ -14,11 +14,12 @@
 
 #pragma once
 
+#include "analog_in.hpp"
 #include "battery_interface.hpp"
 #include "soc_estimator.hpp"
 
 struct BatteryAdcConfig {
-  uint8_t adc_pin;
+  platform::AnalogIn adc;
   float v_ref;
   uint8_t num_cells;
   float divider;
@@ -39,5 +40,4 @@ class BatteryAdc : public BatteryInterface {
   float voltage_factor_ = 1.0f;
   SocEstimator soc_;
   uint32_t last_update_ms_ = 0;
-  uint16_t adc_dma_buffer_[1] = {};
 };

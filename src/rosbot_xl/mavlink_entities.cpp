@@ -15,13 +15,15 @@
 #include "commands/imu_calibration_command.hpp"
 #include "commands/mcu_id_command.hpp"
 #include "commands/power_board_info_command.hpp"
-#include "config.hpp"
+#include "ethernet.hpp"
 #include "mavlink_node.hpp"
 #include "publishers/battery_publisher.hpp"
 #include "publishers/buttons_publisher.hpp"
+#include "publishers/diagnostics_publisher.hpp"
 #include "publishers/imu_calibration_publisher.hpp"
 #include "publishers/imu_publisher.hpp"
 #include "publishers/joint_state_publisher.hpp"
+#include "rosbot_xl/config.hpp"
 #include "subscribers/led_strip_subscriber.hpp"
 #include "subscribers/led_subscriber.hpp"
 #include "subscribers/wheel_cmd_subscriber.hpp"
@@ -37,8 +39,8 @@ static MavlinkUdpTransport udp_transport(udp_cfg);
 
 // Publishers (telemetry: MCU → bridge)
 static MavlinkBatteryPublisher battery_pub({.queue = battery_queue,
-                                            .num_cells = BATTERY_NUM_CELLS,
-                                            .period_ms = 1000});
+                                            .num_cells = BATTERY_SERIES_CELLS,
+                                            .period_ms = 0});
 // IMU and joint state: period_ms = 0, the producing task sets the
 // rate. A gate equal to the task period dropped samples: with a 5 ms link
 // loop, ~18% of IMU samples were overwritten in their depth-1 queue before
@@ -49,24 +51,45 @@ static MavlinkImuCalibrationPublisher imu_calibration_pub({.period_ms = 200});
 static MavlinkJointStatePublisher joint_state_pub({.queue = joint_state_queue,
                                                    .period_ms = 0});
 static MavlinkButtonsPublisher buttons_pub({.pins = buttons_pins,
-                                            .num_buttons = sizeof(buttons_pins),
                                             .period_ms = 50});
 
+extern PowerBoard power_board;
+
+static uint16_t sat16(uint32_t v) {
+  return v > UINT16_MAX ? UINT16_MAX : static_cast<uint16_t>(v);
+}
+
+// IMU and EEPROM share I2C2, reported as the IMU bus.
+static void fillDiagnostics(mavlink_rosbot_diagnostics_t& d) {
+  d.imu_errors = g_imu->readErrors();
+  d.imu_ok = g_imu->healthy() ? 1 : 0;
+  d.i2c_recoveries[0] = sat16(i2c.recoveries());
+  d.motor_faults = sat16(g_motors.faultEvents());
+  d.flags = ROSBOT_DIAG_HAS_POWER_BOARD | ROSBOT_DIAG_HAS_ETHERNET;
+  if (g_battery->lowLatched()) d.flags |= ROSBOT_DIAG_BATTERY_LOW;
+  if (g_battery->criticalLatched()) d.flags |= ROSBOT_DIAG_BATTERY_CRITICAL;
+  if (g_motors.hasFault()) d.flags |= ROSBOT_DIAG_MOTOR_FAULT;
+  if (power_board.answering(time_boot_ms())) {
+    d.flags |= ROSBOT_DIAG_POWER_BOARD_OK;
+  }
+  if (ethernet::linkUp()) d.flags |= ROSBOT_DIAG_ETHERNET_UP;
+}
+
+static MavlinkDiagnosticsPublisher diagnostics_pub({.fill = fillDiagnostics,
+                                                    .period_ms = 1000});
+
 static MavlinkPublisherInterface* s_publishers[] = {
-    &battery_pub, &imu_pub, &imu_calibration_pub, &joint_state_pub,
-    &buttons_pub};
+    &battery_pub,     &imu_pub,     &imu_calibration_pub,
+    &joint_state_pub, &buttons_pub, &diagnostics_pub};
 
 // Subscribers (commands: bridge → MCU)
 static const PanelLedConfig s_panel_leds[] = {
     {.pin = GRN_LED, .bit_mask = 0x01},
 };
 static WheelCmdSubscriber wheel_cmd_sub(g_motors);
-static PanelLedSubscriber leds_sub(s_panel_leds, sizeof(s_panel_leds) /
-                                                     sizeof(s_panel_leds[0]));
+static PanelLedSubscriber leds_sub(s_panel_leds);
 static LedStripSubscriber led_strip_sub(led_strip_queue);
 static McuIdCommand mcu_id_cmd;
-
-extern PowerBoard power_board;
 
 static PowerBoardVersions readPowerBoardVersions() {
   PowerBoardVersions v;

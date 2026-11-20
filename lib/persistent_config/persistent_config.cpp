@@ -14,11 +14,12 @@
 
 #include "persistent_config.hpp"
 
-#include <STM32FreeRTOS.h>
 #include <stm32f4xx_hal.h>
 
 #include <cstddef>
 #include <cstring>
+
+#include "freertos.hpp"
 
 namespace {
 

@@ -14,9 +14,10 @@
 
 #include "communication_manager.hpp"
 
-#include <Arduino.h>
-
 #include <cstring>
+
+#include "clock.hpp"
+#include "time_base.hpp"
 
 namespace {
 
@@ -28,16 +29,16 @@ const char* fwVersion() {
 #endif
 }
 
-void sendVersionPrompt(HardwareSerial& s) {
+void sendVersionPrompt(platform::Uart& s) {
   s.printf("FW: %s\r\n", fwVersion());
   s.flush();
 }
 
 // Returns true after consuming a newline; *idx then holds the line length.
-bool consumeAvailable(HardwareSerial& s, char* buf, size_t* idx,
+bool consumeAvailable(platform::Uart& s, char* buf, size_t* idx,
                       size_t max_len) {
-  while (s.available()) {
-    const char c = s.read();
+  while (s.available() > 0) {
+    const char c = static_cast<char>(s.read());
     if (c == '\n') return true;
     if (c != '\r' && *idx < max_len - 1) {
       buf[(*idx)++] = c;
@@ -59,9 +60,9 @@ void CommunicationManager::init() {
 }
 
 const SerialConfig* CommunicationManager::selectTransport(uint32_t timeout_ms) {
-  const uint32_t start = millis();
+  const uint32_t start = time_boot_ms();
 
-  while ((millis() - start) < timeout_ms) {
+  while ((time_boot_ms() - start) < timeout_ms) {
     if (cfg_.useDiagnosticCondition && cfg_.useDiagnosticCondition()) {
       selected_type_ = TransportType::kSerial;
       selected_serial_ = &cfg_.diagnostic_serial;
@@ -69,7 +70,7 @@ const SerialConfig* CommunicationManager::selectTransport(uint32_t timeout_ms) {
       if (cfg_.onDiagnosticSelected) cfg_.onDiagnosticSelected();
       return selected_serial_;
     }
-    delay(cfg_.check_interval_ms);
+    platform::clock::delayMs(cfg_.check_interval_ms);
   }
 
   selected_type_ = cfg_.primary_type;
@@ -85,12 +86,12 @@ const SerialConfig* CommunicationManager::selectTransport(uint32_t timeout_ms) {
 }
 
 void CommunicationManager::configureNamespace(uint16_t timeout_ms) {
-  HardwareSerial* config_serial = nullptr;
+  platform::Uart* config_serial = nullptr;
 
   if (selected_type_ == TransportType::kEthernet) {
-    config_serial = cfg_.diagnostic_serial.serial;
+    config_serial = cfg_.diagnostic_serial.uart;
   } else if (selected_serial_ != nullptr) {
-    config_serial = selected_serial_->serial;
+    config_serial = selected_serial_->uart;
   }
 
   if (config_serial != nullptr &&
@@ -98,12 +99,12 @@ void CommunicationManager::configureNamespace(uint16_t timeout_ms) {
     return;
   }
 
-  std::strncpy(namespace_.data(), cfg_.ns_default, NS_MAX_LENGTH);
+  std::strncpy(namespace_.data(), cfg_.ns_default, NS_MAX_LENGTH - 1);
   namespace_[NS_MAX_LENGTH - 1] = '\0';
 }
 
-HardwareSerial* CommunicationManager::debugSerial() {
-  return debug_available_ ? cfg_.diagnostic_serial.serial : nullptr;
+platform::Uart* CommunicationManager::debugSerial() {
+  return debug_available_ ? cfg_.diagnostic_serial.uart : nullptr;
 }
 
 SemaphoreHandle_t CommunicationManager::debugMutex() {
@@ -112,25 +113,22 @@ SemaphoreHandle_t CommunicationManager::debugMutex() {
 }
 
 void CommunicationManager::initSerial(const SerialConfig& cfg) {
-  cfg.serial->setRx(cfg.rxPin);
-  cfg.serial->setTx(cfg.txPin);
-  cfg.serial->begin(cfg.baudrate);
-  cfg.serial->setTimeout(cfg.timeout_ms);
+  cfg.uart->open(cfg.baudrate);
 }
 
-bool CommunicationManager::waitForHostConfig(HardwareSerial& serial,
+bool CommunicationManager::waitForHostConfig(platform::Uart& serial,
                                              uint32_t timeout_ms) {
   std::array<char, NS_MAX_LENGTH> buffer{};
   size_t idx = 0;
-  const uint32_t start = millis();
-  uint32_t last_prompt = millis();
+  const uint32_t start = time_boot_ms();
+  uint32_t last_prompt = time_boot_ms();
 
   sendVersionPrompt(serial);
 
   // END terminates the handshake so BACKEND:/NS: may arrive in any order.
   // Legacy hosts that don't send END fall through on timeout instead.
   bool received_ns = false;
-  while ((millis() - start) < timeout_ms) {
+  while ((time_boot_ms() - start) < timeout_ms) {
     if (consumeAvailable(serial, buffer.data(), &idx, NS_MAX_LENGTH)) {
       if (parseBackend(serial, buffer.data(), idx)) {
         idx = 0;
@@ -149,15 +147,15 @@ bool CommunicationManager::waitForHostConfig(HardwareSerial& serial,
       idx = 0;
       buffer.fill('\0');
     }
-    if ((millis() - last_prompt) >= cfg_.resend_ready_interval_ms) {
+    if ((time_boot_ms() - last_prompt) >= cfg_.resend_ready_interval_ms) {
       sendVersionPrompt(serial);
-      last_prompt = millis();
+      last_prompt = time_boot_ms();
     }
   }
   return received_ns;
 }
 
-bool CommunicationManager::parseAndStoreNamespace(HardwareSerial& serial,
+bool CommunicationManager::parseAndStoreNamespace(platform::Uart& serial,
                                                   const char* buf, size_t len) {
   constexpr const char* kPrefix = "NS:";
   constexpr size_t kPrefixLen = 3;
@@ -166,7 +164,7 @@ bool CommunicationManager::parseAndStoreNamespace(HardwareSerial& serial,
     return false;
   }
 
-  std::strncpy(namespace_.data(), buf + kPrefixLen, NS_MAX_LENGTH);
+  std::strncpy(namespace_.data(), buf + kPrefixLen, NS_MAX_LENGTH - 1);
   namespace_[NS_MAX_LENGTH - 1] = '\0';
 
   serial.println("ACK");
@@ -174,7 +172,7 @@ bool CommunicationManager::parseAndStoreNamespace(HardwareSerial& serial,
   return true;
 }
 
-bool CommunicationManager::parseEnd(HardwareSerial& serial, const char* buf,
+bool CommunicationManager::parseEnd(platform::Uart& serial, const char* buf,
                                     size_t len) {
   constexpr const char* kEnd = "END";
   constexpr size_t kEndLen = 3;
@@ -189,7 +187,7 @@ bool CommunicationManager::parseEnd(HardwareSerial& serial, const char* buf,
 // Hosts still send BACKEND:, and MAVLink is the only backend left. NAK
 // anything else so a host asking for another backend fails its handshake
 // instead of waiting on a link that never comes up.
-bool CommunicationManager::parseBackend(HardwareSerial& serial, const char* buf,
+bool CommunicationManager::parseBackend(platform::Uart& serial, const char* buf,
                                         size_t len) {
   constexpr const char* kPrefix = "BACKEND:";
   constexpr size_t kPrefixLen = 8;
