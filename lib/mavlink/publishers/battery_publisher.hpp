@@ -95,7 +95,8 @@ class MavlinkBatteryPublisher : public MavlinkPublisherInterface {
       mavlink_msg_rosbot_power_supply_pack(
           node.sysid(), node.compid(), &m, data.data.status,
           data.data.charger_type, data.data.present ? 1 : 0,
-          cfg_.power_supply_design_capacity_mah);
+          cfg_.power_supply_design_capacity_mah,
+          battery_wire::capacityToMah(data.data.capacity_ah));
       node.sendMessage(m);
     }
   }

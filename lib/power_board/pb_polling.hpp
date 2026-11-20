@@ -29,6 +29,21 @@ inline bool pbSupportsFastPolling(const char* firmware_version) {
 
 inline constexpr uint32_t PB_SLOW_POLL_PERIOD_MS = 1000;
 
+// Power board firmware v1.0.5 counts SoC itself and sends it in battery-frame
+// byte 13 (255 = not known yet) with the learnt capacity in bytes 9-10 (mAh).
+// Older versions send 0 in both.
+inline bool pbReportsSoc(const char* firmware_version) {
+  return versionAtLeast(firmware_version, 1, 0, 5);
+}
+
+inline float pbSocFraction(uint8_t raw) {
+  return raw <= 100 ? static_cast<float>(raw) * 0.01f : NAN;
+}
+
+inline float pbCapacityAh(uint16_t raw_mah) {
+  return raw_mah != 0 ? static_cast<float>(raw_mah) * 0.001f : NAN;
+}
+
 // 0 = request on every HwMonitor tick.
 inline uint32_t pbBatteryPollPeriodMs(const char* firmware_version) {
   return pbSupportsFastPolling(firmware_version) ? 0 : PB_SLOW_POLL_PERIOD_MS;

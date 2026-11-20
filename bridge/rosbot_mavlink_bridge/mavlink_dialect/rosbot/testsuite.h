@@ -287,7 +287,7 @@ static void mavlink_test_rosbot_power_supply(uint8_t system_id, uint8_t componen
         uint8_t buffer[MAVLINK_MAX_PACKET_LEN];
         uint16_t i;
     mavlink_rosbot_power_supply_t packet_in = {
-        17235,139,206,17
+        17235,139,206,17,17495
     };
     mavlink_rosbot_power_supply_t packet1, packet2;
         memset(&packet1, 0, sizeof(packet1));
@@ -295,6 +295,7 @@ static void mavlink_test_rosbot_power_supply(uint8_t system_id, uint8_t componen
         packet1.status = packet_in.status;
         packet1.charger_type = packet_in.charger_type;
         packet1.present = packet_in.present;
+        packet1.capacity_mah = packet_in.capacity_mah;
         
         
 #ifdef MAVLINK_STATUS_FLAG_OUT_MAVLINK1
@@ -309,12 +310,12 @@ static void mavlink_test_rosbot_power_supply(uint8_t system_id, uint8_t componen
         MAVLINK_ASSERT(memcmp(&packet1, &packet2, sizeof(packet1)) == 0);
 
         memset(&packet2, 0, sizeof(packet2));
-    mavlink_msg_rosbot_power_supply_pack(system_id, component_id, &msg , packet1.status , packet1.charger_type , packet1.present , packet1.design_capacity_mah );
+    mavlink_msg_rosbot_power_supply_pack(system_id, component_id, &msg , packet1.status , packet1.charger_type , packet1.present , packet1.design_capacity_mah , packet1.capacity_mah );
     mavlink_msg_rosbot_power_supply_decode(&msg, &packet2);
         MAVLINK_ASSERT(memcmp(&packet1, &packet2, sizeof(packet1)) == 0);
 
         memset(&packet2, 0, sizeof(packet2));
-    mavlink_msg_rosbot_power_supply_pack_chan(system_id, component_id, MAVLINK_COMM_0, &msg , packet1.status , packet1.charger_type , packet1.present , packet1.design_capacity_mah );
+    mavlink_msg_rosbot_power_supply_pack_chan(system_id, component_id, MAVLINK_COMM_0, &msg , packet1.status , packet1.charger_type , packet1.present , packet1.design_capacity_mah , packet1.capacity_mah );
     mavlink_msg_rosbot_power_supply_decode(&msg, &packet2);
         MAVLINK_ASSERT(memcmp(&packet1, &packet2, sizeof(packet1)) == 0);
 
@@ -327,7 +328,7 @@ static void mavlink_test_rosbot_power_supply(uint8_t system_id, uint8_t componen
         MAVLINK_ASSERT(memcmp(&packet1, &packet2, sizeof(packet1)) == 0);
         
         memset(&packet2, 0, sizeof(packet2));
-    mavlink_msg_rosbot_power_supply_send(MAVLINK_COMM_1 , packet1.status , packet1.charger_type , packet1.present , packet1.design_capacity_mah );
+    mavlink_msg_rosbot_power_supply_send(MAVLINK_COMM_1 , packet1.status , packet1.charger_type , packet1.present , packet1.design_capacity_mah , packet1.capacity_mah );
     mavlink_msg_rosbot_power_supply_decode(last_msg, &packet2);
         MAVLINK_ASSERT(memcmp(&packet1, &packet2, sizeof(packet1)) == 0);
 
