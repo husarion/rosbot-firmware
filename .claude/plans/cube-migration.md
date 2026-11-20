@@ -505,8 +505,38 @@ CORE2: wtyczka była wcześniej odwrócona):
   próbie resetu z NRST na odwróconej wtyczce) albo brak przewodu w
   adapterze; SWD i reset programowy działają.
 
-Nie testowane na XL: porty LAN9303 (SBC ↔ tylny port) i `just flash` z SBC
-(brak SBC).
+Testy z SBC i na ziemi (2026-11-20, oba roboty na podłodze, sterowniki ze
+snapa `rosbot`):
+- Wgrywanie z SBC ścieżką snapa: własny `.bin` w
+  `/var/snap/rosbot/current/config_dir/rosbot_utils/firmware/` pod nazwą
+  oczekiwanej wersji + `sudo rosbot.flash` (ROSbot przez UART SBC 34 s, XL
+  przez USB 45 s). Snap wybiera plik po oczekiwanej wersji, nie pierwszy.
+- Snap rosbot 1.3.0 (`jazzy/stable`) przyjmuje tylko firmware v2.2.1 i
+  odrzuca każde v2.4.0 (też oficjalne jazzy) — sterownik XL kręcił się w
+  pętli. XL przeniesiony na `jazzy/edge` 1.3.1 (decyzja Rafała); po
+  odświeżeniu snap sam wgrał fabryczne v2.4.0 (auto-flash).
+- Pełny stos z nowym firmware: wersja wykryta, bridge połączony. 10 min bez
+  ruchu: ROSbot (UART SBC) i XL (Ethernet) po 100,0 Hz IMU/joint_states,
+  0 rozłączeń, 0 korekt TIMESYNC; XL `/battery` 10 Hz. Bridge ze snapów nie
+  publikuje statusów MCU w `/diagnostics` (starsza wersja).
+- LAN9303: laptop w tylnym porcie XL widzi SBC (0,36 ms) i MCU; przepływ
+  tylny port → SBC ~90 Mbit/s (pełne 100 Mbit).
+- Jazda na ziemi przez kontroler (0,15 m/s, 0,6 rad/s, zmiany kierunku),
+  nowy vs jazzy na tym samym podłożu: XL identycznie (postój przy zerze
+  0–20 ms, szczyt 20–34 rad/s², effort ~0,2 Nm), bez blokady. ROSbot:
+  zmiana kierunku liniowa czysta (10 ms), zmiana kierunku obrotu 110–250 ms
+  postoju przy zerze w OBU wersjach (jazzy 110–195, nowy 160–250, po
+  jednym przebiegu, bateria 9,4 V) — skid-steer musi zebrać moment na
+  pokonanie tarcia, regulator startuje od zera. Poprawka regulatora
+  (kompensacja tarcia, bez kasowania całki przy przejściu przez zero)
+  możliwa, ale to nie regresja.
+- Oba roboty przywrócone na fabryczne jazzy v2.4.0; oryginały w
+  `~/fw_backup` na SBC. Sterownik ROSbota z powrotem zatrzymany (jak
+  rano).
+- CSS / NMI: nie sprawdzone (ST-LINK odpięty od CORE2 po przestawieniu
+  robota).
+
+Porty LAN9303 i wgrywanie z SBC sprawdzone 2026-11-20 (wyżej).
 
 ## Strategia testów
 
