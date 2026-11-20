@@ -65,7 +65,7 @@ are since the MCU booted; "recent" means the counter grew within the last
 | --- | --- | --- | --- |
 | `MCU` | smallest stack headroom < 64 B | headroom < 128 B, heap never used < 4 KB, CPU idle < 20 %, last reset was a firmware fault, running on the internal oscillator because the crystal did not start | clock source, uptime, last reset cause, CPU idle %, heap, stack headroom and its task |
 | `IMU` | IMU not initialised or last read failed | recent read errors or bus resets | read errors, bus resets |
-| `Range sensors` (ROSbot) | a sensor did not initialise | a sensor recently timing out, recent bus resets | timeouts per sensor, bus resets |
+| `Range sensors` (ROSbot) | a sensor did not initialise, or stopped answering (the firmware re-initialises the sensors, 1 s to 16 s apart) | a sensor recently timing out, recent bus resets | timeouts per sensor, bus resets |
 | `Motors` | driver fault active | recent driver faults | fault events |
 | `Link` | — | MCU recently dropped telemetry (TX queue full) or got corrupted frames | dropped frames both ways, connections |
 | `Power` | battery critical, power board not answering (XL) | battery low | power board answering, Ethernet link (XL) |

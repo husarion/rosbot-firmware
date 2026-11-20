@@ -27,10 +27,23 @@ void RangeArray::init() {
   for (auto* sensor : sensors_) sensor->init();
 }
 
-void RangeArray::update() {
+void RangeArray::update(uint32_t now_ms) {
+  bool any_lost = false;
   for (size_t i = 0; i < sensors_.size(); i++) {
     sensors_[i]->update();
     data_.range[i] = sensors_[i]->getData().range;
     strncpy(data_.frame_id[i], sensors_[i]->name(), MAX_FRAME_ID_LENGTH - 1);
+    any_lost = any_lost || sensors_[i]->lost();
   }
+  if (!any_lost) {
+    reinit_backoff_ms_ = kReinitFirstMs;
+    last_reinit_ms_ = now_ms;
+    return;
+  }
+  if (now_ms - last_reinit_ms_ < reinit_backoff_ms_) return;
+  // The whole array: after a brown-out every sensor is back at the default
+  // address, and init() hands the addresses out again in XSHUT order.
+  init();
+  last_reinit_ms_ = now_ms;
+  reinit_backoff_ms_ = etl::min(reinit_backoff_ms_ * 2, kReinitMaxMs);
 }

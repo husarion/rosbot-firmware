@@ -32,12 +32,17 @@ struct RangesData {
 /// Holds N independent RangeInterface pointers.
 class RangeArray {
  public:
+  // Re-init attempts while a sensor is lost: 1 s apart, doubling up to 16 s.
+  static constexpr uint32_t kReinitFirstMs = 1000;
+  static constexpr uint32_t kReinitMaxMs = 16000;
+
   RangeArray() = default;
   /// Sensors beyond MAX_NUM_RANGE_SENSORS are ignored.
   explicit RangeArray(etl::span<RangeInterface* const> sensors);
 
   void init();
-  void update();
+  // now_ms: time_boot_ms(); paces re-initialising lost sensors.
+  void update(uint32_t now_ms);
 
   const RangesData getData() const { return data_; }
   uint8_t count() const { return static_cast<uint8_t>(sensors_.size()); }
@@ -53,6 +58,8 @@ class RangeArray {
  private:
   etl::span<RangeInterface* const> sensors_;
   RangesData data_ = {};
+  uint32_t last_reinit_ms_ = 0;
+  uint32_t reinit_backoff_ms_ = kReinitFirstMs;
 };
 
 extern RangeArray g_ranges;

@@ -679,14 +679,27 @@ normally; only the diagnostics counters start at ~12.
 
 ### Range sensors that lose power
 
-The VL53L0X driver polls the result register until data is ready or
-`timeout_ms` (500 ms) passes. On ROSbot 3, after the board browned out
-with the wheels stalled against a wall, all four sensors timed out on every
-read; a sensor that does not answer makes each `update()` spin on I2C
-transactions for the full timeout, so the Range task held ~2 s per cycle
-(`/ranges` 2 Hz, 2 s old) and cost ~50 % CPU. Nothing re-initialises a
-sensor once `init()` succeeded, so this lasted until the next MCU reset
-(HW 2026-11-20; the Pololu loop in jazzy is the same).
+On ROSbot 3, after the board browned out with the wheels stalled against a
+wall, all four VL53L0X timed out on every read until the next MCU reset:
+the Pololu driver polls the result register until data is ready, a sensor
+that NACKs made each read spin on I2C for the whole 500 ms timeout
+(`/ranges` 2 Hz, ~50 % CPU), and nothing re-initialised a sensor. Now
+(HW-tested 2026-11-20 by pulsing every XSHUT low for 50 ms at runtime):
+
+- `RangeVl53l0x::update()` reads the interrupt status once instead of the
+  driver's wait. NACK, or no data for `timeout_ms`, counts as a timeout;
+  two in a row mark the sensor lost and it is no longer read. Without the
+  wait the Range task also stopped costing ~25 % CPU when the sensors'
+  measurement phase drifted from the task's, which a re-init caused.
+- `RangeArray::update(now_ms)` re-runs `init()` for the whole array while a
+  sensor is lost, 1 s after the loss and then doubling up to 16 s: a
+  brown-out puts every sensor back at the default address, so XSHUT order
+  has to hand the addresses out again. A sensor absent since boot never
+  triggers it. `init()` replaces the driver object, which otherwise keeps
+  the address the previous `setAddress()` gave it.
+- Result on HW: loss detected in ~200 ms, all four back ~1 s later, CPU idle
+  95.3 % throughout. The re-init runs on the Range task's stack, hence
+  `Stack::L` (headroom had dropped to 164 B with `Stack::M`).
 
 ### I2C bus speed (400 kHz)
 

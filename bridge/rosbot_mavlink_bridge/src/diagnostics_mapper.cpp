@@ -206,7 +206,8 @@ diagnostic_msgs::msg::DiagnosticArray DiagnosticsMapper::map(
     for (size_t i = 0; i < 4; ++i) {
       const bool timing_out = grew(range_timeouts_[i], d.range_timeouts[i]);
       if (!(d.range_ok & (1U << i))) {
-        ranges.raise(DiagnosticStatus::ERROR, std::string(kRangeNames[i]) + " sensor not found");
+        ranges.raise(DiagnosticStatus::ERROR,
+            std::string(kRangeNames[i]) + " sensor not responding");
       } else if (timing_out) {
         ranges.raise(DiagnosticStatus::WARN, std::string(kRangeNames[i]) + " sensor timing out");
       }

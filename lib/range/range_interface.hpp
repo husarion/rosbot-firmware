@@ -31,6 +31,8 @@ class RangeInterface {
   virtual void powerOn() = 0;
   virtual const RangeData getData() const { return data_; }
   virtual const char* name() const = 0;
+  // Initialised once, then stopped answering; RangeArray re-runs init().
+  virtual bool lost() const { return false; }
 
  protected:
   RangeData data_;

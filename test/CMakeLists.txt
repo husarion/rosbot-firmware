@@ -58,12 +58,14 @@ set(TEST_INCLUDES
   ${REPO_ROOT}/lib/pid
   ${REPO_ROOT}/lib/platform
   ${REPO_ROOT}/lib/power_board
+  ${REPO_ROOT}/lib/range
   ${REPO_ROOT}/lib/time_base)
 
 # Libraries whose sources build on the host as they are. A test that needs
 # a hardware driver includes its .cpp directly, against the fake registers.
 add_library(host_libs STATIC
   ${REPO_ROOT}/lib/pid/pid.cpp
+  ${REPO_ROOT}/lib/range/range_array.cpp
   ${REPO_ROOT}/lib/time_base/time_base.cpp)
 target_include_directories(host_libs PUBLIC ${TEST_INCLUDES})
 target_include_directories(host_libs SYSTEM PUBLIC ${etl_SOURCE_DIR}/include)

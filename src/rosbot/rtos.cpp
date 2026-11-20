@@ -47,7 +47,7 @@ inline TaskConfig tasks[] = {
     {"Imu", Priority::SENSORS, Stack::M, 100, imuTask},
     {"LedIndicator", Priority::OBSERVING, Stack::XS, 20, ledIndicatorTask},
     {"MotorControl", Priority::CONTROL, Stack::M, 200, motorControlTask},
-    {"Range", Priority::SENSORS, Stack::M, 10, rangeTask},
+    {"Range", Priority::SENSORS, Stack::L, 10, rangeTask},
     {"Link", Priority::COMMUNICATION, Stack::XXL, 1000, linkTask},
 };
 
@@ -139,7 +139,7 @@ void rangeTask(void* p) {
 
   while (true) {
     data.timestamp_ns = rtos_timestamp_ns();
-    g_ranges.update();
+    g_ranges.update(time_boot_ms());
     data.data = g_ranges.getData();
 
     xQueueOverwrite(ranges_queue, &data);
