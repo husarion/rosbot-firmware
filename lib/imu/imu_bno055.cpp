@@ -29,8 +29,11 @@ constexpr uint8_t kCalibStatReg = 0x35;                        // CALIB_STAT
 constexpr uint16_t kBlockLen = kCalibStatReg - kStartReg + 1;  // 46 bytes
 // 46 B @ 400 kHz is ~1.2 ms on the wire; with the BNO055's clock
 // stretching and the task's own wake-up latency the wait measured 1.6-6.9 ms
-// (2181 reads, HW 2026-09-23). Must stay under the 10 ms task period.
-constexpr uint32_t kReadTimeoutMs = 8;
+// (2181 reads, HW 2026-09-23). For ~120 ms after the switch to fusion mode
+// the chip stretches longer: an 8 ms limit failed ~12 reads (and reset the
+// bus each time) on every XL boot, 25 ms none (HW 2026-11-20). A read past
+// the 10 ms period only makes vTaskDelayUntil() run the next one at once.
+constexpr uint32_t kReadTimeoutMs = 25;
 
 constexpr uint8_t kChipIdReg = 0x00;
 constexpr uint8_t kChipId = 0xA0;

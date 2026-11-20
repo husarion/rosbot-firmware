@@ -672,10 +672,11 @@ budget trips on every IMU read and `recover()` does not help, because the
 callback lives in the handle, not in the peripheral. Found on ROSbot XL
 (2026-11-20, ST-LINK): the IMU never came up after one boot-time timeout.
 
-Still open (XL, HW 2026-11-20): in the first ~120 ms after the scheduler
-starts, ~12 IMU DMA reads time out with all 46 bytes transferred (NDTR 0,
-SCL held low) but the DMA completion IRQ not yet served. The IMU then runs
-normally; only the diagnostics counters start at ~12.
+In the first ~120 ms after the switch to fusion mode the BNO055 stretches
+the clock long enough that 46 bytes took more than 8 ms: with an 8 ms read
+limit every XL boot failed ~12 reads (TCIF set, the DMA IRQ pending, i.e.
+the transfer ended just after the timeout) and reset the bus each time.
+`kReadTimeoutMs` is 25 ms since (0 failures, HW 2026-11-20).
 
 ### Range sensors that lose power
 
