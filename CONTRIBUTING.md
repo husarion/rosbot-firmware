@@ -11,8 +11,8 @@ Run `just` (no args) for a recipe list.
 Most-used recipes:
 
 ```bash
-just build rosbot                # Build one target: rosbot[_xl][_release]
-just build-all                   # Both boards, debug + release
+just build rosbot                # Build one board: rosbot or rosbot_xl
+just build-all                   # Both boards
 just test                        # Host unit tests (CTest)
 just flash rosbot_xl             # Build + flash on the connected robot
 just clean                       # Wipe CMake build outputs
@@ -30,7 +30,7 @@ The wrapper:
 - auto-detects the FTDI tty by USB VID:PID `0403:6015` (override with
   `SERIAL_PORT=/dev/ttyUSBx`),
 - builds with [`scripts/build.sh`](scripts/build.sh) and points
-  `flash_firmware` at the fresh `build/<debug|release>/<board>.bin` instead of
+  `flash_firmware` at the fresh `build/release/<board>.bin` instead of
   the binary bundled in `rosbot_utils`.
 
 Prerequisites on the ROSbot SBC:
@@ -52,12 +52,10 @@ To simplify the development process, we have prepared a set of VS Code tasks tha
 To use these tasks, open the Command Palette (Ctrl+Shift+P) and search for "Run Task". You will see a list of available tasks, including:
 
 - **ROSbot: Build firmware**
-- **ROSbot (Debug): Build and flash firmware**
-- **ROSbot (Release): Build and flash firmware**
+- **ROSbot: Build and flash firmware**
 - **ROSbot XL: Build firmware**
-- **ROSbot XL (Debug): Build and flash firmware**
-- **ROSbot XL (Release): Build and flash firmware**
-- **Build all (debug + release)**
+- **ROSbot XL: Build and flash firmware**
+- **Build both boards**
 - **Host unit tests**
 
 Each runs the matching `just` recipe; flashing goes through the bootloader

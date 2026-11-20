@@ -7,9 +7,9 @@
 #
 # Common usage:
 #   just                          # list recipes
-#   just build rosbot             # build one target (rosbot[_xl][_release])
+#   just build rosbot             # build one board (rosbot or rosbot_xl)
 #   just flash rosbot_xl          # build + flash one target
-#   just build-all                # build both boards, debug + release
+#   just build-all                # build both boards
 #   just test                     # host unit tests (CTest)
 #   SERIAL_PORT=/dev/ttyUSB1 just flash rosbot_xl   # override port
 
@@ -73,20 +73,18 @@ mavgen:
       lib/mavlink/dialect/rosbot.xml
     echo "Regenerated bridge/rosbot_mavlink_bridge/mavlink_dialect/. Commit the diff."
 
-# Build one target (default: $FW_TARGET or rosbot) into build/<preset>/.
+# Build one board (default: $FW_TARGET or rosbot) into build/release/.
 build ENV=default_env:
     #!/bin/bash
     set -euo pipefail
     ./scripts/build.sh "{{ENV}}"
 
-# Build both boards in both presets (debug + release).
+# Build both boards.
 build-all:
     #!/bin/bash
     set -euo pipefail
-    for preset in debug release; do
-      [[ -f build/$preset/CMakeCache.txt ]] || cmake -S cmake --preset $preset
-      cmake --build build/$preset
-    done
+    [[ -f build/release/CMakeCache.txt ]] || cmake -S cmake --preset release
+    cmake --build build/release
 
 # Host unit tests for the hardware-free libraries (test/, CTest + Unity).
 test:
@@ -99,7 +97,7 @@ test:
 # Wipe build outputs (firmware and host tests).
 clean:
     #!/bin/bash
-    for dir in build/debug build/release build/test; do
+    for dir in build/release build/test; do
       [[ -d $dir ]] && cmake --build "$dir" --target clean
     done
     true
@@ -152,7 +150,7 @@ stage-snap-firmware:
     dest=bridge/rosbot_mavlink_bridge/firmware
     mkdir -p "$dest"
     for variant in rosbot rosbot_xl; do
-      src="$(./scripts/build.sh "${variant}_release")"
+      src="$(./scripts/build.sh "$variant")"
       cp -v "$src" "$dest/${variant}_mavlink.bin"
     done
     echo "Firmware binaries staged under $dest — snapcraft can pick them up."
@@ -203,8 +201,8 @@ release BUMP="auto":
     # ---- 2. Local build gate ----
     # Catches "this commits builds clean locally" before CI burns time.
     echo "=== local gate: building release images ==="
-    ./scripts/build.sh rosbot_release >/dev/null
-    ./scripts/build.sh rosbot_xl_release >/dev/null
+    ./scripts/build.sh rosbot >/dev/null
+    ./scripts/build.sh rosbot_xl >/dev/null
     echo "build OK"
     echo
 

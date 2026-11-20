@@ -13,12 +13,8 @@ jobs:
       ros_distro: jazzy
 
   build-firmware:
-    name: Build firmware (${{ matrix.preset }})
+    name: Build firmware
     runs-on: ubuntu-latest
-    strategy:
-      fail-fast: false
-      matrix:
-        preset: [debug, release]
     steps:
       - uses: actions/checkout@v6
       - name: Install toolchain
@@ -26,8 +22,8 @@ jobs:
           gcc-arm-none-eabi libnewlib-arm-none-eabi libstdc++-arm-none-eabi-newlib
       - name: Build rosbot and rosbot_xl
         run: |
-          cmake -S cmake --preset ${{ matrix.preset }}
-          cmake --build build/${{ matrix.preset }}
+          cmake -S cmake --preset release
+          cmake --build build/release
 
   test-native:
     name: Host unit tests

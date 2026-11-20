@@ -10,7 +10,7 @@
 #
 # Usage: scripts/flash.sh <target>
 #   e.g. scripts/flash.sh rosbot
-#        scripts/flash.sh rosbot_xl_release
+#        scripts/flash.sh rosbot_xl
 #
 # Environment overrides:
 #   SERIAL_PORT     — skip auto-detection, use this tty
@@ -28,8 +28,8 @@ if [[ -z "$ENV_NAME" ]]; then
 Usage: $0 <target>
 
 Valid targets:
-  rosbot          rosbot_release
-  rosbot_xl       rosbot_xl_release
+  rosbot
+  rosbot_xl
 USAGE
     exit 2
 fi

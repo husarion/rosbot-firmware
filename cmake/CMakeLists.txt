@@ -30,8 +30,9 @@ file(TOUCH ${CMAKE_BINARY_DIR}/COLCON_IGNORE)
 
 set(FW_VERSION "v2.4.0-jazzy")
 
+# One build: the flags below do not depend on the CMake build type.
 if(NOT CMAKE_BUILD_TYPE)
-  set(CMAKE_BUILD_TYPE Debug CACHE STRING "Debug or Release" FORCE)
+  set(CMAKE_BUILD_TYPE Release CACHE STRING "Build type (flags are set below)" FORCE)
 endif()
 
 set(CMAKE_C_STANDARD 11)
@@ -42,7 +43,7 @@ set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
 set(MCU_FLAGS -mcpu=cortex-m4 -mthumb -mfpu=fpv4-sp-d16 -mfloat-abi=hard)
 
-# -O2 in both build types. Against -Os on ROSbot 3 (2026-11-19): idle 96.1 %
+# -O2. Against -Os on ROSbot 3 (2026-11-19): idle 96.1 %
 # vs 94.9 %, link task 2.4 % vs 3.3 % CPU, image 108 KB vs 72 KB of 896 KB.
 set(FW_OPT_LEVEL "2" CACHE STRING "GCC optimisation level for firmware code (s, 2, ...)")
 set(CMAKE_C_FLAGS_DEBUG "")
@@ -57,7 +58,7 @@ add_compile_options(
   -g
   -ffunction-sections
   -fdata-sections
-  $<$<CONFIG:Release>:-funroll-loops>
+  -funroll-loops
   $<$<COMPILE_LANGUAGE:CXX>:-fno-threadsafe-statics>
   $<$<COMPILE_LANGUAGE:CXX>:-fno-rtti>
   $<$<COMPILE_LANGUAGE:CXX>:-fno-exceptions>

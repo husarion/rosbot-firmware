@@ -41,9 +41,8 @@ again about rewriting it in Rust.
 ## Build
 
 ```bash
-just build rosbot             # debug, build/debug/rosbot.bin
-just build rosbot_xl_release  # release, build/release/rosbot_xl.bin
-just build-all                # both boards, both presets
+just build rosbot             # build/release/rosbot.bin
+just build-all                # both boards
 just test                     # host unit tests (CTest, test/)
 ```
 
@@ -115,7 +114,7 @@ do not change the conceptual shape.
   used on the SBC.
 - [scripts/flash.sh](scripts/flash.sh) — thin wrapper around
   `ros2 run rosbot_utils flash_firmware` that picks the right model / port for
-  a target (`rosbot[_xl][_release]`) and flashes the `.bin` that
+  a board (`rosbot` or `rosbot_xl`) and flashes the `.bin` that
   [scripts/build.sh](scripts/build.sh) just built.
 - [cmake/CMakeLists.txt](cmake/CMakeLists.txt),
   [cmake/dependencies.cmake](cmake/dependencies.cmake) — build configuration

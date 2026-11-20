@@ -15,25 +15,12 @@
       ]
     },
     {
-      "label": "ROSbot (Debug): Build and flash firmware",
+      "label": "ROSbot: Build and flash firmware",
       "type": "shell",
       "command": "just",
       "args": [
         "flash",
         "rosbot"
-      ],
-      "group": "build",
-      "problemMatcher": [
-        "$gcc"
-      ]
-    },
-    {
-      "label": "ROSbot (Release): Build and flash firmware",
-      "type": "shell",
-      "command": "just",
-      "args": [
-        "flash",
-        "rosbot_release"
       ],
       "group": "build",
       "problemMatcher": [
@@ -54,7 +41,7 @@
       ]
     },
     {
-      "label": "ROSbot XL (Debug): Build and flash firmware",
+      "label": "ROSbot XL: Build and flash firmware",
       "type": "shell",
       "command": "just",
       "args": [
@@ -67,20 +54,7 @@
       ]
     },
     {
-      "label": "ROSbot XL (Release): Build and flash firmware",
-      "type": "shell",
-      "command": "just",
-      "args": [
-        "flash",
-        "rosbot_xl_release"
-      ],
-      "group": "build",
-      "problemMatcher": [
-        "$gcc"
-      ]
-    },
-    {
-      "label": "Build all (debug + release)",
+      "label": "Build both boards",
       "type": "shell",
       "command": "just",
       "args": [

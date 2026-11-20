@@ -27,6 +27,7 @@ Fixes from the 2026-10 static firmware audit. HW-tested 2026-10-26 on ROSbot 3 a
 ### Changed
 
 - Firmware is built with CMake on STM32Cube HAL, FreeRTOS and ETL instead of PlatformIO and the Arduino core. Release builds use `-O2`. Same MAVLink API; CPU idle went up (ROSbot 3 92.5 → 94.5 %, XL 91.8 → 95.0 %, checked over SWD).
+- One firmware build: the `debug` preset and the `rosbot_release` / `rosbot_xl_release` target names are gone (`just build rosbot`, `just build rosbot_xl`). The image keeps gdb symbols.
 - The MCU runs from the board crystal (8 MHz ROSbot, 24 MHz XL) instead of the internal RC oscillator, with fallback to the RC and Clock Security System. Removes the clock drift that made the bridge re-seed TIMESYNC.
 - ROSbot 2/3 `/buttons`: bit 0 is now button 1 and bit 1 button 2, as labelled on the robot (they were swapped).
 - ROSbot XL battery percentage comes from a load-compensated estimator (coulomb counting corrected by open-circuit voltage) instead of a linear voltage map, so it no longer jumps with load. ROSbot 3 has no current measurement, so it uses the same rest-voltage curve through a low-pass filter; load sag still biases it low while driving. Generic Li-ion curve and resistance, not validated on hardware. The low-battery indicator now trips at a true 20 %, which is earlier than before.

@@ -121,8 +121,8 @@ as-is given the trade-off above.
 `cmake/CMakeLists.txt` builds one executable per board, `rosbot` and
 `rosbot_xl`, from the same compiled `lib/` objects (`fw_common`); each adds
 its `src/<variant>/*.cpp`, and `rosbot_xl` also links `lib/ethernet`
-(`fw_ethernet`). Debug and Release are CMake presets, not separate
-variants.
+(`fw_ethernet`). There is one build (preset `release`); the image that
+goes to the robot also carries gdb symbols.
 
 There is no variant macro (`ROSBOT` / `ROSBOT_XL` were removed): the variant
 is chosen by which `src/<variant>/` is compiled, and those files include
@@ -893,18 +893,18 @@ would take the whole repo for one package and stop before
 `COLCON_IGNORE` written into every build dir keep colcon out.
 
 ```bash
-just build rosbot_xl          # or: scripts/build.sh rosbot_xl_release
+just build rosbot_xl          # or: scripts/build.sh rosbot_xl
 cmake -S cmake --preset release && cmake --build build/release
 just test                     # host unit tests (CTest)
 ```
 
-- Presets (`cmake/CMakePresets.json`): `debug` → `build/debug/`,
-  `release` → `build/release/`. Each builds `rosbot.{elf,bin,map}` and
-  `rosbot_xl.{elf,bin,map}`. Both behave the same (there is no debug-only
-  task any more); release adds `-funroll-loops`.
-- `scripts/build.sh <rosbot|rosbot_xl>[_release]` is the one place that maps
-  the target names `just`, `flash.sh` and the VS Code tasks use onto a
-  preset and a board, and prints the `.bin` path.
+- One preset (`cmake/CMakePresets.json`): `release` → `build/release/`,
+  which builds `rosbot.{elf,bin,map}` and `rosbot_xl.{elf,bin,map}` with
+  `-O2 -funroll-loops -g`. A separate debug build was dropped (2026-11-20)
+  once the debug-only Monitor task was replaced by `/diagnostics`: it
+  differed only by `-funroll-loops`, and gdb works on this one.
+- `scripts/build.sh <rosbot|rosbot_xl>` builds one board for `just`,
+  `flash.sh` and the VS Code tasks, and prints the `.bin` path.
 - Third-party sources are pinned in `cmake/dependencies.cmake` and fetched
   at configure time (network needed once per build dir): STM32CubeF4 HAL
   `v1.8.1`, CMSIS device F4 `v2.6.8`, FreeRTOS-Kernel `V10.3.1`, lwIP
@@ -971,7 +971,7 @@ scope and land in regular SRAM.
 
 ### Optimisation level
 
-`-O2` in both presets (`FW_OPT_LEVEL` cache variable, `-DFW_OPT_LEVEL=s`
+`-O2` (`FW_OPT_LEVEL` cache variable, `-DFW_OPT_LEVEL=s`
 for size). The PlatformIO build ended up at `-Os` (its platform appended
 `-Os` after the env's `-O2`). Measured on ROSbot 3, release, link task at
 1 kHz (2026-11-19):

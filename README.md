@@ -18,8 +18,8 @@ Day-to-day workflow on the ROSbot SBC uses [`just`](./justfile):
 
 ```bash
 just install-deps         # one-time: pymavlink in a venv (mavgen only)
-just build rosbot_xl      # one target: rosbot[_xl], rosbot[_xl]_release
-just build-all            # both boards, debug + release
+just build rosbot_xl      # one board: rosbot or rosbot_xl
+just build-all            # both boards
 just flash rosbot_xl      # builds and flashes via rosbot_utils
 just mavgen               # regen MAVLink dialect headers
 just --list               # every recipe
