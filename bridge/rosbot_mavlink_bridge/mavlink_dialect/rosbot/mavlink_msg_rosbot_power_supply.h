@@ -3,17 +3,18 @@
 
 #define MAVLINK_MSG_ID_ROSBOT_POWER_SUPPLY 11005
 
-
+MAVPACKED(
 typedef struct __mavlink_rosbot_power_supply_t {
  uint16_t design_capacity_mah; /*< [mAh] Pack design capacity.*/
  uint8_t status; /*<  sensor_msgs/BatteryState POWER_SUPPLY_STATUS_* value reported by the power board.*/
  uint8_t charger_type; /*<  0 none, 1 USB-C, 2 inductive, 255 unknown (not reported yet).*/
  uint8_t present; /*<  1 when a battery is connected.*/
-} mavlink_rosbot_power_supply_t;
+ uint16_t capacity_mah; /*< [mAh] Full capacity learnt by the power board (ROSbot XL, PB firmware v1.0.5+), 0 = unknown.*/
+}) mavlink_rosbot_power_supply_t;
 
-#define MAVLINK_MSG_ID_ROSBOT_POWER_SUPPLY_LEN 5
+#define MAVLINK_MSG_ID_ROSBOT_POWER_SUPPLY_LEN 7
 #define MAVLINK_MSG_ID_ROSBOT_POWER_SUPPLY_MIN_LEN 5
-#define MAVLINK_MSG_ID_11005_LEN 5
+#define MAVLINK_MSG_ID_11005_LEN 7
 #define MAVLINK_MSG_ID_11005_MIN_LEN 5
 
 #define MAVLINK_MSG_ID_ROSBOT_POWER_SUPPLY_CRC 162
@@ -25,21 +26,23 @@ typedef struct __mavlink_rosbot_power_supply_t {
 #define MAVLINK_MESSAGE_INFO_ROSBOT_POWER_SUPPLY { \
     11005, \
     "ROSBOT_POWER_SUPPLY", \
-    4, \
+    5, \
     {  { "status", NULL, MAVLINK_TYPE_UINT8_T, 0, 2, offsetof(mavlink_rosbot_power_supply_t, status) }, \
          { "charger_type", NULL, MAVLINK_TYPE_UINT8_T, 0, 3, offsetof(mavlink_rosbot_power_supply_t, charger_type) }, \
          { "present", NULL, MAVLINK_TYPE_UINT8_T, 0, 4, offsetof(mavlink_rosbot_power_supply_t, present) }, \
          { "design_capacity_mah", NULL, MAVLINK_TYPE_UINT16_T, 0, 0, offsetof(mavlink_rosbot_power_supply_t, design_capacity_mah) }, \
+         { "capacity_mah", NULL, MAVLINK_TYPE_UINT16_T, 0, 5, offsetof(mavlink_rosbot_power_supply_t, capacity_mah) }, \
          } \
 }
 #else
 #define MAVLINK_MESSAGE_INFO_ROSBOT_POWER_SUPPLY { \
     "ROSBOT_POWER_SUPPLY", \
-    4, \
+    5, \
     {  { "status", NULL, MAVLINK_TYPE_UINT8_T, 0, 2, offsetof(mavlink_rosbot_power_supply_t, status) }, \
          { "charger_type", NULL, MAVLINK_TYPE_UINT8_T, 0, 3, offsetof(mavlink_rosbot_power_supply_t, charger_type) }, \
          { "present", NULL, MAVLINK_TYPE_UINT8_T, 0, 4, offsetof(mavlink_rosbot_power_supply_t, present) }, \
          { "design_capacity_mah", NULL, MAVLINK_TYPE_UINT16_T, 0, 0, offsetof(mavlink_rosbot_power_supply_t, design_capacity_mah) }, \
+         { "capacity_mah", NULL, MAVLINK_TYPE_UINT16_T, 0, 5, offsetof(mavlink_rosbot_power_supply_t, capacity_mah) }, \
          } \
 }
 #endif
@@ -54,10 +57,11 @@ typedef struct __mavlink_rosbot_power_supply_t {
  * @param charger_type  0 none, 1 USB-C, 2 inductive, 255 unknown (not reported yet).
  * @param present  1 when a battery is connected.
  * @param design_capacity_mah [mAh] Pack design capacity.
+ * @param capacity_mah [mAh] Full capacity learnt by the power board (ROSbot XL, PB firmware v1.0.5+), 0 = unknown.
  * @return length of the message in bytes (excluding serial stream start sign)
  */
 static inline uint16_t mavlink_msg_rosbot_power_supply_pack(uint8_t system_id, uint8_t component_id, mavlink_message_t* msg,
-                               uint8_t status, uint8_t charger_type, uint8_t present, uint16_t design_capacity_mah)
+                               uint8_t status, uint8_t charger_type, uint8_t present, uint16_t design_capacity_mah, uint16_t capacity_mah)
 {
 #if MAVLINK_NEED_BYTE_SWAP || !MAVLINK_ALIGNED_FIELDS
     char buf[MAVLINK_MSG_ID_ROSBOT_POWER_SUPPLY_LEN];
@@ -65,6 +69,7 @@ static inline uint16_t mavlink_msg_rosbot_power_supply_pack(uint8_t system_id, u
     _mav_put_uint8_t(buf, 2, status);
     _mav_put_uint8_t(buf, 3, charger_type);
     _mav_put_uint8_t(buf, 4, present);
+    _mav_put_uint16_t(buf, 5, capacity_mah);
 
         memcpy(_MAV_PAYLOAD_NON_CONST(msg), buf, MAVLINK_MSG_ID_ROSBOT_POWER_SUPPLY_LEN);
 #else
@@ -73,6 +78,7 @@ static inline uint16_t mavlink_msg_rosbot_power_supply_pack(uint8_t system_id, u
     packet.status = status;
     packet.charger_type = charger_type;
     packet.present = present;
+    packet.capacity_mah = capacity_mah;
 
         memcpy(_MAV_PAYLOAD_NON_CONST(msg), &packet, MAVLINK_MSG_ID_ROSBOT_POWER_SUPPLY_LEN);
 #endif
@@ -92,10 +98,11 @@ static inline uint16_t mavlink_msg_rosbot_power_supply_pack(uint8_t system_id, u
  * @param charger_type  0 none, 1 USB-C, 2 inductive, 255 unknown (not reported yet).
  * @param present  1 when a battery is connected.
  * @param design_capacity_mah [mAh] Pack design capacity.
+ * @param capacity_mah [mAh] Full capacity learnt by the power board (ROSbot XL, PB firmware v1.0.5+), 0 = unknown.
  * @return length of the message in bytes (excluding serial stream start sign)
  */
 static inline uint16_t mavlink_msg_rosbot_power_supply_pack_status(uint8_t system_id, uint8_t component_id, mavlink_status_t *_status, mavlink_message_t* msg,
-                               uint8_t status, uint8_t charger_type, uint8_t present, uint16_t design_capacity_mah)
+                               uint8_t status, uint8_t charger_type, uint8_t present, uint16_t design_capacity_mah, uint16_t capacity_mah)
 {
 #if MAVLINK_NEED_BYTE_SWAP || !MAVLINK_ALIGNED_FIELDS
     char buf[MAVLINK_MSG_ID_ROSBOT_POWER_SUPPLY_LEN];
@@ -103,6 +110,7 @@ static inline uint16_t mavlink_msg_rosbot_power_supply_pack_status(uint8_t syste
     _mav_put_uint8_t(buf, 2, status);
     _mav_put_uint8_t(buf, 3, charger_type);
     _mav_put_uint8_t(buf, 4, present);
+    _mav_put_uint16_t(buf, 5, capacity_mah);
 
         memcpy(_MAV_PAYLOAD_NON_CONST(msg), buf, MAVLINK_MSG_ID_ROSBOT_POWER_SUPPLY_LEN);
 #else
@@ -111,6 +119,7 @@ static inline uint16_t mavlink_msg_rosbot_power_supply_pack_status(uint8_t syste
     packet.status = status;
     packet.charger_type = charger_type;
     packet.present = present;
+    packet.capacity_mah = capacity_mah;
 
         memcpy(_MAV_PAYLOAD_NON_CONST(msg), &packet, MAVLINK_MSG_ID_ROSBOT_POWER_SUPPLY_LEN);
 #endif
@@ -133,11 +142,12 @@ static inline uint16_t mavlink_msg_rosbot_power_supply_pack_status(uint8_t syste
  * @param charger_type  0 none, 1 USB-C, 2 inductive, 255 unknown (not reported yet).
  * @param present  1 when a battery is connected.
  * @param design_capacity_mah [mAh] Pack design capacity.
+ * @param capacity_mah [mAh] Full capacity learnt by the power board (ROSbot XL, PB firmware v1.0.5+), 0 = unknown.
  * @return length of the message in bytes (excluding serial stream start sign)
  */
 static inline uint16_t mavlink_msg_rosbot_power_supply_pack_chan(uint8_t system_id, uint8_t component_id, uint8_t chan,
                                mavlink_message_t* msg,
-                                   uint8_t status,uint8_t charger_type,uint8_t present,uint16_t design_capacity_mah)
+                                   uint8_t status,uint8_t charger_type,uint8_t present,uint16_t design_capacity_mah,uint16_t capacity_mah)
 {
 #if MAVLINK_NEED_BYTE_SWAP || !MAVLINK_ALIGNED_FIELDS
     char buf[MAVLINK_MSG_ID_ROSBOT_POWER_SUPPLY_LEN];
@@ -145,6 +155,7 @@ static inline uint16_t mavlink_msg_rosbot_power_supply_pack_chan(uint8_t system_
     _mav_put_uint8_t(buf, 2, status);
     _mav_put_uint8_t(buf, 3, charger_type);
     _mav_put_uint8_t(buf, 4, present);
+    _mav_put_uint16_t(buf, 5, capacity_mah);
 
         memcpy(_MAV_PAYLOAD_NON_CONST(msg), buf, MAVLINK_MSG_ID_ROSBOT_POWER_SUPPLY_LEN);
 #else
@@ -153,6 +164,7 @@ static inline uint16_t mavlink_msg_rosbot_power_supply_pack_chan(uint8_t system_
     packet.status = status;
     packet.charger_type = charger_type;
     packet.present = present;
+    packet.capacity_mah = capacity_mah;
 
         memcpy(_MAV_PAYLOAD_NON_CONST(msg), &packet, MAVLINK_MSG_ID_ROSBOT_POWER_SUPPLY_LEN);
 #endif
@@ -171,7 +183,7 @@ static inline uint16_t mavlink_msg_rosbot_power_supply_pack_chan(uint8_t system_
  */
 static inline uint16_t mavlink_msg_rosbot_power_supply_encode(uint8_t system_id, uint8_t component_id, mavlink_message_t* msg, const mavlink_rosbot_power_supply_t* rosbot_power_supply)
 {
-    return mavlink_msg_rosbot_power_supply_pack(system_id, component_id, msg, rosbot_power_supply->status, rosbot_power_supply->charger_type, rosbot_power_supply->present, rosbot_power_supply->design_capacity_mah);
+    return mavlink_msg_rosbot_power_supply_pack(system_id, component_id, msg, rosbot_power_supply->status, rosbot_power_supply->charger_type, rosbot_power_supply->present, rosbot_power_supply->design_capacity_mah, rosbot_power_supply->capacity_mah);
 }
 
 /**
@@ -185,7 +197,7 @@ static inline uint16_t mavlink_msg_rosbot_power_supply_encode(uint8_t system_id,
  */
 static inline uint16_t mavlink_msg_rosbot_power_supply_encode_chan(uint8_t system_id, uint8_t component_id, uint8_t chan, mavlink_message_t* msg, const mavlink_rosbot_power_supply_t* rosbot_power_supply)
 {
-    return mavlink_msg_rosbot_power_supply_pack_chan(system_id, component_id, chan, msg, rosbot_power_supply->status, rosbot_power_supply->charger_type, rosbot_power_supply->present, rosbot_power_supply->design_capacity_mah);
+    return mavlink_msg_rosbot_power_supply_pack_chan(system_id, component_id, chan, msg, rosbot_power_supply->status, rosbot_power_supply->charger_type, rosbot_power_supply->present, rosbot_power_supply->design_capacity_mah, rosbot_power_supply->capacity_mah);
 }
 
 /**
@@ -199,7 +211,7 @@ static inline uint16_t mavlink_msg_rosbot_power_supply_encode_chan(uint8_t syste
  */
 static inline uint16_t mavlink_msg_rosbot_power_supply_encode_status(uint8_t system_id, uint8_t component_id, mavlink_status_t* _status, mavlink_message_t* msg, const mavlink_rosbot_power_supply_t* rosbot_power_supply)
 {
-    return mavlink_msg_rosbot_power_supply_pack_status(system_id, component_id, _status, msg,  rosbot_power_supply->status, rosbot_power_supply->charger_type, rosbot_power_supply->present, rosbot_power_supply->design_capacity_mah);
+    return mavlink_msg_rosbot_power_supply_pack_status(system_id, component_id, _status, msg,  rosbot_power_supply->status, rosbot_power_supply->charger_type, rosbot_power_supply->present, rosbot_power_supply->design_capacity_mah, rosbot_power_supply->capacity_mah);
 }
 
 /**
@@ -210,10 +222,11 @@ static inline uint16_t mavlink_msg_rosbot_power_supply_encode_status(uint8_t sys
  * @param charger_type  0 none, 1 USB-C, 2 inductive, 255 unknown (not reported yet).
  * @param present  1 when a battery is connected.
  * @param design_capacity_mah [mAh] Pack design capacity.
+ * @param capacity_mah [mAh] Full capacity learnt by the power board (ROSbot XL, PB firmware v1.0.5+), 0 = unknown.
  */
 #ifdef MAVLINK_USE_CONVENIENCE_FUNCTIONS
 
-static inline void mavlink_msg_rosbot_power_supply_send(mavlink_channel_t chan, uint8_t status, uint8_t charger_type, uint8_t present, uint16_t design_capacity_mah)
+static inline void mavlink_msg_rosbot_power_supply_send(mavlink_channel_t chan, uint8_t status, uint8_t charger_type, uint8_t present, uint16_t design_capacity_mah, uint16_t capacity_mah)
 {
 #if MAVLINK_NEED_BYTE_SWAP || !MAVLINK_ALIGNED_FIELDS
     char buf[MAVLINK_MSG_ID_ROSBOT_POWER_SUPPLY_LEN];
@@ -221,6 +234,7 @@ static inline void mavlink_msg_rosbot_power_supply_send(mavlink_channel_t chan, 
     _mav_put_uint8_t(buf, 2, status);
     _mav_put_uint8_t(buf, 3, charger_type);
     _mav_put_uint8_t(buf, 4, present);
+    _mav_put_uint16_t(buf, 5, capacity_mah);
 
     _mav_finalize_message_chan_send(chan, MAVLINK_MSG_ID_ROSBOT_POWER_SUPPLY, buf, MAVLINK_MSG_ID_ROSBOT_POWER_SUPPLY_MIN_LEN, MAVLINK_MSG_ID_ROSBOT_POWER_SUPPLY_LEN, MAVLINK_MSG_ID_ROSBOT_POWER_SUPPLY_CRC);
 #else
@@ -229,6 +243,7 @@ static inline void mavlink_msg_rosbot_power_supply_send(mavlink_channel_t chan, 
     packet.status = status;
     packet.charger_type = charger_type;
     packet.present = present;
+    packet.capacity_mah = capacity_mah;
 
     _mav_finalize_message_chan_send(chan, MAVLINK_MSG_ID_ROSBOT_POWER_SUPPLY, (const char *)&packet, MAVLINK_MSG_ID_ROSBOT_POWER_SUPPLY_MIN_LEN, MAVLINK_MSG_ID_ROSBOT_POWER_SUPPLY_LEN, MAVLINK_MSG_ID_ROSBOT_POWER_SUPPLY_CRC);
 #endif
@@ -242,7 +257,7 @@ static inline void mavlink_msg_rosbot_power_supply_send(mavlink_channel_t chan, 
 static inline void mavlink_msg_rosbot_power_supply_send_struct(mavlink_channel_t chan, const mavlink_rosbot_power_supply_t* rosbot_power_supply)
 {
 #if MAVLINK_NEED_BYTE_SWAP || !MAVLINK_ALIGNED_FIELDS
-    mavlink_msg_rosbot_power_supply_send(chan, rosbot_power_supply->status, rosbot_power_supply->charger_type, rosbot_power_supply->present, rosbot_power_supply->design_capacity_mah);
+    mavlink_msg_rosbot_power_supply_send(chan, rosbot_power_supply->status, rosbot_power_supply->charger_type, rosbot_power_supply->present, rosbot_power_supply->design_capacity_mah, rosbot_power_supply->capacity_mah);
 #else
     _mav_finalize_message_chan_send(chan, MAVLINK_MSG_ID_ROSBOT_POWER_SUPPLY, (const char *)rosbot_power_supply, MAVLINK_MSG_ID_ROSBOT_POWER_SUPPLY_MIN_LEN, MAVLINK_MSG_ID_ROSBOT_POWER_SUPPLY_LEN, MAVLINK_MSG_ID_ROSBOT_POWER_SUPPLY_CRC);
 #endif
@@ -256,7 +271,7 @@ static inline void mavlink_msg_rosbot_power_supply_send_struct(mavlink_channel_t
   is usually the receive buffer for the channel, and allows a reply to an
   incoming message with minimum stack space usage.
  */
-static inline void mavlink_msg_rosbot_power_supply_send_buf(mavlink_message_t *msgbuf, mavlink_channel_t chan,  uint8_t status, uint8_t charger_type, uint8_t present, uint16_t design_capacity_mah)
+static inline void mavlink_msg_rosbot_power_supply_send_buf(mavlink_message_t *msgbuf, mavlink_channel_t chan,  uint8_t status, uint8_t charger_type, uint8_t present, uint16_t design_capacity_mah, uint16_t capacity_mah)
 {
 #if MAVLINK_NEED_BYTE_SWAP || !MAVLINK_ALIGNED_FIELDS
     char *buf = (char *)msgbuf;
@@ -264,6 +279,7 @@ static inline void mavlink_msg_rosbot_power_supply_send_buf(mavlink_message_t *m
     _mav_put_uint8_t(buf, 2, status);
     _mav_put_uint8_t(buf, 3, charger_type);
     _mav_put_uint8_t(buf, 4, present);
+    _mav_put_uint16_t(buf, 5, capacity_mah);
 
     _mav_finalize_message_chan_send(chan, MAVLINK_MSG_ID_ROSBOT_POWER_SUPPLY, buf, MAVLINK_MSG_ID_ROSBOT_POWER_SUPPLY_MIN_LEN, MAVLINK_MSG_ID_ROSBOT_POWER_SUPPLY_LEN, MAVLINK_MSG_ID_ROSBOT_POWER_SUPPLY_CRC);
 #else
@@ -272,6 +288,7 @@ static inline void mavlink_msg_rosbot_power_supply_send_buf(mavlink_message_t *m
     packet->status = status;
     packet->charger_type = charger_type;
     packet->present = present;
+    packet->capacity_mah = capacity_mah;
 
     _mav_finalize_message_chan_send(chan, MAVLINK_MSG_ID_ROSBOT_POWER_SUPPLY, (const char *)packet, MAVLINK_MSG_ID_ROSBOT_POWER_SUPPLY_MIN_LEN, MAVLINK_MSG_ID_ROSBOT_POWER_SUPPLY_LEN, MAVLINK_MSG_ID_ROSBOT_POWER_SUPPLY_CRC);
 #endif
@@ -324,6 +341,16 @@ static inline uint16_t mavlink_msg_rosbot_power_supply_get_design_capacity_mah(c
 }
 
 /**
+ * @brief Get field capacity_mah from rosbot_power_supply message
+ *
+ * @return [mAh] Full capacity learnt by the power board (ROSbot XL, PB firmware v1.0.5+), 0 = unknown.
+ */
+static inline uint16_t mavlink_msg_rosbot_power_supply_get_capacity_mah(const mavlink_message_t* msg)
+{
+    return _MAV_RETURN_uint16_t(msg,  5);
+}
+
+/**
  * @brief Decode a rosbot_power_supply message into a struct
  *
  * @param msg The message to decode
@@ -336,6 +363,7 @@ static inline void mavlink_msg_rosbot_power_supply_decode(const mavlink_message_
     rosbot_power_supply->status = mavlink_msg_rosbot_power_supply_get_status(msg);
     rosbot_power_supply->charger_type = mavlink_msg_rosbot_power_supply_get_charger_type(msg);
     rosbot_power_supply->present = mavlink_msg_rosbot_power_supply_get_present(msg);
+    rosbot_power_supply->capacity_mah = mavlink_msg_rosbot_power_supply_get_capacity_mah(msg);
 #else
         uint8_t len = msg->len < MAVLINK_MSG_ID_ROSBOT_POWER_SUPPLY_LEN? msg->len : MAVLINK_MSG_ID_ROSBOT_POWER_SUPPLY_LEN;
         memset(rosbot_power_supply, 0, MAVLINK_MSG_ID_ROSBOT_POWER_SUPPLY_LEN);

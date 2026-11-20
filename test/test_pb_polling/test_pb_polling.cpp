@@ -78,6 +78,23 @@ void test_charger_type_prefers_usb_c() {
   TEST_ASSERT_EQUAL_UINT8(0, pbChargerTypeFromFlags(0x3C));
 }
 
+void test_soc_comes_from_pb_1_0_5_and_newer() {
+  TEST_ASSERT_FALSE(pbReportsSoc(""));
+  TEST_ASSERT_FALSE(pbReportsSoc("v1.0.4"));
+  TEST_ASSERT_TRUE(pbReportsSoc("v1.0.5"));
+  TEST_ASSERT_TRUE(pbReportsSoc("v1.1.0"));
+}
+
+void test_pb_soc_byte_decoding() {
+  TEST_ASSERT_EQUAL_FLOAT(0.0f, pbSocFraction(0));
+  TEST_ASSERT_EQUAL_FLOAT(0.57f, pbSocFraction(57));
+  TEST_ASSERT_EQUAL_FLOAT(1.0f, pbSocFraction(100));
+  TEST_ASSERT_TRUE(std::isnan(pbSocFraction(101)));
+  TEST_ASSERT_TRUE(std::isnan(pbSocFraction(255)));
+  TEST_ASSERT_EQUAL_FLOAT(8.85f, pbCapacityAh(8850));
+  TEST_ASSERT_TRUE(std::isnan(pbCapacityAh(0)));
+}
+
 int main() {
   UNITY_BEGIN();
   RUN_TEST(test_pb_before_1_0_3_is_polled_once_a_second);
@@ -86,5 +103,7 @@ int main() {
   RUN_TEST(test_slow_pb_spaces_side_requests_half_a_period_apart);
   RUN_TEST(test_fast_pb_polls_flags_once_a_second);
   RUN_TEST(test_charger_type_prefers_usb_c);
+  RUN_TEST(test_soc_comes_from_pb_1_0_5_and_newer);
+  RUN_TEST(test_pb_soc_byte_decoding);
   return UNITY_END();
 }

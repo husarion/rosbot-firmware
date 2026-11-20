@@ -62,8 +62,16 @@ wire side.
   whenever an adapter is attached and never `FULL`.
 - `present` — false when the power board sees no battery; `voltage`,
   `current`, `percentage` and `temperature` are NaN then.
-- `percentage` and `charge` — estimated (no fuel gauge); `charge` is
-  `percentage × design_capacity`.
+- `percentage` — estimated (no fuel gauge). With power board firmware
+  >= v1.0.5 the power board counts it: coulomb counting anchored at full
+  charge, at the cut-off voltage and on a rested pack, kept across power
+  cycles. With older power board firmware the MCU estimates it from voltage
+  and current and starts over at every MCU boot. NaN until the first
+  estimate.
+- `capacity` — full capacity learnt by the power board (v1.0.5+, starts at
+  the measured 9.0 Ah); NaN otherwise.
+- `charge` — `percentage × capacity`, or `× design_capacity` when `capacity`
+  is NaN.
 - `design_capacity` — 7.8 Ah on ROSbot XL (3S3P × 2.6 Ah), 3.5 Ah on ROSbot 3
   (3S1P × 3.5 Ah). Bridges paired with older firmware always report 7.8.
 - `cell_voltage` — one NaN per series cell: the pack has no per-cell
@@ -78,7 +86,7 @@ wire side.
 
 On the wire this rides in `BATTERY_STATUS` `temperature` (cdegC) and
 `charge_state` / `fault_bitmask`, plus `ROSBOT_POWER_SUPPLY` (11005) for
-status, presence, design capacity and charger type. `battery/charger_type`
+status, presence, design capacity, learnt capacity and charger type. `battery/charger_type`
 needs firmware and bridge from the same release; with an older firmware it is
 never published and `battery` keeps `UNKNOWN` status and `present = true`.
 

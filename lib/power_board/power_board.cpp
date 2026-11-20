@@ -272,7 +272,9 @@ void PowerBoard::handleBoardInfo(const Frame& frame) {
 //  args[ 3.. 4] -> temperature      (int16,  deg C)
 //  args[ 5.. 6] -> discharge current(uint16, x0.001 A)
 //  args[ 7.. 8] -> charge current   (uint16, x0.001 A)
+//  args[ 9..10] -> learnt capacity  (uint16, mAh; PB >= v1.0.5, else 0)
 //  args[11..12] -> design capacity  (uint16, x0.001 Ah)
+//  args[13]     -> SoC %            (PB >= v1.0.5: 0-100, 255 unknown; else 0)
 //  args[14]     -> status
 //  args[15]     -> health (v1.0.3+: 0 ok, 1..8 = BATTERY_HEALTH_*)
 //  args[16]     -> technology
@@ -299,6 +301,7 @@ void PowerBoard::handleBatteryState(const Frame& frame) {
     data_.present = false;
     data_.current = NAN;
     data_.percentage = NAN;
+    data_.capacity_ah = NAN;
     data_.temperature = NAN;
     data_.status = a[14];
     data_.health = healthFromReply(a[15]);
@@ -322,7 +325,8 @@ void PowerBoard::handleBatteryState(const Frame& frame) {
   const float charge = readU16(&a[7]) * 0.001f;
   data_.current = charge - discharge;
 
-  // Percentage is not part of this protocol; estimate it from V and I.
+  // The local estimate keeps running so a fallback is warm if the PB value
+  // turns out unusable.
   const uint32_t now_ms = millis();
   const float dt_s =
       (last_battery_ms_ == 0)
@@ -330,6 +334,11 @@ void PowerBoard::handleBatteryState(const Frame& frame) {
           : static_cast<float>(now_ms - last_battery_ms_) * 0.001f;
   last_battery_ms_ = now_ms;
   data_.percentage = soc_.update(data_.voltage, data_.current, dt_s);
+  data_.capacity_ah = NAN;
+  if (pbReportsSoc(board_info_.firmware_version)) {
+    data_.percentage = pbSocFraction(a[13]);
+    data_.capacity_ah = pbCapacityAh(readU16(&a[9]));
+  }
 
   data_.status = a[14];
   data_.health = healthFromReply(a[15]);

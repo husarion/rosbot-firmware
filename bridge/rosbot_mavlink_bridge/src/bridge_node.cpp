@@ -15,6 +15,7 @@
 #include "rosbot_mavlink_bridge/bridge_node.hpp"
 
 #include <chrono>
+#include <cmath>
 #include <cstring>
 
 #include "rclcpp/qos.hpp"
@@ -486,6 +487,9 @@ void BridgeNode::onBatteryStatus(const mavlink_message_t & msg)
     if (ps.design_capacity_mah != 0) {
       out.design_capacity = static_cast<float>(ps.design_capacity_mah) * 1e-3f;
     }
+    if (ps.capacity_mah != 0) {
+      out.capacity = static_cast<float>(ps.capacity_mah) * 1e-3f;
+    }
     out.present = ps.present != 0;
   }
   if (!out.present) {
@@ -496,7 +500,8 @@ void BridgeNode::onBatteryStatus(const mavlink_message_t & msg)
     out.temperature = nan;
   }
   // Estimated, like percentage: the pack has no fuel gauge.
-  out.charge = out.percentage * out.design_capacity;
+  out.charge = out.percentage *
+    (std::isnan(out.capacity) ? out.design_capacity : out.capacity);
   out.location = "internal";
   out.serial_number = "";
   battery_pub_->publish(out);

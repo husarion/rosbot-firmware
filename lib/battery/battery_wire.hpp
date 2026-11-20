@@ -54,6 +54,13 @@ inline int16_t currentToCentiAmps(float amps) {
   return ca == kCurrentUnknown ? kCurrentUnknown - 1 : static_cast<int16_t>(ca);
 }
 
+// ROSBOT_POWER_SUPPLY.capacity_mah: 0 = unknown.
+inline uint16_t capacityToMah(float amp_hours) {
+  if (!std::isfinite(amp_hours) || amp_hours <= 0.0f) return 0;
+  const long mah = std::lround(amp_hours * 1000.0f);
+  return mah > UINT16_MAX ? UINT16_MAX : static_cast<uint16_t>(mah);
+}
+
 inline int16_t temperatureToCentiDegrees(float celsius) {
   if (!std::isfinite(celsius) || celsius < -300.0f || celsius > 300.0f) {
     return kTemperatureUnknown;

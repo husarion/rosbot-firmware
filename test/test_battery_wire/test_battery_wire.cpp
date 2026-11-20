@@ -74,6 +74,13 @@ void test_current_keeps_sign_and_avoids_unknown_marker() {
                           battery_wire::currentToCentiAmps(-1e6f));
 }
 
+void test_capacity_is_mah_or_zero() {
+  TEST_ASSERT_EQUAL_UINT16(8850, battery_wire::capacityToMah(8.85f));
+  TEST_ASSERT_EQUAL_UINT16(0, battery_wire::capacityToMah(NAN));
+  TEST_ASSERT_EQUAL_UINT16(0, battery_wire::capacityToMah(-1.0f));
+  TEST_ASSERT_EQUAL_UINT16(UINT16_MAX, battery_wire::capacityToMah(100.0f));
+}
+
 int main() {
   UNITY_BEGIN();
   RUN_TEST(test_temperature_is_centidegrees);
@@ -83,5 +90,6 @@ int main() {
   RUN_TEST(test_unspecified_failure_is_unhealthy_without_fault_bit);
   RUN_TEST(test_unknown_and_out_of_range_are_not_provided);
   RUN_TEST(test_current_keeps_sign_and_avoids_unknown_marker);
+  RUN_TEST(test_capacity_is_mah_or_zero);
   return UNITY_END();
 }

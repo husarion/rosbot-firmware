@@ -45,6 +45,8 @@
       <field type="uint8_t"  name="charger_type">0 none, 1 USB-C, 2 inductive, 255 unknown (not reported yet).</field>
       <field type="uint8_t"  name="present">1 when a battery is connected.</field>
       <field type="uint16_t" name="design_capacity_mah" units="mAh">Pack design capacity.</field>
+      <extensions/>
+      <field type="uint16_t" name="capacity_mah" units="mAh">Full capacity learnt by the power board (ROSbot XL, PB firmware v1.0.5+), 0 = unknown.</field>
     </message>
 
     <message id="11010" name="ROSBOT_WHEEL_SETPOINTS">

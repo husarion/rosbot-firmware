@@ -21,6 +21,7 @@ Fixes from the 2026-10 static firmware audit. HW-tested 2026-10-26 on ROSbot 3 a
 
 - Faster power board polling (ROSbot XL): with PB firmware >= v1.0.3 the battery state is requested at the HwMonitor rate (10 Hz) instead of 1 Hz, and the battery publisher no longer gates at 1 s (it publishes whatever the HwMonitor queue delivers, so a slower PB still gives 1 Hz). Older PB firmware is polled as before.
 - ROSbot XL `battery` carries the power board's charging status, battery presence and design capacity, and a new `battery/charger_type` topic tells USB-C from inductive charging (read from the power board flags, cmd 20, which every PB firmware answers). New `ROSBOT_POWER_SUPPLY` (11005) message; needs the matching bridge.
+- ROSbot XL `battery.percentage` comes from the power board when its firmware is >= v1.0.5 (coulomb counter with full, empty and rest anchors, kept across power cycles), with the learnt full capacity in `battery.capacity`. Older PB firmware keeps the MCU estimate. `ROSBOT_POWER_SUPPLY` gains the `capacity_mah` extension field; older bridges ignore it.
 - `_power_board_info` service (ROSbot XL): power board firmware and hardware version, new `ROSBOT_POWER_BOARD` (11021) message and `MAV_CMD_USER_3`. Needs the matching bridge; an older bridge simply does not expose the service.
 
 ### Changed
