@@ -850,8 +850,9 @@ just test                     # host unit tests (CTest)
 - Third-party sources are pinned in `cmake/dependencies.cmake` and fetched
   at configure time (network needed once per build dir): STM32CubeF4 HAL
   `v1.8.1`, CMSIS device F4 `v2.6.8`, FreeRTOS-Kernel `V10.3.1`, lwIP
-  `2.2.1` (stm32duino packaging), ETL `20.49.0`. The FetchContent projects are only downloaded, never added, so
-  their own CMake files do not matter.
+  2.2.1 with ST's port headers (`stm32_mw_lwip` `v2.2.1_20250804`), ETL
+  `20.49.0`. The FetchContent projects are only downloaded, never added,
+  so their own CMake files do not matter.
 - Our code builds with `-Wall -Wextra -Wfatal-errors -Wdouble-promotion
   -Wshadow` and is warning-free; vendor code is compiled with `-w`.
 - `lib/` is compiled once as OBJECT libraries, not archives: an archive

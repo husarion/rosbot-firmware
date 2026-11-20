@@ -39,8 +39,8 @@ FetchContent_Declare(freertos_kernel
   GIT_SHALLOW TRUE
   ${_no_cmake})
 FetchContent_Declare(lwip
-  GIT_REPOSITORY https://github.com/stm32duino/LwIP
-  GIT_TAG 2.2.1
+  GIT_REPOSITORY https://github.com/STMicroelectronics/stm32_mw_lwip
+  GIT_TAG v2.2.1_20250804
   GIT_SHALLOW TRUE
   ${_no_cmake})
 FetchContent_Declare(etl
@@ -118,7 +118,8 @@ file(GLOB _lwip_src CONFIGURE_DEPENDS
 add_library(lwip STATIC ${_lwip_src} ${lwip_SOURCE_DIR}/src/netif/ethernet.c)
 target_include_directories(lwip SYSTEM PUBLIC
   ${REPO_ROOT}/include
-  ${lwip_SOURCE_DIR}/src)
+  ${lwip_SOURCE_DIR}/src/include
+  ${lwip_SOURCE_DIR}/system)
 target_compile_options(lwip PRIVATE -w)
 
 add_library(etl INTERFACE)
