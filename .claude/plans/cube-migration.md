@@ -308,7 +308,7 @@ jazzy i 3–10 przebiegów nowego (`-O2`, link 1 kHz). Szczegóły, surowe dane 
 
 | Metryka | jazzy | nowy | Lepiej |
 |---|---:|---:|---|
-| CPU idle, bez jazdy | 92,8 % | 96,1 % | nowy |
+| CPU idle, bez jazdy | 92,8 % | 96,1 % (finalny z `/diagnostics`: 95,3 %) | nowy |
 | CPU idle, jazda kół | 92,6 % | 95,9 % | nowy |
 | Task Imu | 3,75 % | 0,43 % | nowy |
 | Task Range | 1,26 % | 0,32 % | nowy |
@@ -329,6 +329,13 @@ jazzy i 3–10 przebiegów nowego (`-O2`, link 1 kHz). Szczegóły, surowe dane 
 | Śledzenie prędkości kół, watchdog | 2,95 rad/s, 548 ms | 2,93–2,98 rad/s, 546–551 ms | = |
 | Szum żyroskopu w spoczynku | 0,0013 rad/s | 0,0013 rad/s | = |
 | Diagnostyka w release | brak | `/diagnostics` 1 Hz | nowy |
+
+Kontrola przez ST-LINK (2026-11-20, próbkowanie PC przez SWD w stanie
+ustalonym, 2 × ~26 tys. próbek na wersję): jazzy 92,5 % idle (firmware
+raportuje 92,7 %), nowy z HEAD 94,4–94,7 % (raportuje 95,3 %); różnica
+to czas przerwań. Metoda z tabeli jest poprawna; wiersz „nowy” był
+sprzed diagnostyki, finalny firmware ma 95,3 %. Jazzy spędza 2,8 % czasu
+w aktywnym czekaniu na I2C, nowy 0 %.
 
 Max odstęp na hoście: nowy firmware wysyła próbkę zaraz po odczycie, więc
 zmienny czas odczytu BNO055 (clock stretching, 1,5–7 ms) widać w czasie
