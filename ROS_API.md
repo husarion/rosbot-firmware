@@ -29,7 +29,7 @@ wire side.
 | Rb  | Rb XL | TOPIC                  | DESCRIPTION                                                 |
 | --- | ----- | ---------------------- | ----------------------------------------------------------- |
 | ✅  | ✅    | **`battery`**          | Battery status. <br /> _[sensor_msgs/BatteryState]_         |
-| ✅  | ✅    | **`buttons`**          | Button states. <br /> _[std_msgs/UInt8]_                    |
+| ✅  | ✅    | **`buttons`**          | Pressed buttons, bit 0 = button 1, bit 1 = button 2 (ROSbot; XL has only button 1). <br /> _[std_msgs/UInt8]_ |
 | ✅  | ✅    | **`/diagnostics`**     | MCU and hardware health, 1 Hz — see below. Absolute name (like `diagnostic_updater`); the namespace is in the status names. <br /> _[diagnostic_msgs/DiagnosticArray]_ |
 | ❌  | ✅    | **`led_strip`**        | LED strip command. <br /> _[sensor_msgs/Image]_             |
 | ✅  | ✅    | **`leds`**             | Rear panel LEDs command. <br /> _[std_msgs/UInt8]_          |

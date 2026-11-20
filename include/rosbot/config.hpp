@@ -287,7 +287,8 @@ inline QueueHandle_t imu_queue;
 inline QueueHandle_t joint_state_queue;
 inline QueueHandle_t ranges_queue;
 
-inline constexpr Pin buttons_pins[] = {PUSH_BUTTON2, PUSH_BUTTON1};
+// Bit i of /buttons is the button labelled i + 1 on the robot.
+inline constexpr Pin buttons_pins[] = {PUSH_BUTTON1, PUSH_BUTTON2};
 
 // Publisher configs live in src/rosbot/mavlink_entities.cpp.
 

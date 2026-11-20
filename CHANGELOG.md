@@ -24,6 +24,7 @@ Fixes from the 2026-10 static firmware audit. HW-tested 2026-10-26 on ROSbot 3 a
 
 ### Changed
 
+- ROSbot 2/3 `/buttons`: bit 0 is now button 1 and bit 1 button 2, as labelled on the robot (they were swapped).
 - ROSbot XL battery percentage comes from a load-compensated estimator (coulomb counting corrected by open-circuit voltage) instead of a linear voltage map, so it no longer jumps with load. ROSbot 3 has no current measurement, so it uses the same rest-voltage curve through a low-pass filter; load sag still biases it low while driving. Generic Li-ion curve and resistance, not validated on hardware. The low-battery indicator now trips at a true 20 %, which is earlier than before.
 
 ### Fixed
