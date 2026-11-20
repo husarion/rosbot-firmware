@@ -456,11 +456,30 @@ ustalenie ~110 ms (szczyt ~150–175 rad/s²). Z rampą jak z kontrolera
 możliwa „blokada” przy zerze: zadana 0 kasuje całkę, a wypełnienie <1 %
 włącza Brake (zwarcie). Poprawka regulatora czeka na decyzję.
 
-Nie testowane na XL (wymaga człowieka albo SBC): przycisk wyłączenia na
-power boardzie i żądanie HTTP, ponowne wpięcie kabla Ethernet, porty
-LAN9303 (SBC ↔ tylny port), gesty przycisku przy starcie, osie IMU przy
-przechylaniu, wentylator przy realnym wzroście temperatury, `just flash` z
-SBC.
+Testy przy robocie XL (2026-11-20, HEAD z kwarcem, Rafał przy robocie):
+- przycisk 1 w `/buttons` (6 z 6 wciśnięć), zielona dioda z `/leds`, taśma
+  LED czerwony/zielony/niebieski;
+- osie IMU zgodne z REP-103: lewy bok w dół → roll −37°, przód w dół →
+  pitch +29°, obrót w lewo → yaw +72°, gyro z tymi samymi znakami;
+- gest krótki przy starcie: zielona od razu na stałe, powitanie `FW:` na
+  tylnym FTDI, MAVLink po UDP wraca ~10 s po resecie;
+- gest długi: okno kalibracji IMU. Błąd z jazzy: zapisane offsety
+  wgrywane przed oknem dawały od razu „fully calibrated” i zapisywały je
+  ponownie, ponowna kalibracja była niemożliwa. Poprawione w `934a2f2`
+  (offsety po oknie, tylko gdy się nie udało); na HW czerwona miga, okno
+  startuje od accel 0 / mag 0, timeout po 120 s, stare offsety wracają
+  (`has_saved` = 1). Na ROSbocie ten sam kod, bez testu na HW;
+- wypięcie kabla Ethernet na ~10 s: bridge zgłasza rozłączenie po 3 s,
+  link wraca sam po wpięciu, bez resetu MCU;
+- wentylator: NTC 33,1 °C → 29 %, 36,8 °C → 43 %, 29,6 °C → stop, zgodnie
+  ze wzorem 30 °C/20 % … 55 °C/100 %;
+- przycisk wyłączenia na power boardzie: `GET /shutdown` do 192.168.77.2:3000
+  od razu, power board wyłącza robota ~10 s później. Uwaga: snap rosbot na
+  laptopie deweloperskim (`rosbot.db-server`) po tym żądaniu wyłącza
+  laptop; na czas testu `sudo snap stop rosbot.db-server`.
+
+Nie testowane na XL: porty LAN9303 (SBC ↔ tylny port) i `just flash` z SBC
+(brak SBC).
 
 ## Strategia testów
 
