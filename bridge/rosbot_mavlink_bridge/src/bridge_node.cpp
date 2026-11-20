@@ -77,10 +77,9 @@ BridgeNode::BridgeNode(
   // Topics + QoS: see ROS_API.md.
   battery_pub_ = this->create_publisher<sensor_msgs::msg::BatteryState>(
       "battery", bestEffortDepth1());
-  // Absolute, like diagnostic_updater: aggregators listen on /diagnostics;
-  // the namespace goes into hardware_id instead.
+  // Relative, like rosbot_ros, which remaps /diagnostics to diagnostics.
   diagnostics_pub_ = this->create_publisher<diagnostic_msgs::msg::DiagnosticArray>(
-      "/diagnostics", 10);
+      "diagnostics", 10);
   const std::string ns = this->get_namespace();
   diagnostics_mapper_ = std::make_unique<DiagnosticsMapper>(
       ns == "/" ? std::string("rosbot_mcu") : "rosbot_mcu " + ns);

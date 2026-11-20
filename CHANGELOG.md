@@ -19,7 +19,7 @@ Fixes from the 2026-10 static firmware audit. HW-tested 2026-10-26 on ROSbot 3 a
 
 ### Added
 
-- `/diagnostics` (diagnostic_msgs, 1 Hz): MCU health from release firmware (CPU idle, stack and heap headroom, reset and fault cause, clock source, IMU/range/I2C/motor/link counters, power state). Status names carry the robot namespace. New `ROSBOT_DIAGNOSTICS` message; needs the matching bridge.
+- `diagnostics` (diagnostic_msgs, 1 Hz, in the robot namespace): MCU health from release firmware (CPU idle, stack and heap headroom, reset and fault cause, clock source, IMU/range/I2C/motor/link counters, power state). Status names carry the robot namespace. New `ROSBOT_DIAGNOSTICS` message; needs the matching bridge.
 - ROSbot range sensors that stop answering are re-initialised (1 s to 16 s backoff) instead of staying dead until reboot.
 - Faster power board polling (ROSbot XL): with PB firmware >= v1.0.3 the battery state is requested at the HwMonitor rate (10 Hz) instead of 1 Hz, and the battery publisher no longer gates at 1 s (it publishes whatever the HwMonitor queue delivers, so a slower PB still gives 1 Hz). Older PB firmware is polled as before.
 - `_power_board_info` service (ROSbot XL): power board firmware and hardware version, new `ROSBOT_POWER_BOARD` (11021) message and `MAV_CMD_USER_3`. Needs the matching bridge; an older bridge simply does not expose the service.

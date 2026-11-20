@@ -30,7 +30,7 @@ wire side.
 | --- | ----- | ---------------------- | ----------------------------------------------------------- |
 | ✅  | ✅    | **`battery`**          | Battery status. <br /> _[sensor_msgs/BatteryState]_         |
 | ✅  | ✅    | **`buttons`**          | Pressed buttons, bit 0 = button 1, bit 1 = button 2 (ROSbot; XL has only button 1). <br /> _[std_msgs/UInt8]_ |
-| ✅  | ✅    | **`/diagnostics`**     | MCU and hardware health, 1 Hz — see below. Absolute name (like `diagnostic_updater`); the namespace is in the status names. <br /> _[diagnostic_msgs/DiagnosticArray]_ |
+| ✅  | ✅    | **`diagnostics`**      | MCU and hardware health, 1 Hz — see below. <br /> _[diagnostic_msgs/DiagnosticArray]_ |
 | ❌  | ✅    | **`led_strip`**        | LED strip command. <br /> _[sensor_msgs/Image]_             |
 | ✅  | ✅    | **`leds`**             | Rear panel LEDs command. <br /> _[std_msgs/UInt8]_          |
 | ✅  | ❌    | **`ranges`**           | Range sensor data. <br /> _[sensor_msgs/Range]_             |
@@ -54,10 +54,11 @@ wire side.
 ## Diagnostics
 
 The MCU sends its health once a second and the bridge publishes it on
-`/diagnostics`, readable with `rqt_robot_monitor` or a
+`diagnostics` (in the robot namespace, like the other rosbot_ros
+diagnostics), readable with `rqt_robot_monitor` or a
 `diagnostic_aggregator`. Every status is named `<hardware_id>: <part>`, where
-`hardware_id` is `rosbot_mcu` (or `rosbot_mcu <namespace>`, so robots sharing
-a ROS domain do not overwrite each other's statuses). Counters
+`hardware_id` is `rosbot_mcu` (or `rosbot_mcu <namespace>`, so statuses of
+several robots stay apart once merged). Counters
 are since the MCU booted; "recent" means the counter grew within the last
 10 s (an MCU reboot starts the history over).
 
