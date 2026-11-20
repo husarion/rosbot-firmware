@@ -303,8 +303,8 @@ Ta sama płytka CORE2, bateria 12,3 V, koła w powietrzu. Link MAVLink przez
 tylny USB (FTDI) dzięki testowej fladze `FORCE_DIAGNOSTIC_LINK`, ta sama w
 obu wersjach; obciążenie CPU, zapas stosów i opóźnienie „próbka → kolejka
 TX” z identycznej instrumentacji w obu kopiach. Mediany z 6 przebiegów
-jazzy i 3–10 przebiegów nowego (`-O2`, link 1 kHz). Szczegóły i skrypty:
-scratchpad sesji (nie w repo).
+jazzy i 3–10 przebiegów nowego (`-O2`, link 1 kHz). Szczegóły, surowe dane i skrypty:
+`~/Husarion/reports/rosbot/cube-fw-metrics-2026-11-19.html` (+ katalog obok; nie w repo).
 
 | Metryka | jazzy | nowy | Lepiej |
 |---|---:|---:|---|

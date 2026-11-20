@@ -35,6 +35,9 @@ Do not spawn sub-agents for typical tasks. The user is on a plan with
 spawn cost — handle work inline. Reserve sub-agents for explicitly named
 specialists (e.g. independent code review).
 
+`bridge/rosbot_mavlink_bridge` stays C++ (Rafał, 2026-11-20): do not ask
+again about rewriting it in Rust.
+
 ## Build
 
 ```bash
