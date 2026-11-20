@@ -24,7 +24,6 @@ static constexpr uint8_t kLostAfterTimeouts = 2;
 RangeVl53l0x::RangeVl53l0x(const RangeVl53l0xConfig& cfg) : cfg_(cfg) {}
 
 void RangeVl53l0x::init() {
-  lost_ = false;
   timeout_streak_ = 0;
   not_ready_streak_ = 0;
   powerOn();
@@ -34,7 +33,12 @@ void RangeVl53l0x::init() {
   driver_ = VL53L0X();
   driver_.setBus(cfg_.bus);
   driver_.setTimeout(cfg_.timeout_ms);
-  if (!driver_.init()) return;
+  // A sensor that once answered stays lost until it answers again, so
+  // RangeArray keeps retrying; one absent since boot is never retried.
+  if (!driver_.init()) {
+    lost_ = answered_once_;
+    return;
+  }
 
   driver_.setAddress(cfg_.i2c_address);
   driver_.setSignalRateLimit(cfg_.signal_rate_limit);
@@ -46,6 +50,8 @@ void RangeVl53l0x::init() {
   driver_.startContinuous(cfg_.continuous_period_ms);
 
   initialized_ = true;
+  answered_once_ = true;
+  lost_ = false;
 }
 
 void RangeVl53l0x::update() {

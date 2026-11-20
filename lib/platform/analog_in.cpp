@@ -64,6 +64,7 @@ uint16_t AnalogIn::read() const {
   const uint32_t primask = __get_PRIMASK();
   __disable_irq();
   ADC1->SQR3 = channel_;
+  (void)ADC1->DR;  // a late EOC from a timed-out read must not pass as ours
   ADC1->CR2 |= ADC_CR2_SWSTART;
   uint32_t polls = 0;
   while (!(ADC1->SR & ADC_SR_EOC) && ++polls < kEocPollLimit) {

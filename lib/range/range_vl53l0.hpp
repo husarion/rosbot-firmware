@@ -54,6 +54,7 @@ class RangeVl53l0x : public RangeInterface {
   const RangeVl53l0xConfig cfg_;
   bool initialized_ = false;
   bool lost_ = false;
+  bool answered_once_ = false;
   uint8_t timeout_streak_ = 0;
   uint32_t not_ready_streak_ = 0;
   uint32_t timeouts_ = 0;

@@ -50,6 +50,8 @@ McuHealth sampleMcuHealth() {
   uint32_t total_run_time = 0;
   const UBaseType_t n =
       uxTaskGetSystemState(status, kMaxTasks, &total_run_time);
+  // 0 means more tasks than kMaxTasks: CPU and stack figures would go blank.
+  configASSERT(n != 0);
 
   TaskSample cur[kMaxTasks];
   for (UBaseType_t i = 0; i < n; ++i) {
