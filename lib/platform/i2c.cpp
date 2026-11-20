@@ -269,6 +269,11 @@ void I2c::armTransfer() {
   xfer_ok_ = false;
   irq_count_ = 0;
   storm_ = false;
+  // Only a DMA read that completes clears this. Left set by one that timed
+  // out, it makes HAL's start-bit handler turn on DMAEN for the next IT
+  // write, whose TXE is then never served: an IRQ storm on every later read
+  // (HW, ROSbot XL, 2026-11-20). Seq_Receive_DMA sets it again.
+  dma_rx_.XferCpltCallback = nullptr;
   __HAL_I2C_CLEAR_FLAG(
       &handle_, I2C_FLAG_BERR | I2C_FLAG_ARLO | I2C_FLAG_AF | I2C_FLAG_OVR);
   setIrqsEnabled(true);
