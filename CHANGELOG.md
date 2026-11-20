@@ -26,7 +26,7 @@ Fixes from the 2026-10 static firmware audit. HW-tested 2026-10-26 on ROSbot 3 a
 
 ### Changed
 
-- ROSbot XL battery percentage comes from a load-compensated estimator (coulomb counting corrected by open-circuit voltage) instead of a linear voltage map, so it no longer jumps with load. ROSbot 3 has no current measurement, so it uses the same rest-voltage curve through a low-pass filter; load sag still biases it low while driving. ROSbot XL uses an OCV curve measured on its pack (HCP18650ZC-3S3P, 2026-11-19); the generic Li-ion curve read ~10 % at a real 50 %. ROSbot 3 keeps the generic curve (not measured). The low-battery indicator now trips at a true 20 %.
+- ROSbot XL battery percentage comes from a load-compensated estimator (coulomb counting corrected by open-circuit voltage) instead of a linear voltage map, so it no longer jumps with load. ROSbot 3 has no current measurement, so it uses the same rest-voltage curve through a low-pass filter; load sag still biases it low while driving. ROSbot XL uses an OCV curve measured on its pack (HCP18650ZC-3S3P, 2026-11-19); the generic Li-ion curve read ~10 % at a real 50 %. ROSbot 3 uses the same XL curve (its own 3500 mAh cells were not measured; at 10.9 V it reads ~42 % instead of 6 %). The low-battery indicator now trips at a true 20 %.
 
 ### Fixed
 - ROSbot 3 `battery.design_capacity` is 3.5 Ah (3S1P, 3500 mAh cells) instead of the ROSbot XL value 7.8 Ah.
