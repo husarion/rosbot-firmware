@@ -116,7 +116,7 @@ as-is given the trade-off above.
 
 ---
 
-## Variant model — how the dispatcher works
+## Variant model
 
 `cmake/CMakeLists.txt` builds one executable per board, `rosbot` and
 `rosbot_xl`, from the same compiled `lib/` objects (`fw_common`); each adds
@@ -124,7 +124,7 @@ its `src/<variant>/*.cpp`, and `rosbot_xl` also links `lib/ethernet`
 (`fw_ethernet`). There is one build (preset `release`); the image that
 goes to the robot also carries gdb symbols.
 
-There is no variant macro (`ROSBOT` / `ROSBOT_XL` were removed): the variant
+There is no variant macro: the variant
 is chosen by which `src/<variant>/` is compiled, and those files include
 `include/<variant>/config.hpp` directly. `lib/` never includes a variant
 config and has no variant `#ifdef`; a type only one variant uses lives next
@@ -167,9 +167,6 @@ Layers, bottom-up:
    (`lib/mavlink/`).
 6. **Variant entry** in `src/<variant>/`.
 
-micro-ROS (`micro_ros_arduino`) used to sit here as a second, boot-selected
-upstream stack; it was removed after v2.1.0-jazzy (see git history).
-
 ---
 
 ## Library layer (`lib/`)
@@ -190,7 +187,7 @@ upstream stack; it was removed after v2.1.0-jazzy (see git history).
 | `vl53l0x/` | Vendored Pololu VL53L0X driver (MIT, `LICENSE.txt`), bus calls on `platform::I2c`; excluded from pre-commit |
 | `motor/` | `MotorInterface`, `MotorHiZ`, `MotorArray` (Hi-Z PWM control) |
 | `persistent_config/` | Namespace + BNO055 calibration offsets, stored as one record appended to a log in flash sector 11. Appending is safe at runtime; only the 1-3 s sector erase (sector full) is deferred to a pre-scheduler `save()` — see "IMU calibration" |
-| `platform/` | Hardware access on CMSIS registers / HAL (it replaced the Arduino API). `freertos.hpp`: the kernel headers the code uses. `i2c`: HAL I2C master at 400 kHz with a per-bus mutex; once the scheduler runs every transfer uses HAL's IT API (DMA for the IMU block read) and the task sleeps until it ends; bus recovery after faults; owns the I2C IRQs and HAL I2C callbacks. `spi`: blocking SPI master. `device.hpp`: CMSIS device header + HAL. `uart`: USART1/2/3 with DMA TX/RX, see "UART driver and DMA stream map". `analog_in`: ADC1 single-shot 10-bit reads (battery, NTC, motor current), serialized with masked IRQs. `timer`: timer clock enable / kernel clock for any TIM, and `PwmOutput` (motor PWM). `clock`: TIM5 free-running at 1 MHz (also the FreeRTOS run-time stats source, see `time_base.cpp`) (`init()` is the first line of `setup()`), `delayUs()`, `delayMs()` (blocks the task once the scheduler runs). `Pin`: constexpr GPIO (`Pin{Port::E, 2}`) with output/input/analog setup under masked IRQs, used for every pure-GPIO pin in both board configs (timer and ADC pins too, via `setAsAlternate` / `AnalogIn`); host-tested against a fake register block in `test/native_stubs/stm32f4xx.h` |
+| `platform/` | Hardware access on CMSIS registers / HAL. `freertos.hpp`: the kernel headers the code uses. `i2c`: HAL I2C master at 400 kHz with a per-bus mutex; once the scheduler runs every transfer uses HAL's IT API (DMA for the IMU block read) and the task sleeps until it ends; bus recovery after faults; owns the I2C IRQs and HAL I2C callbacks. `spi`: blocking SPI master. `device.hpp`: CMSIS device header + HAL. `uart`: USART1/2/3 with DMA TX/RX, see "UART driver and DMA stream map". `analog_in`: ADC1 single-shot 10-bit reads (battery, NTC, motor current), serialized with masked IRQs. `timer`: timer clock enable / kernel clock for any TIM, and `PwmOutput` (motor PWM). `clock`: TIM5 free-running at 1 MHz (also the FreeRTOS run-time stats source, see `time_base.cpp`) (`init()` is the first line of `setup()`), `delayUs()`, `delayMs()` (blocks the task once the scheduler runs). `Pin`: constexpr GPIO (`Pin{Port::E, 2}`) with output/input/analog setup under masked IRQs, used for every pure-GPIO pin in both board configs (timer and ADC pins too, via `setAsAlternate` / `AnalogIn`); host-tested against a fake register block in `test/native_stubs/stm32f4xx.h` |
 | `pid/` | PID controller with feedforward, anti-windup, dead-zone boost |
 | `power_board/` | UART protocol to rosbot_xl power board MCU (battery state) |
 | `range/` | `RangeInterface` + `RangeVl53l0x` + `RangeArray` (rosbot only) |
@@ -375,9 +372,8 @@ state; `COMMAND_LONG` `MAV_CMD_USER_2` with `param1` = 1 start / 0 stop /
    robots read identically with one LED's worth of vocabulary.
 
    `kChangeTransport` is wired to `g_comm_mgr`'s `useDiagnosticCondition`
-   callback (now just returns the precomputed bool — no more live GPIO
-   polling from inside that callback, and no `onDiagnosticSelected`
-   callback either, since BootOption already lit the LED).
+   callback, which returns the precomputed bool (no GPIO polling there;
+   BootOption has already lit the LED).
 2. On `kCalibrateImu`, firmware polls `ImuBno055::getCalibrationStatus()`
    in a blocking loop (RED_LED blinking, via `imu_calibration_boot::run()`
    in `lib/imu/imu_calibration_boot.*` — shared by both variants) while
@@ -492,9 +488,8 @@ co-managed.
 
 ### Serial / UDP transport (event-driven)
 
-The Arduino paths these replaced (`EthernetUDP`, `Stream::readBytes`)
-busy-polled, keeping the link task in the Running state and burning CPU.
-The transports in `lib/mavlink/transport/`:
+The transports in `lib/mavlink/transport/` never busy-poll, so the link
+task does not burn CPU while waiting:
 
 - **`mavlink_udp_transport`** (rosbot_xl) — uses the lwIP raw API. The
   `udp_recv()` callback (`ethernet_scheduler` task)
@@ -518,9 +513,9 @@ Every unrecoverable error ends in `fatalError()` (`lib/fault/`):
 `configASSERT`, the FreeRTOS stack-overflow hook (`configCHECK_FOR_STACK_OVERFLOW
 2`) and malloc-failed hook, and HardFault/MemManage/BusFault/UsageFault. It
 resets the MCU — every pin goes Hi-Z, so the motor drivers stop driving —
-after halting on a breakpoint if a debugger is attached. Spinning in place,
-which is what the old `configASSERT` and STM32FreeRTOS's fault handlers did,
-leaves the timers generating the last PWM duty with no watchdog running.
+after halting on a breakpoint if a debugger is attached. Spinning in place
+instead would leave the timers generating the last PWM duty with no
+watchdog running.
 
 The fault vectors pass the stacked exception frame to
 `faultFromException()` (`boards/stm32f407/system.cpp`). Before resetting,
@@ -548,14 +543,6 @@ board, Ethernet). Modules expose counters only through getters
 `MotorArray::faultEvents()`, `MavlinkNode::txDropped()/rxErrors()`), so the
 library layer does not depend on diagnostics.
 
-Tested on ROSbot 3 with injected faults (test-only build flags, 2026-11-19):
-IMU unpowered → IMU ERROR; a range sensor switched off at runtime → ERROR;
-SDA shorted 30 ms → "Sensor bus was reset"; 40 B stack headroom → MCU ERROR;
-`configASSERT(0)` and an undefined instruction → reset with "assert" and
-"hard fault at <PC>" (PC resolved to the injecting line); forced battery
-low → Power WARN; garbage on RX → Link WARN; wheel reversals → Motors
-ERROR/WARN/OK as faults come and go.
-
 ### lwIP ownership (rosbot_xl)
 
 lwIP is built with `NO_SYS=1` (`include/lwipopts.h`), so it is not
@@ -571,13 +558,11 @@ the scheduler, `sendShutdownRequest()` in `src/rosbot_xl/rtos.cpp` uses a
 critical section. Follow-up work (send, close) belongs in the lwIP
 callbacks.
 
-Until migration step 8 this was STM32Ethernet's job; its `ethernetif.cpp`
-(ST, with Husarion's LAN9303 support) is vendored in `lib/ethernet/` and
-the rest (static IP with a /24 netmask and `.1` gateway, one
-`dhcp_inform`) lives in `ethernet.cpp`. HAL ETH is the Legacy (pre-1.27
+`ethernetif.cpp` (ST, with Husarion's LAN9303 support) is vendored in
+`lib/ethernet/`; the rest (static IP with a /24 netmask and `.1` gateway,
+one `dhcp_inform`) lives in `ethernet.cpp`. HAL ETH is the Legacy (pre-1.27
 API) driver; the LAN9303 PHY register remaps it uses live in
-`boards/stm32f407/stm32f4xx_hal_conf.h`, copied from the Husarion fork of
-the Arduino core.
+`boards/stm32f407/stm32f4xx_hal_conf.h`.
 
 ### FreeRTOS-safe IRQ priorities
 
@@ -590,12 +575,8 @@ NVIC priorities reset to 0 (the highest), above
 priority would crash the kernel on its first `*FromISR` call. Set the
 priority before `NVIC_EnableIRQ`, as `lib/platform/` does.
 
-The I2C, UART TX and IMU DMA IRQs in `lib/platform/` are all set to 5.
-Before migration step 7 the I2C IRQs belonged to Arduino Wire (priority 2),
-and lowering them for the BNO055 DMA path broke Wire's own IT transfers
-(HW-verified 2026-08-26), which forced a separate `enableDmaReads()` after
-boot calibration. `platform::I2c` uses its IRQs for every transfer at
-priority 5 from the start, so that ordering constraint is gone.
+The I2C, UART TX and IMU DMA IRQs in `lib/platform/` are all set to 5,
+from init on, for every transfer.
 
 ### I2C transfers: IT mode, never polled under the scheduler
 
@@ -603,12 +584,12 @@ Before the scheduler starts (boot, sensor init) transfers are HAL's polled
 calls. After that every transfer is HAL IT (`Mem_Write_IT`,
 `Mem_Read_IT`, `Master_Transmit_IT`/`Receive_IT`) or, for the 32-byte IMU
 block, a sequential IT register write + DMA read, and the calling task
-sleeps on a semaphore. Measured on ROSbot 3 (2026-11-19):
+sleeps on a semaphore. Why:
 
 - The polled calls busy-wait the whole transfer, and the BNO055 stretches
-  the clock: `HAL_I2C_Mem_Read_DMA`'s polled address phase alone cost
-  230-450 us per IMU read (DWT), the Imu task 3.75 % CPU. Now 0.43 %.
-  The Range task (VL53L0X polling) dropped from 1.25 % to 0.32 %.
+  the clock: `HAL_I2C_Mem_Read_DMA`'s polled address phase alone costs
+  230-450 us per IMU read (DWT, ROSbot 3), which put the Imu task at
+  3.75 % CPU; in IT mode it is 0.43 %.
 - The polled calls have steps that must follow within a byte time (for a
   1-byte read, STOP right after ADDR is cleared; HAL 1.8.1 does not mask
   IRQs there). In IT mode the ISR does them.
@@ -638,8 +619,7 @@ Standard HAL pattern (`platform::I2c` uses it; `platform::Uart` does the same on
    `xSemaphoreGiveFromISR + portYIELD_FROM_ISR`.
 
 `platform::I2c` follows this pattern and also handles
-`HAL_I2C_ErrorCallback` (a NACK wakes the reader at once), which was
-impossible while Arduino Wire's `twi.c` defined it.
+`HAL_I2C_ErrorCallback` (a NACK wakes the reader at once).
 
 ### I2C fault recovery
 
@@ -649,11 +629,10 @@ BUSY flag or a handle left mid-transfer, BERR, ARLO) returns false and then
 `HAL_DMA_Abort`, `HAL_I2C_DeInit`, `clearI2cBus()` (`i2c_bus_clear.hpp`: up
 to nine 100 kHz SCL pulses on open-drain GPIO until SDA is released, then a
 STOP, UM10204 3.1.16), RCC reset and re-init. A plain NACK (`AF`, e.g. a
-probe of an absent VL53L0X) does not trigger it. Before this, a timed-out
-IMU DMA read called `HAL_I2C_Master_Abort_IT`, which HAL 1.8.1 ignores for
-a `Mem_Read` (`MODE_MEM`), leaving the handle `BUSY_RX`; one stuck device
-then failed every later transfer on the bus until reboot (on XL also the
-EEPROM). `HAL_I2C_DeInit` also clears the handle lock that HAL's
+probe of an absent VL53L0X) does not trigger it. A timed-out read cannot
+just call `HAL_I2C_Master_Abort_IT`: HAL 1.8.1 ignores it for a `Mem_Read`
+(`MODE_MEM`) and leaves the handle `BUSY_RX`, so one stuck device would
+fail every later transfer on the bus (on XL also the EEPROM). `HAL_I2C_DeInit` also clears the handle lock that HAL's
 `IsDeviceReady` leaves taken on its `HAL_TIMEOUT` path.
 
 The bus IRQs are enabled only around IT/DMA transfers, and a transfer gets
@@ -676,22 +655,22 @@ In the first ~120 ms after the switch to fusion mode the BNO055 stretches
 the clock long enough that 46 bytes took more than 8 ms: with an 8 ms read
 limit every XL boot failed ~12 reads (TCIF set, the DMA IRQ pending, i.e.
 the transfer ended just after the timeout) and reset the bus each time.
-`kReadTimeoutMs` is 25 ms since (0 failures, HW 2026-11-20).
+Hence `kReadTimeoutMs = 25` (0 failures, HW 2026-11-20).
 
 ### Range sensors that lose power
 
-On ROSbot 3, after the board browned out with the wheels stalled against a
-wall, all four VL53L0X timed out on every read until the next MCU reset:
-the Pololu driver polls the result register until data is ready, a sensor
-that NACKs made each read spin on I2C for the whole 500 ms timeout
-(`/ranges` 2 Hz, ~50 % CPU), and nothing re-initialised a sensor. Now
-(HW-tested 2026-11-20 by pulsing every XSHUT low for 50 ms at runtime):
+A brown-out (seen on ROSbot 3 with the wheels stalled against a wall) puts
+every VL53L0X back at its default address, and a sensor that NACKs would
+make the Pololu driver's wait-for-data loop spin on I2C for its whole
+500 ms timeout. How the firmware handles it (HW-tested 2026-11-20 by
+pulsing every XSHUT low for 50 ms at runtime):
 
 - `RangeVl53l0x::update()` reads the interrupt status once instead of the
   driver's wait. NACK, or no data for `timeout_ms`, counts as a timeout;
-  two in a row mark the sensor lost and it is no longer read. Without the
-  wait the Range task also stopped costing ~25 % CPU when the sensors'
-  measurement phase drifted from the task's, which a re-init caused.
+  two in a row mark the sensor lost and it is no longer read. Not waiting
+  also keeps the Range task cheap when the sensors' measurement phase
+  drifts from the task's, as it does after a re-init (the wait cost
+  ~25 % CPU).
 - `RangeArray::update(now_ms)` re-runs `init()` for the whole array while a
   sensor is lost, 1 s after the loss and then doubling up to 16 s: a
   brown-out puts every sensor back at the default address, so XSHUT order
@@ -704,75 +683,38 @@ that NACKs made each read spin on I2C for the whole 500 ms timeout
 
 ### I2C bus speed (400 kHz)
 
-`platform::I2c::init()` sets 400 kHz with the 2:1 fast-mode duty cycle.
-Arduino's `setClock(400000)` picked 16/9, and with PCLK1 = 42 MHz CCR
-rounded to 5, i.e. 336 kHz (read back from `I2C->CCR`); 2:1 divides evenly
-(CCR 35 = exactly 400 kHz) and stays inside the fast-mode tLOW/tHIGH
-minimums. Under Wire, libraries calling `Wire.begin()` (Adafruit_BNO055)
-also silently reset the bus to 100 kHz, and at 100 kHz the IMU DMA read
-took 5-9 ms against a 4 ms timeout, nearly every read timed out and the
-published orientation froze (ROSbot 3, 2026-09). At 400 kHz: 1.6-6.9 ms,
-0 timeouts in 2181 reads. The spread is the BNO055's clock stretching plus
-task wake-up jitter, hence `kReadTimeoutMs = 8` (under the 10 ms task
-period). `update()` reports whether it read a fresh sample, and `imuTask`
-publishes only those.
+`platform::I2c::init()` sets 400 kHz with the 2:1 fast-mode duty cycle:
+with PCLK1 = 42 MHz, CCR 35 gives exactly 400 kHz and stays inside the
+fast-mode tLOW/tHIGH minimums (the 16/9 duty would round CCR to 5, i.e.
+336 kHz). The bus speed matters for the IMU: the 46-byte read takes
+1.6-6.9 ms at 400 kHz (BNO055 clock stretching plus task wake-up jitter)
+and 5-9 ms at 100 kHz, too long for a 10 ms task period. `update()` reports
+whether it read a fresh sample, and `imuTask` publishes only those.
 
-### Timing measured on HW (2026-09)
+### Task timing
 
-Every task was instrumented (DWT cycle counter, wake-to-wake period and
-execution time, per-task CPU from the FreeRTOS run-time stats) on
-`rosbot_release` / `rosbot_xl_release`. All tasks hit their configured
-rate; idle is ~92% on ROSbot 3 and ~89% on ROSbot XL. Things that did not
-look right, and what changed:
+Checked on HW with every task instrumented (DWT cycle counter, wake-to-wake
+period, per-task CPU from the FreeRTOS run-time stats): all tasks hit their
+configured rate. Rules that keep it that way:
 
-- **Queue-fed MAVLink publishers dropped samples.** `publish()` moved
-  `last_pub_ms_` before it knew the queue held anything, so a call that
-  came a moment early closed the gate for a whole period and the next
-  sample was overwritten in its depth-1 queue. With the 5 ms link loop of
-  ROSbot 3, `_imu/data` arrived at 82 Hz instead of 100 (XL's 1 ms loop hid
-  it). The gate now moves only on a real publish, and IMU / joint state /
-  ranges use `period_ms = 0`: the producing task already sets the rate.
-- **`PowerBoard::update()` spun for 100 ms.** It called `readBytes()`,
-  which busy-waits for the stream timeout after the last byte, so
-  `hwMonitorTask` ran 119 ms once a second. It now drains what the UART
-  holds and keeps a partial frame; the reply is picked up on a later
-  10 Hz tick. The board-info request goes half a second after the battery
-  one: sending both at once lost replies on HW. The cause is unconfirmed —
-  it was put down to a 64 B RX buffer, but the Husarion core fork's ring was
-  512 B (now `platform::Uart`'s 512 B circular DMA buffer).
-- `rangeTask` and `ledStripTask` used `vTaskDelay`, so their period grew by
-  the execution time (range: 101 ms instead of 100).
-- The run-time stats timer ticked at 50 kHz, not 100 kHz: TIM5 is on APB1
-  (84 MHz timer clock). Since migration step 3 the stats read
-  `time_boot_us() >> 4` (62.5 kHz) and TIM5 is the 1 MHz system clock.
+- Queue-fed MAVLink publishers move their rate gate only on a real
+  publish; IMU, joint state and ranges use `period_ms = 0`, because the
+  producing task already sets the rate. A gate that moved on an early call
+  with an empty queue dropped samples (`_imu/data` at 82 Hz instead of 100
+  on ROSbot 3).
+- Periodic tasks use `vTaskDelayUntil`, so their period does not grow by
+  the execution time.
+- `PowerBoard::update()` never blocks: it drains what the UART holds and
+  keeps a partial frame, and the reply is picked up on a later tick (see
+  "Power board" for the request spacing).
+- The run-time stats read `time_boot_us() >> 4` (62.5 kHz); TIM5 is the
+  1 MHz system clock.
 
-Checked and fine: motor PWM 20 kHz on all four timers, XL fan PWM 25 kHz,
+Checked on HW: motor PWM 20 kHz on all four timers, XL fan PWM 25 kHz,
 encoder timers in encoder mode, USART1 923 kbaud for a 921.6 kbaud link
 (+0.16%). The rear-panel USART3 on ROSbot 3 runs +1.27% fast — the best
 BRR gets at 42 MHz, still inside UART tolerance. The XL LED-strip SPI
 asks for 4 MHz and gets 2.625 MHz (the next power-of-two divider).
-
-### Stack and CPU measured on HW (2026-10, `devel` debug build)
-
-Minimum free stack per task (`uxTaskGetStackHighWaterMark`, from the Monitor
-task the firmware had then) while driving a test profile on a stand; IDLE
-from the run-time stats. The same numbers now come from `/diagnostics`
-(smallest headroom and its task, CPU idle). For the 2026-11 comparison
-against jazzy see "Measured on HW against jazzy 2.4.0" below.
-
-| ROSbot 3 | free | ROSbot XL rev 1.2 | free |
-|---|---:|---|---:|
-| Battery | 216 B | HwMonitor | 276 B |
-| Range | 396 B | MotorControl | 488 B |
-| LedIndicator | 380 B | Imu | 500 B |
-| Imu | 596 B | Monitor | 564 B |
-| MotorControl | 600 B | LedStrip | 572 B |
-| Monitor | 656 B | Shutdown | 772 B |
-| Link | 3504 B | Link | 3304 B |
-| IDLE | 92 % | IDLE | 88–91 % |
-
-XL `MotorControl` uses ~536 B of its 1 KB: with the old 576 B (`Stack::XXS`)
-the margin would have been ~40 B. Free heap: 89 KB (ROSbot 3), 44 KB (XL).
 
 ### Measured on HW against jazzy 2.4.0 (2026-11)
 
@@ -908,9 +850,7 @@ just test                     # host unit tests (CTest)
 - Third-party sources are pinned in `cmake/dependencies.cmake` and fetched
   at configure time (network needed once per build dir): STM32CubeF4 HAL
   `v1.8.1`, CMSIS device F4 `v2.6.8`, FreeRTOS-Kernel `V10.3.1`, lwIP
-  `2.2.1` (stm32duino packaging), ETL `20.49.0`. These are the versions the
-  PlatformIO build linked, so the switch changed the build, not the
-  drivers. The FetchContent projects are only downloaded, never added, so
+  `2.2.1` (stm32duino packaging), ETL `20.49.0`. The FetchContent projects are only downloaded, never added, so
   their own CMake files do not matter.
 - Our code builds with `-Wall -Wextra -Wfatal-errors -Wdouble-promotion
   -Wshadow` and is warning-free; vendor code is compiled with `-w`.
@@ -940,7 +880,7 @@ just test                     # host unit tests (CTest)
 `SystemInit` (FPU, `VTOR` = flash) and the static constructors. The first
 constructor (`boardInit`, priority 101) sets NVIC priority grouping 4, runs
 `HAL_Init()` and the clock tree, so every other constructor already sees
-HAL and 168 MHz, the order the Arduino core used. `main()` calls `setup()`
+HAL and 168 MHz. `main()` calls `setup()`
 (`src/<variant>/main.cpp`), which ends in `vTaskStartScheduler()`.
 
 Clock: crystal (HSE) → PLL (2 MHz VCO input) → SYSCLK 168 MHz, APB1 42 MHz,
@@ -954,8 +894,8 @@ does not start within `HSE_STARTUP_TIMEOUT` (100 ms) the clock falls back
 to the internal 16 MHz RC with the same output frequencies, and
 `ROSBOT_DIAGNOSTICS.clock_source` reports it (MCU WARN). The clock security
 system is on while the crystal runs: if it stops, the NMI resets with
-`kFaultClock`. Jazzy and the first Cube builds ran on the RC, which drifted
-~2000 ppm (see "Time synchronization").
+`kFaultClock`. The RC alone drifts ~2000 ppm (see "Time
+synchronization").
 `SysTick_Handler` increments `HAL_GetTick()` and, once the scheduler runs,
 calls the FreeRTOS tick.
 
@@ -972,9 +912,7 @@ scope and land in regular SRAM.
 ### Optimisation level
 
 `-O2` (`FW_OPT_LEVEL` cache variable, `-DFW_OPT_LEVEL=s`
-for size). The PlatformIO build ended up at `-Os` (its platform appended
-`-Os` after the env's `-O2`). Measured on ROSbot 3, release, link task at
-1 kHz (2026-11-19):
+for size). Measured on ROSbot 3, link task at 1 kHz (2026-11-19):
 
 | option | image | idle | Link task CPU |
 |---|---:|---:|---:|
@@ -982,15 +920,11 @@ for size). The PlatformIO build ended up at `-Os` (its platform appended
 | `-O2` | 100 KB | 96.1 % | 2.4 % |
 
 Stack high-water marks shrink a little at `-O2` (Imu 524 → 468 B free,
-Link 2744 → 2584 B free), still far from the limit. LTO was not tried
-again after the switch.
+Link 2744 → 2584 B free), still far from the limit. LTO was not tried.
 
-Build output sizes (release, CMake, GCC 13.2, `-O2`, 2026-11):
-- rosbot ~100 KB Flash (11 %), ~9 KB static RAM (7 %)
-- rosbot_xl ~146 KB Flash (16 %), ~52 KB static RAM (40 %)
-
-With micro-ROS still linked (v2.1.0-jazzy) the PlatformIO builds were
-207 KB / 53 KB and 244 KB / 95 KB.
+Build output sizes (GCC 13.2, `-O2`, 2026-11):
+- rosbot ~111 KB Flash (12 %), ~9 KB static RAM (7 %)
+- rosbot_xl ~152 KB Flash (17 %), ~52 KB static RAM (40 %)
 
 ---
 
@@ -1199,7 +1133,7 @@ These are documented to avoid re-discovery:
   pinout documentation only.
 - **HAL ETH is the Legacy (pre-1.27) driver**, kept from the Arduino core
   fork. Moving to the new F4 ETH API is a separate change.
-- **`Pin` keeps Arduino's very-high output speed.** Lowering it (EMI) needs
+- **`Pin` sets very-high output speed on every pin.** Lowering it (EMI) needs
   a measurement on HW.
 - **ROSbot 3 pauses at zero when reversing rotation** (110–250 ms on the
   floor, jazzy too): the PID clears its integral at a zero setpoint and
