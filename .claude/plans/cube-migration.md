@@ -533,8 +533,11 @@ snapa `rosbot`):
 - Oba roboty przywrócone na fabryczne jazzy v2.4.0; oryginały w
   `~/fw_backup` na SBC. Sterownik ROSbota z powrotem zatrzymany (jak
   rano).
-- CSS / NMI: nie sprawdzone (ST-LINK odpięty od CORE2 po przestawieniu
-  robota).
+- NMI (ST-LINK, ROSbot 3, HEAD): wymuszone przez `ICSR.NMIPENDSET` →
+  `NMI_Handler` (bez flagi CSSF) → `fatalErrorWithCode(8)`, po przeskoczeniu
+  BKPT reset i normalny start. RCC na CORE2: HSE gotowy, CSSON włączony,
+  PLLM 4, PLLSRC HSE. Gałęzi CSS (CSSF) nie da się wywołać programowo;
+  pełny test wymagałby fizycznego zatrzymania kwarcu — zostawione.
 
 Porty LAN9303 i wgrywanie z SBC sprawdzone 2026-11-20 (wyżej).
 
