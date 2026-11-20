@@ -478,6 +478,26 @@ Testy przy robocie XL (2026-11-20, HEAD z kwarcem, Rafał przy robocie):
   laptopie deweloperskim (`rosbot.db-server`) po tym żądaniu wyłącza
   laptop; na czas testu `sudo snap stop rosbot.db-server`.
 
+Testy przy robocie ROSbot 3 (2026-11-20, HEAD, ST-LINK już działa na
+CORE2: wtyczka była wcześniej odwrócona):
+- dwie zielone diody panelu z `/leds` (bity 0 i 1) ✔; przyciski: wszystkie
+  4 wciśnięcia, ale przycisk 1 → bit 1 (`0x02`), przycisk 2 → bit 0 —
+  tablica `{PUSH_BUTTON2, PUSH_BUTTON1}` jak w jazzy, mapowanie nigdzie
+  nieopisane (do dopisania w ROS_API.md / kontrakcie z rosbot_ros);
+- osie IMU zgodne z REP-103 (roll −28°, pitch +31°, yaw +70°);
+- krótki gest: zielone od razu na stałe ✔. MAVLink zostaje na UART SBC
+  (jak w jazzy), więc bez SBC test linku przez tylne USB tylko z flagą
+  `FORCE_DIAGNOSTIC_LINK`;
+- długi gest z poprawką `934a2f2`: czerwona miga, po oknie zapisane
+  offsety wracają (`has_saved` = 1, sys/gyro/accel/mag = 3);
+- 4 czujniki odległości reagują na dłoń, właściwe `frame_id`;
+- fizyczne zwarcie SDA pominięte (programowy odpowiednik przeszedł).
+- Odwrócona wtyczka SWD: CORE2 sprawny (linie MCU przez 330 Ω); NRST
+  ST-LINK-a nie resetuje teraz CORE2 (impuls 100 ms bez efektu, uptime
+  rośnie) — możliwe uszkodzenie wyjścia NRST w ST-LINK-u (~150 mA przy
+  próbie resetu z NRST na odwróconej wtyczce) albo brak przewodu w
+  adapterze; SWD i reset programowy działają.
+
 Nie testowane na XL: porty LAN9303 (SBC ↔ tylny port) i `just flash` z SBC
 (brak SBC).
 
