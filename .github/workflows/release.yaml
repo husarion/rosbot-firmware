@@ -94,12 +94,29 @@ jobs:
       version: ${{ steps.bump.outputs.version }}
       is_prerelease: ${{ steps.bump.outputs.is_prerelease }}
       sha: ${{ steps.push.outputs.sha }}
+      has_bot: ${{ steps.bot.outputs.has_bot }}
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
           token: ${{ secrets.GITHUB_TOKEN }}
+
+      # Jobs 5 and 6 push to other repos through the Husarion bot GitHub App.
+      # Without its secrets they are skipped, so the release itself stays
+      # green; bump rosbot_ros by hand then (CONTRIBUTING.md, "Releases").
+      - name: Check bot App secrets
+        id: bot
+        env:
+          APP_ID: ${{ secrets.HUSARION_BOT_APP_ID }}
+          APP_KEY: ${{ secrets.HUSARION_BOT_PRIVATE_KEY }}
+        run: |
+          if [ -n "$APP_ID" ] && [ -n "$APP_KEY" ]; then
+            echo "has_bot=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "has_bot=false" >> "$GITHUB_OUTPUT"
+            echo "::warning::HUSARION_BOT_APP_ID / HUSARION_BOT_PRIVATE_KEY not set: bloom release and the rosbot_ros bump PR are skipped."
+          fi
 
       - name: Verify branch
         env:
@@ -398,7 +415,7 @@ jobs:
   bridge-bloom-release:
     name: Bloom release bridge (${{ matrix.distro }})
     needs: [bump-tag, bridge-release]
-    if: needs.bump-tag.outputs.is_prerelease != 'true'
+    if: needs.bump-tag.outputs.is_prerelease != 'true' && needs.bump-tag.outputs.has_bot == 'true'
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
@@ -475,7 +492,7 @@ jobs:
   bump-rosbot-ros:
     name: Bump firmware pin in rosbot_ros
     needs: [bump-tag, firmware-release]
-    if: needs.bump-tag.outputs.is_prerelease != 'true'
+    if: needs.bump-tag.outputs.is_prerelease != 'true' && needs.bump-tag.outputs.has_bot == 'true'
     runs-on: ubuntu-latest
     env:
       NEW_TAG: ${{ needs.bump-tag.outputs.tag_name }}
