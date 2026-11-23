@@ -44,7 +44,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        distro: [jazzy]
+        distro: [jazzy, lyrical]
     container: ros:${{ matrix.distro }}-ros-base
     steps:
       - uses: actions/checkout@v6
