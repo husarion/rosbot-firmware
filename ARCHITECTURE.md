@@ -860,10 +860,12 @@ just test                     # host unit tests (CTest)
 - `lib/` is compiled once as OBJECT libraries, not archives: an archive
   member is only linked when referenced, and IRQ handlers are referenced
   by nothing but the weak vector table.
-- `set(FW_VERSION "vX.Y.Z-jazzy")` in `cmake/CMakeLists.txt` carries the
-  firmware version. The release workflow (`.github/workflows/release.yaml`)
-  bumps it before tagging and publishes `rosbot-<tag>.bin` /
-  `rosbot_xl-<tag>.bin` from `build/release/`.
+- `set(FW_VERSION "vX.Y.Z")` in `cmake/CMakeLists.txt` carries the
+  firmware version (until 2.4.0 `vX.Y.Z-jazzy`). The release workflow
+  (`.github/workflows/release.yaml`) bumps it before tagging and publishes
+  `rosbot-<tag>.bin` / `rosbot_xl-<tag>.bin` from `build/release/`. No
+  distro suffix: one binary serves every ROS distro; `rosbot_utils`
+  compares the `FW:` banner with its `FIRMWARE_VERSION` verbatim.
 - Host unit tests: `test/CMakeLists.txt` (CTest + Unity 2.6.1, host
   compiler; `just test`, CI job `test-native`): PID, `time_base`, encoder
   counter delta, NTC, battery SoC and thresholds, the power board protocol

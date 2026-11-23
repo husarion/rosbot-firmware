@@ -45,6 +45,26 @@ Prerequisites on the ROSbot SBC:
 - For USB flashing: udev rules from `ros2 run rosbot_utils install_udev_rules`
   (snap installs these on `post-refresh`).
 
+## Releases
+
+`just release` (on `jazzy`) dispatches `.github/workflows/release.yaml`. It
+bumps `FW_VERSION`, tags `vX.Y.Z`, and publishes `rosbot-vX.Y.Z.bin`,
+`rosbot_xl-vX.Y.Z.bin` and the bridge tarballs and images for each ROS
+distro. Two more jobs push to other repos through the Husarion bot GitHub
+App (secrets `HUSARION_BOT_APP_ID`, `HUSARION_BOT_PRIVATE_KEY`, set by an
+org admin): the bloom release of the bridge and the firmware bump PR to
+`rosbot_ros`. Without those secrets they are skipped with a warning.
+
+Bumping `rosbot_ros` by hand (a PR to its `jazzy` branch):
+
+1. `rosbot_utils/rosbot_utils/firmware_version.py`: `FIRMWARE_VERSION` =
+   the new tag.
+2. `rosbot_utils/firmware/`: replace `rosbot-<old>.bin` and
+   `rosbot_xl-<old>.bin` with the two `.bin` files from the GitHub release.
+   The names must match `FIRMWARE_VERSION` (a test checks it).
+3. `rosbot/rosbot_hardware.repos`: point `rosbot-firmware` at the release
+   commit, which pins the bridge built with the driver.
+
 ## VS Code Tasks
 
 To simplify the development process, we have prepared a set of VS Code tasks that can be used to build and flash the firmware.
