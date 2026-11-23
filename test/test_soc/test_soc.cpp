@@ -62,6 +62,19 @@ void test_rosbot_xl_curve_matches_measurement() {
   TEST_ASSERT_TRUE(SocEstimator::ocvToSoc(11.07f / 3) < 0.15f);
 }
 
+void test_rosbot3_curve_matches_measurement() {
+  const OcvCurve& c = ocv_curves::kRosbot3;
+  TEST_ASSERT_EQUAL_FLOAT(0.0f, SocEstimator::ocvToSoc(3.0f, c));
+  TEST_ASSERT_EQUAL_FLOAT(1.0f, SocEstimator::ocvToSoc(4.3f, c));
+  for (size_t i = 1; i < c.n; ++i) {
+    TEST_ASSERT_TRUE(c.cell_v[i] > c.cell_v[i - 1]);
+    TEST_ASSERT_TRUE(c.soc[i] > c.soc[i - 1]);
+  }
+  // 10.84 V at rest after 2350 of 3543 mAh removed (34 %).
+  TEST_ASSERT_FLOAT_WITHIN(0.02f, 0.337f,
+                           SocEstimator::ocvToSoc(10.84f / 3, c));
+}
+
 void test_estimator_uses_configured_curve() {
   SocEstimatorConfig c;
   c.ocv = &ocv_curves::kRosbotXl;
@@ -170,6 +183,7 @@ int main() {
   UNITY_BEGIN();
   RUN_TEST(test_curve_endpoints_and_monotonic);
   RUN_TEST(test_rosbot_xl_curve_matches_measurement);
+  RUN_TEST(test_rosbot3_curve_matches_measurement);
   RUN_TEST(test_estimator_uses_configured_curve);
   RUN_TEST(test_first_sample_initialises_from_ocv);
   RUN_TEST(test_load_step_does_not_jump);
