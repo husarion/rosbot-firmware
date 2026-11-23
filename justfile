@@ -197,7 +197,7 @@ release BUMP="auto":
     branch=$(git branch --show-current)
     [ -n "$branch" ] \
         || { echo "release: not on a branch (detached HEAD?)" >&2; exit 1; }
-    # Stable releases pinned to the EXPECTED_DISTRO branch in release.yaml.
+    # Stable releases come from RELEASE_BRANCH in release.yaml.
     # Keep this check in sync. Pre-release runs (the `release-pre` recipe)
     # skip this entirely.
     [ "$branch" = "jazzy" ] \
@@ -225,25 +225,23 @@ release BUMP="auto":
     echo "build OK"
     echo
 
-    # ---- 3. Distro + commits since last stable tag ----
-    distro=jazzy  # keep in sync with EXPECTED_DISTRO in release.yaml
-    tag_suffix="-${distro}"
-    # Exclude .pre.* tags from the "last stable" lookup (same logic as
-    # bump-tag in the workflow) so a prior pre-release doesn't shift the
-    # baseline.
-    last_tag=$(git tag --list "v*${tag_suffix}" --sort=-v:refname | grep -v '\.pre\.' | head -n1 || true)
+    # ---- 3. Commits since last stable tag ----
+    # Same lookup as bump-tag in the workflow: v<X.Y.Z> or the legacy
+    # v<X.Y.Z>-jazzy, pre-releases (.pre.N) skipped.
+    last_tag=$(git tag --list 'v[0-9]*' --sort=-v:refname | grep -v '\.pre\.' \
+        | grep -E '^v[0-9]+\.[0-9]+\.[0-9]+(-jazzy)?$' | head -n1 || true)
     if [ -n "$last_tag" ]; then
         range="${last_tag}..HEAD"
         range_desc="since ${last_tag}"
     else
         range=""
-        range_desc="full history (first release on the ${distro} track)"
+        range_desc="full history (first release)"
     fi
     commits=$(git log ${range:+$range} --no-merges --pretty='%h %s' 2>/dev/null || true)
     [ -n "$commits" ] \
         || { echo "release: no commits ${range_desc} — nothing to release." >&2; exit 1; }
     current_version=$(sed -nE 's/^set\(FW_VERSION "([^"]+)"\)/\1/p' cmake/CMakeLists.txt | head -n1)
-    echo "=== ${distro} ${range_desc} (current FW_VERSION: ${current_version}) ==="
+    echo "=== ${range_desc} (current FW_VERSION: ${current_version}) ==="
     printf '%s\n' "$commits" | sed 's/^/  /'
     echo
 
@@ -312,15 +310,15 @@ release BUMP="auto":
     esac
 
     # ---- 5. Compute target tag (mirrors workflow's bump-tag) ----
-    base=${last_tag:-v0.0.0-${distro}}
-    base_num=$(echo "$base" | sed -E "s/^v//; s/${tag_suffix}\$//")
+    base=${last_tag:-v0.0.0}
+    base_num=$(echo "$base" | sed -E 's/^v//; s/-.*$//')
     IFS='.' read -r maj min pat <<< "$base_num"
     case "$bump" in
         major) maj=$((maj+1)); min=0; pat=0 ;;
         minor) min=$((min+1)); pat=0 ;;
         patch) pat=$((pat+1)) ;;
     esac
-    new_tag="v${maj}.${min}.${pat}${tag_suffix}"
+    new_tag="v${maj}.${min}.${pat}"
     echo "=== will dispatch: ${current_version} -> ${new_tag} (bump=${bump}) ==="
 
     # ---- 6. Apply CHANGELOG (if drafted) ----

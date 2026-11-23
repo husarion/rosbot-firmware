@@ -6,12 +6,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
 for the `X.Y.Z` portion of each tag.
 
-Release tags carry a track suffix (`-jazzy` for the main track — micro-ROS
+Release tags are plain `vX.Y.Z` from 2.5.0 on: the firmware does not
+depend on the ROS distro and one binary serves Jazzy and Lyrical. Up to
+2.4.0 tags carried a track suffix (`-jazzy` for the main track — micro-ROS
 until 2.2.0, MAVLink-only since — and `-jazzy-mavlink` for the former
-MAVLink preview track). Versions are independent
-per track — `v0.1.0-jazzy-mavlink` and `v1.1.0-jazzy` are not comparable
-across the suffix boundary; they were parallel release lineages until
-MAVLink merged into `jazzy` in 2.0.0.
+MAVLink preview track); `v0.1.0-jazzy-mavlink` and `v1.1.0-jazzy` were
+parallel lineages until MAVLink merged into `jazzy` in 2.0.0.
 
 ## [Unreleased]
 
@@ -26,6 +26,7 @@ Fixes from the 2026-10 static firmware audit. HW-tested 2026-10-26 on ROSbot 3 a
 
 ### Changed
 
+- Release tags and the firmware version drop the `-jazzy` suffix (`v2.5.0`, not `v2.5.0-jazzy`): the binary does not depend on the ROS distro. The bridge is built and released for Jazzy and Lyrical. Needs a `rosbot_utils` whose firmware-version test accepts a plain `vX.Y.Z`.
 - Firmware is built with CMake on STM32Cube HAL, FreeRTOS and ETL instead of PlatformIO and the Arduino core. Release builds use `-O2`. Same MAVLink API; CPU idle went up (ROSbot 3 92.5 → 94.5 %, XL 91.8 → 95.0 %, checked over SWD).
 - One firmware build: the `debug` preset and the `rosbot_release` / `rosbot_xl_release` target names are gone (`just build rosbot`, `just build rosbot_xl`). The image keeps gdb symbols.
 - The MCU runs from the board crystal (8 MHz ROSbot, 24 MHz XL) instead of the internal RC oscillator, with fallback to the RC and Clock Security System. Removes the clock drift that made the bridge re-seed TIMESYNC.

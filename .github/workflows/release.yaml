@@ -3,10 +3,9 @@
 # Release workflow — manually dispatched from the Actions UI.
 #
 # Inputs:
-#   bump_type   — major / minor / patch (semver bump for the track suffix
-#                 attached to this branch, see EXPECTED_DISTRO below).
+#   bump_type   — major / minor / patch (semver bump).
 #   pre_release — when true, dispatch is allowed from any branch (not just
-#                 the EXPECTED_DISTRO one). Tag is suffixed with
+#                 RELEASE_BRANCH). Tag is suffixed with
 #                 `.pre.<run_number>`, the GitHub Release is flagged
 #                 `prerelease`, and the cross-repo bump jobs (5 + 6) are
 #                 SKIPPED so an experimental build doesn't pollute
@@ -14,30 +13,30 @@
 #                 excluded from the next-stable-version lookup.
 #
 # Sequential jobs:
-#   1. bump-tag       — find latest v*-<distro> tag, compute next version,
+#   1. bump-tag       — find the latest stable tag (v<X.Y.Z>, or the
+#                       legacy v<X.Y.Z>-jazzy), compute the next version,
 #                       rewrite FW_VERSION in cmake/CMakeLists.txt and the
-#                       <version> in bridge/rosbot_mavlink_bridge/package.xml
-#                       (same numeric, bridge version tracks firmware
-#                       semver without the `-${distro}` suffix), commit,
-#                       push, tag.
+#                       <version> in bridge/rosbot_mavlink_bridge/package.xml,
+#                       commit, push, tag. The firmware does not depend on
+#                       the ROS distro, so the tag carries no distro suffix
+#                       (until v2.4.0 it was v<X.Y.Z>-jazzy).
 #   2. firmware-release — build both boards with the CMake `release`
 #                       preset (single binary per platform since runtime
 #                       picks the comm backend), publish
 #                       GitHub Release with auto-generated notes + the
 #                       .bin artefacts attached.
-#   3. bridge-release  — bridge package source tarball for ROS jazzy,
-#                       attached to the same release. (humble not built —
-#                       rosbot_ros doesn't ship a humble track.)
-#   4. bridge-image    — multi-arch (amd64+arm64) GHCR image for jazzy,
+#   3. bridge-release  — bridge package source tarball per ROS distro
+#                       (BRIDGE_DISTROS), attached to the same release.
+#   4. bridge-image    — multi-arch (amd64+arm64) GHCR image per distro,
 #                       built from bridge/Dockerfile.
 #   5. bridge-bloom-release — run `bloom-release` to push debian source
 #                       branches to husarion/rosbot_mavlink_bridge-release
 #                       and open a PR to ros/rosdistro. One-shot setup
 #                       required (see job comment for details). Skipped
 #                       on pre-release runs.
-#   6. bump-rosbot-ros — open auto-PR in husarion/rosbot_ros@jazzy-mavlink-v2
-#                       bumping the vcs pin, swapping .bin artefacts, and
-#                       bumping bundled-firmware paths. Labelled
+#   6. bump-rosbot-ros — open auto-PR in husarion/rosbot_ros@jazzy
+#                       bumping the vcs pin, swapping .bin artefacts,
+#                       FIRMWARE_VERSION and bundled-firmware paths. Labelled
 #                       `auto-firmware-bump` so the companion auto-merge
 #                       workflow squash-merges on green CI.
 #
@@ -82,14 +81,8 @@ permissions:
   contents: write
 
 env:
-  # The ROS distro this branch ships firmware for. Single source of truth
-  # for the workflow — the value is used as the tag suffix (`v*-${distro}`)
-  # and asserted against the dispatching branch name. When a new distro is
-  # forked off (e.g. `jazzy` -> `lyric`), the ONLY edit needed on the new
-  # branch is changing this value. Post-Task-2 the firmware is one binary
-  # per platform with a runtime comm switch, so there's no separate
-  # `-jazzy-mavlink` track — just `jazzy`.
-  EXPECTED_DISTRO: jazzy
+  # Stable releases are dispatched from this branch only.
+  RELEASE_BRANCH: jazzy
 
 jobs:
 
@@ -99,7 +92,6 @@ jobs:
     outputs:
       tag_name: ${{ steps.bump.outputs.tag_name }}
       version: ${{ steps.bump.outputs.version }}
-      distro: ${{ steps.bump.outputs.distro }}
       is_prerelease: ${{ steps.bump.outputs.is_prerelease }}
       sha: ${{ steps.push.outputs.sha }}
     steps:
@@ -109,36 +101,30 @@ jobs:
           fetch-depth: 0
           token: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Resolve and verify distro
-        id: distro
+      - name: Verify branch
         env:
           PRE_RELEASE: ${{ inputs.pre_release }}
         run: |
           branch=$(echo "${GITHUB_REF_NAME}" | awk -F'/' '{print $NF}')
           if [ "${PRE_RELEASE}" = "true" ]; then
-            echo "Pre-release run on branch '${branch}' (distro check skipped)."
-          elif [ "${branch}" != "${EXPECTED_DISTRO}" ]; then
-            echo "::error::Workflow is configured for distro '${EXPECTED_DISTRO}' but was dispatched on branch '${branch}'. Set the 'pre_release' input to true to dispatch from a feature branch, or fork this branch and change EXPECTED_DISTRO if you're starting a new track."
+            echo "Pre-release run on branch '${branch}' (branch check skipped)."
+          elif [ "${branch}" != "${RELEASE_BRANCH}" ]; then
+            echo "::error::Stable releases are dispatched from '${RELEASE_BRANCH}', not '${branch}'. Set the 'pre_release' input to true for a test build."
             exit 1
           fi
-          echo "distro=${EXPECTED_DISTRO}" >> "$GITHUB_OUTPUT"
-          echo "Distro: ${EXPECTED_DISTRO}"
 
-      - name: Get latest stable tag for distro
+      - name: Get latest stable version
         id: get_tag
         run: |
-          distro=${{ steps.distro.outputs.distro }}
-          # Tag format produced by this workflow:
-          #   stable      : v<X>.<Y>.<Z>-<distro>
-          #   pre-release : v<X>.<Y>.<Z>-<distro>.pre.<run_number>
-          # Exclude .pre.* tags from the "latest stable" lookup so pre-release
-          # runs don't shift the next stable version.
-          latest_tag=$(git tag -l "v*-${distro}" --sort=-v:refname | grep -v '\.pre\.' | head -n1)
-          if [ -z "$latest_tag" ]; then
-            latest_tag="v0.0.0-${distro}"
-          fi
-          echo "Latest stable tag: $latest_tag"
-          echo "latest=$latest_tag" >> "$GITHUB_OUTPUT"
+          # Stable tags: v<X.Y.Z> (legacy: v<X.Y.Z>-jazzy, v<X.Y.Z>-jazzy-mavlink).
+          # Pre-release tags (v<X.Y.Z>.pre.<run>) are skipped so they don't
+          # shift the next stable version.
+          latest=$(git tag -l 'v[0-9]*' | grep -v '\.pre\.' \
+            | sed -E 's/^v//; s/-.*$//' | grep -E '^[0-9]+\.[0-9]+\.[0-9]+$' \
+            | sort -V | tail -n1)
+          latest="v${latest:-0.0.0}"
+          echo "Latest stable version: $latest"
+          echo "latest=$latest" >> "$GITHUB_OUTPUT"
 
       - name: Bump version
         id: bump
@@ -148,10 +134,7 @@ jobs:
         run: |
           latest="${{ steps.get_tag.outputs.latest }}"
           bump_type="${{ inputs.bump_type }}"
-          distro="${{ steps.distro.outputs.distro }}"
-
-          # Strip leading "v" and trailing "-<distro>" to get bare X.Y.Z
-          latest_num=$(echo "$latest" | sed -E "s/^v//; s/-${distro}\$//")
+          latest_num="${latest#v}"
           IFS='.' read -r major minor patch <<< "$latest_num"
 
           if [ "$bump_type" = "major" ]; then
@@ -164,17 +147,16 @@ jobs:
 
           version="v${major}.${minor}.${patch}"
           if [ "${PRE_RELEASE}" = "true" ]; then
-            tag_name="${version}-${distro}.pre.${RUN_NUMBER}"
+            tag_name="${version}.pre.${RUN_NUMBER}"
             is_prerelease=true
           else
-            tag_name="${version}-${distro}"
+            tag_name="${version}"
             is_prerelease=false
           fi
 
           {
             echo "version=$version"
             echo "tag_name=$tag_name"
-            echo "distro=$distro"
             echo "is_prerelease=$is_prerelease"
           } >> "$GITHUB_OUTPUT"
           echo "New tag: $tag_name (prerelease=$is_prerelease)"
@@ -188,8 +170,8 @@ jobs:
           grep -F "set(FW_VERSION \"${TAG}\")" cmake/CMakeLists.txt
 
       - name: Update bridge package.xml version
-        # Bridge version mirrors the firmware semver without the
-        # `-${distro}` suffix — rosdep/bloom reject suffixes in <version>.
+        # Bridge version mirrors the firmware semver (no `v`, no `.pre.N`):
+        # rosdep/bloom reject suffixes in <version>.
         run: |
           VERSION="${{ steps.bump.outputs.version }}"
           BARE="${VERSION#v}"
@@ -263,8 +245,7 @@ jobs:
 
       - name: Rename binaries
         run: |
-          # Single binary per platform. -${TAG_NAME} keeps the -<distro>
-          # suffix the downstream bundles and version checks expect.
+          # Single binary per platform, the same for every ROS distro.
           mkdir -p release
           cp build/release/rosbot.bin    "release/rosbot-${TAG_NAME}.bin"
           cp build/release/rosbot_xl.bin "release/rosbot_xl-${TAG_NAME}.bin"
@@ -311,7 +292,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        distro: [jazzy]
+        distro: [jazzy, lyrical]
     env:
       TAG_NAME: ${{ needs.bump-tag.outputs.tag_name }}
       VERSION: ${{ needs.bump-tag.outputs.version }}
@@ -500,7 +481,7 @@ jobs:
       NEW_TAG: ${{ needs.bump-tag.outputs.tag_name }}
       NEW_VERSION: ${{ needs.bump-tag.outputs.version }}
       TARGET_REPO: husarion/rosbot_ros
-      TARGET_BRANCH: jazzy-mavlink-v2
+      TARGET_BRANCH: jazzy
       SHA_ROSBOT: ${{ needs.firmware-release.outputs.sha256_rosbot }}
       SHA_ROSBOT_XL: ${{ needs.firmware-release.outputs.sha256_rosbot_xl }}
     steps:
@@ -643,9 +624,9 @@ jobs:
           tag = os.environ["NEW_TAG"]
           p = pathlib.Path(sys.argv[1])
           text = p.read_text()
-          # Match v<X.Y.Z>-jazzy or v<X.Y.Z>-jazzy-mavlink (pre-Task-2).
+          # Match v<X.Y.Z> with an optional legacy -jazzy[-mavlink] suffix.
           new = re.sub(
-              r'"v\d+\.\d+\.\d+-jazzy(?:-mavlink)?"',
+              r'"v\d+\.\d+\.\d+(?:-jazzy(?:-mavlink)?)?"',
               f'"{tag}"',
               text,
           )
