@@ -41,6 +41,8 @@ struct MavlinkBatteryPublisherConfig {
   QueueHandle_t& queue;
   uint8_t num_cells;
   uint32_t period_ms;
+  // Also send ROSBOT_POWER_SUPPLY; 0 disables it.
+  uint16_t power_supply_design_capacity_mah = 0;
 };
 
 class MavlinkBatteryPublisher : public MavlinkPublisherInterface {
@@ -67,10 +69,9 @@ class MavlinkBatteryPublisher : public MavlinkPublisherInterface {
       voltages[i] = static_cast<uint16_t>(per_cell_v * 1000.0f);
     }
 
+    // Signed, + while charging (BatteryState convention, not MAVLink's).
     const int16_t current_cA =
-        (data.data.current >= 0.0f)
-            ? static_cast<int16_t>(data.data.current * 100.0f)
-            : -1;
+        battery_wire::currentToCentiAmps(data.data.current);
     int8_t percent = -1;
     if (!isnan(data.data.percentage)) {
       percent = static_cast<int8_t>(lroundf(data.data.percentage * 100.0f));
@@ -89,6 +90,15 @@ class MavlinkBatteryPublisher : public MavlinkPublisherInterface {
         /*time_remaining=*/0, health.charge_state, voltages_ext,
         MAV_BATTERY_MODE_UNKNOWN, health.fault_bitmask);
     node.sendMessage(m);
+
+    if (cfg_.power_supply_design_capacity_mah != 0) {
+      mavlink_msg_rosbot_power_supply_pack(
+          node.sysid(), node.compid(), &m, data.data.status,
+          data.data.charger_type, data.data.present ? 1 : 0,
+          cfg_.power_supply_design_capacity_mah,
+          battery_wire::capacityToMah(data.data.capacity_ah));
+      node.sendMessage(m);
+    }
   }
 
  private:

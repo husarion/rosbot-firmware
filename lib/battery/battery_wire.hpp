@@ -42,6 +42,25 @@ struct Health {
   uint32_t fault_bitmask;
 };
 
+// BATTERY_STATUS.current_battery uses -1 for "not measured"; -0.01 A is
+// sent as -0.02 A so a real reading never collides with it.
+inline constexpr int16_t kCurrentUnknown = -1;
+
+inline int16_t currentToCentiAmps(float amps) {
+  if (!std::isfinite(amps)) return kCurrentUnknown;
+  const long ca = std::lround(amps * 100.0f);
+  if (ca > INT16_MAX) return INT16_MAX;
+  if (ca < INT16_MIN + 1) return INT16_MIN + 1;
+  return ca == kCurrentUnknown ? kCurrentUnknown - 1 : static_cast<int16_t>(ca);
+}
+
+// ROSBOT_POWER_SUPPLY.capacity_mah: 0 = unknown.
+inline uint16_t capacityToMah(float amp_hours) {
+  if (!std::isfinite(amp_hours) || amp_hours <= 0.0f) return 0;
+  const long mah = std::lround(amp_hours * 1000.0f);
+  return mah > UINT16_MAX ? UINT16_MAX : static_cast<uint16_t>(mah);
+}
+
 inline int16_t temperatureToCentiDegrees(float celsius) {
   if (!std::isfinite(celsius) || celsius < -300.0f || celsius > 300.0f) {
     return kTemperatureUnknown;

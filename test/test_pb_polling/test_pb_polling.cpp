@@ -39,10 +39,71 @@ void test_pb_1_0_3_and_newer_is_polled_every_tick() {
   TEST_ASSERT_TRUE(pbSupportsFastPolling("v1.0.10"));
 }
 
+void test_slow_pb_spaces_side_requests_half_a_period_apart() {
+  // Battery just sent: nothing else for 500 ms.
+  TEST_ASSERT_EQUAL_INT(
+      static_cast<int>(PbRequest::None),
+      static_cast<int>(pbNextRequest(1000, 10, 10, 5000, true)));
+  TEST_ASSERT_EQUAL_INT(
+      static_cast<int>(PbRequest::None),
+      static_cast<int>(pbNextRequest(1000, 500, 500, 5000, true)));
+  TEST_ASSERT_EQUAL_INT(
+      static_cast<int>(PbRequest::BoardInfo),
+      static_cast<int>(pbNextRequest(1000, 510, 510, 5000, true)));
+  TEST_ASSERT_EQUAL_INT(
+      static_cast<int>(PbRequest::ParamFlags),
+      static_cast<int>(pbNextRequest(1000, 510, 510, 5000, false)));
+  // Side request 500 ms ago, battery due.
+  TEST_ASSERT_EQUAL_INT(
+      static_cast<int>(PbRequest::BatteryState),
+      static_cast<int>(pbNextRequest(1000, 1010, 500, 500, false)));
+}
+
+void test_fast_pb_polls_flags_once_a_second() {
+  TEST_ASSERT_EQUAL_INT(static_cast<int>(PbRequest::BatteryState),
+                        static_cast<int>(pbNextRequest(0, 10, 10, 990, false)));
+  TEST_ASSERT_EQUAL_INT(
+      static_cast<int>(PbRequest::ParamFlags),
+      static_cast<int>(pbNextRequest(0, 10, 10, 1000, false)));
+  TEST_ASSERT_EQUAL_INT(static_cast<int>(PbRequest::None),
+                        static_cast<int>(pbNextRequest(0, 0, 0, 0, false)));
+}
+
+void test_charger_type_prefers_usb_c() {
+  TEST_ASSERT_EQUAL_UINT8(0, pbChargerTypeFromFlags(0x00));
+  TEST_ASSERT_EQUAL_UINT8(2, pbChargerTypeFromFlags(0x01));
+  TEST_ASSERT_EQUAL_UINT8(1, pbChargerTypeFromFlags(0x02));
+  TEST_ASSERT_EQUAL_UINT8(1, pbChargerTypeFromFlags(0x03));
+  // CHRG_OK and LED bits do not count as an adapter.
+  TEST_ASSERT_EQUAL_UINT8(0, pbChargerTypeFromFlags(0x3C));
+}
+
+void test_soc_comes_from_pb_1_0_5_and_newer() {
+  TEST_ASSERT_FALSE(pbReportsSoc(""));
+  TEST_ASSERT_FALSE(pbReportsSoc("v1.0.4"));
+  TEST_ASSERT_TRUE(pbReportsSoc("v1.0.5"));
+  TEST_ASSERT_TRUE(pbReportsSoc("v1.1.0"));
+}
+
+void test_pb_soc_byte_decoding() {
+  TEST_ASSERT_EQUAL_FLOAT(0.0f, pbSocFraction(0));
+  TEST_ASSERT_EQUAL_FLOAT(0.57f, pbSocFraction(57));
+  TEST_ASSERT_EQUAL_FLOAT(1.0f, pbSocFraction(100));
+  TEST_ASSERT_TRUE(std::isnan(pbSocFraction(101)));
+  TEST_ASSERT_TRUE(std::isnan(pbSocFraction(255)));
+  TEST_ASSERT_EQUAL_FLOAT(8.85f, pbCapacityAh(8850));
+  TEST_ASSERT_TRUE(std::isnan(pbCapacityAh(0)));
+}
+
 int main() {
   UNITY_BEGIN();
   RUN_TEST(test_pb_before_1_0_3_is_polled_once_a_second);
   RUN_TEST(test_unknown_version_is_polled_slowly);
   RUN_TEST(test_pb_1_0_3_and_newer_is_polled_every_tick);
+  RUN_TEST(test_slow_pb_spaces_side_requests_half_a_period_apart);
+  RUN_TEST(test_fast_pb_polls_flags_once_a_second);
+  RUN_TEST(test_charger_type_prefers_usb_c);
+  RUN_TEST(test_soc_comes_from_pb_1_0_5_and_newer);
+  RUN_TEST(test_pb_soc_byte_decoding);
   return UNITY_END();
 }

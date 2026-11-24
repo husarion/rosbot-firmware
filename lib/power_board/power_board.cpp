@@ -23,7 +23,8 @@
 PowerBoard::PowerBoard(const PowerBoardConfig& config)
     : cfg_(config),
       soc_(SocEstimatorConfig{.num_cells = config.num_cells,
-                              .capacity_ah = config.capacity_ah}) {}
+                              .capacity_ah = config.capacity_ah,
+                              .ocv = &ocv_curves::kRosbotXl}) {}
 
 // ═══════════════════════════════════════════════════════════════════
 //  init() — configures UART, call after HAL/clock init
@@ -72,6 +73,11 @@ void PowerBoard::requestBoardInfo() {
 void PowerBoard::requestBatteryState() {
   uint8_t args[BATTERY_STATE_ARG_LEN] = {};
   sendFrame(CMD_BATTERY_STATE, args, sizeof(args));
+}
+
+void PowerBoard::requestParamFlags() {
+  const uint8_t args[1] = {0};  // 0 = read
+  sendFrame(CMD_PARAM_FLAGS, args, sizeof(args));
 }
 
 // ═══════════════════════════════════════════════════════════════════
@@ -231,6 +237,9 @@ void PowerBoard::dispatch(const Frame& frame) {
     case CMD_BATTERY_STATE:
       handleBatteryState(frame);
       break;
+    case CMD_PARAM_FLAGS:
+      handleParamFlags(frame);
+      break;
     default:
       break;
   }
@@ -266,7 +275,9 @@ void PowerBoard::handleBoardInfo(const Frame& frame) {
 //  args[ 3.. 4] -> temperature      (int16,  deg C)
 //  args[ 5.. 6] -> discharge current(uint16, x0.001 A)
 //  args[ 7.. 8] -> charge current   (uint16, x0.001 A)
+//  args[ 9..10] -> learnt capacity  (uint16, mAh; PB >= v1.0.5, else 0)
 //  args[11..12] -> design capacity  (uint16, x0.001 Ah)
+//  args[13]     -> SoC %            (PB >= v1.0.5: 0-100, 255 unknown; else 0)
 //  args[14]     -> status
 //  args[15]     -> health (v1.0.3+: 0 ok, 1..8 = BATTERY_HEALTH_*)
 //  args[16]     -> technology
@@ -287,6 +298,22 @@ void PowerBoard::handleBatteryState(const Frame& frame) {
 
   const uint8_t* a = frame.args;
 
+  if (!a[17]) {
+    // Running from the adapter alone. Keep the last voltage: the motor model
+    // reads it as supply voltage and the PB VBAT reading is meaningless now.
+    data_.present = false;
+    data_.current = NAN;
+    data_.percentage = NAN;
+    data_.capacity_ah = NAN;
+    data_.temperature = NAN;
+    data_.status = a[14];
+    data_.health = healthFromReply(a[15]);
+    soc_.reset();
+    last_battery_ms_ = 0;
+    battery_updated_ = true;
+    return;
+  }
+
   // The power board sometimes reports ~3.39 V. Drop the whole frame before it
   // reaches data_, which the LED, critical-battery check and motor model read.
   const float voltage = readU16(&a[1]) * 0.001f;
@@ -301,7 +328,8 @@ void PowerBoard::handleBatteryState(const Frame& frame) {
   const float charge = readU16(&a[7]) * 0.001f;
   data_.current = charge - discharge;
 
-  // Percentage is not part of this protocol; estimate it from V and I.
+  // The local estimate keeps running so a fallback is warm if the PB value
+  // turns out unusable.
   const uint32_t now_ms = time_boot_ms();
   const float dt_s =
       (last_battery_ms_ == 0)
@@ -309,10 +337,21 @@ void PowerBoard::handleBatteryState(const Frame& frame) {
           : static_cast<float>(now_ms - last_battery_ms_) * 0.001f;
   last_battery_ms_ = now_ms;
   data_.percentage = soc_.update(data_.voltage, data_.current, dt_s);
+  data_.capacity_ah = NAN;
+  if (pbReportsSoc(board_info_.firmware_version)) {
+    data_.percentage = pbSocFraction(a[13]);
+    data_.capacity_ah = pbCapacityAh(readU16(&a[9]));
+  }
 
   data_.status = a[14];
   data_.health = healthFromReply(a[15]);
-  data_.present = static_cast<bool>(a[17]);
+  data_.present = true;
 
   battery_updated_ = true;
+}
+
+void PowerBoard::handleParamFlags(const Frame& frame) {
+  if (frame.arg_size != PARAM_FLAGS_ARG_LEN) return;
+  data_.charger_type =
+      pbChargerTypeFromFlags(frame.args[PB_FLAGS_ADAPTER_BYTE]);
 }

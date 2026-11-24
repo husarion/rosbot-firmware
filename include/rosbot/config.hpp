@@ -37,10 +37,10 @@ inline constexpr uint32_t ADC_MAX_VALUE =
     1023;  // 10-bit ADC resolution (0-1023)
 
 // ───────── Battery ─────────
+// 3S1P protected 18650 Li-ion, 3500 mAh per cell.
 inline constexpr uint8_t BATTERY_NUM_CELLS = 3;
-inline constexpr float BATTERY_CELL_CAPACITY = 2.6f;  // Ah
-inline constexpr float BATTERY_DESIGN_CAPACITY =
-    BATTERY_NUM_CELLS * BATTERY_CELL_CAPACITY;
+inline constexpr float BATTERY_CELL_CAPACITY = 3.5f;  // Ah
+inline constexpr float BATTERY_DESIGN_CAPACITY = BATTERY_CELL_CAPACITY;
 
 inline constexpr BatteryAdcConfig battery_adc_config = {
     .adc = AnalogIn{Pin{Port::A, 5}, 5},

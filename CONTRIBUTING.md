@@ -47,7 +47,7 @@ Prerequisites on the ROSbot SBC:
 
 ## Releases
 
-`just release` (on `jazzy`) dispatches `.github/workflows/release.yaml`. It
+`just release` (on `main`) dispatches `.github/workflows/release.yaml`. It
 bumps `FW_VERSION`, tags `vX.Y.Z`, and publishes `rosbot-vX.Y.Z.bin`,
 `rosbot_xl-vX.Y.Z.bin` and the bridge tarballs and images for each ROS
 distro. Two more jobs push to other repos through the Husarion bot GitHub

@@ -75,7 +75,9 @@ void hwMonitorTask(void* p) {
   TickType_t period = taskGetPeriod(p);
   TickType_t wake_time = xTaskGetTickCount();
   BatteryStamped data = {};
-  TickType_t last_battery_update = 0;
+  uint32_t last_battery_ms = 0;
+  uint32_t last_request_ms = 0;
+  uint32_t last_flags_ms = 0;
   TickType_t last_fan_update = 0;
   bool board_info_pending = false;
 
@@ -107,19 +109,28 @@ void hwMonitorTask(void* p) {
       last_fan_update = now;
     }
 
-    const TickType_t battery_period =
-        pdMS_TO_TICKS(power_board.batteryPollPeriodMs());
-    if (now - last_battery_update > battery_period) {
-      power_board.requestBatteryState();
-      last_battery_update = now;
-      board_info_pending = !power_board.boardInfo().isValid();
-    } else if (board_info_pending &&
-               now - last_battery_update > pdMS_TO_TICKS(500)) {
-      // Half a second apart: requesting both at once lost replies on HW
-      // (2026-09). The cause is unconfirmed — the RX ring is 512 B, not the
-      // 64 B assumed then.
-      power_board.requestBoardInfo();
-      board_info_pending = false;
+    const uint32_t now_ms = time_boot_ms();
+    switch (pbNextRequest(power_board.batteryPollPeriodMs(),
+                          now_ms - last_battery_ms, now_ms - last_request_ms,
+                          now_ms - last_flags_ms, board_info_pending)) {
+      case PbRequest::BatteryState:
+        power_board.requestBatteryState();
+        last_battery_ms = now_ms;
+        last_request_ms = now_ms;
+        board_info_pending = !power_board.boardInfo().isValid();
+        break;
+      case PbRequest::BoardInfo:
+        power_board.requestBoardInfo();
+        last_request_ms = now_ms;
+        board_info_pending = false;
+        break;
+      case PbRequest::ParamFlags:
+        power_board.requestParamFlags();
+        last_request_ms = now_ms;
+        last_flags_ms = now_ms;
+        break;
+      case PbRequest::None:
+        break;
     }
 
     vTaskDelayUntil(&wake_time, period);

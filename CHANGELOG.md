@@ -22,6 +22,8 @@ Fixes from the 2026-10 static firmware audit. HW-tested 2026-10-26 on ROSbot 3 a
 - `diagnostics` (diagnostic_msgs, 1 Hz, in the robot namespace): MCU health from release firmware (CPU idle, stack and heap headroom, reset and fault cause, clock source, IMU/range/I2C/motor/link counters, power state). Status names carry the robot namespace. New `ROSBOT_DIAGNOSTICS` message; needs the matching bridge.
 - ROSbot range sensors that stop answering are re-initialised (1 s to 16 s backoff) instead of staying dead until reboot.
 - Faster power board polling (ROSbot XL): with PB firmware >= v1.0.3 the battery state is requested at the HwMonitor rate (10 Hz) instead of 1 Hz, and the battery publisher no longer gates at 1 s (it publishes whatever the HwMonitor queue delivers, so a slower PB still gives 1 Hz). Older PB firmware is polled as before.
+- ROSbot XL `battery` carries the power board's charging status, battery presence and design capacity, and a new `battery/charger_type` topic tells USB-C from inductive charging (read from the power board flags, cmd 20, which every PB firmware answers). New `ROSBOT_POWER_SUPPLY` (11005) message; needs the matching bridge.
+- ROSbot XL `battery.percentage` comes from the power board when its firmware is >= v1.0.5 (coulomb counter with full, empty and rest anchors, kept across power cycles), with the learnt full capacity in `battery.capacity`. Older PB firmware keeps the MCU estimate. `ROSBOT_POWER_SUPPLY` gains the `capacity_mah` extension field; older bridges ignore it.
 - `_power_board_info` service (ROSbot XL): power board firmware and hardware version, new `ROSBOT_POWER_BOARD` (11021) message and `MAV_CMD_USER_3`. Needs the matching bridge; an older bridge simply does not expose the service.
 
 ### Changed
@@ -31,7 +33,7 @@ Fixes from the 2026-10 static firmware audit. HW-tested 2026-10-26 on ROSbot 3 a
 - One firmware build: the `debug` preset and the `rosbot_release` / `rosbot_xl_release` target names are gone (`just build rosbot`, `just build rosbot_xl`). The image keeps gdb symbols.
 - The MCU runs from the board crystal (8 MHz ROSbot, 24 MHz XL) instead of the internal RC oscillator, with fallback to the RC and Clock Security System. Removes the clock drift that made the bridge re-seed TIMESYNC.
 - ROSbot 2/3 `/buttons`: bit 0 is now button 1 and bit 1 button 2, as labelled on the robot (they were swapped).
-- ROSbot XL battery percentage comes from a load-compensated estimator (coulomb counting corrected by open-circuit voltage) instead of a linear voltage map, so it no longer jumps with load. ROSbot 3 has no current measurement, so it uses the same rest-voltage curve through a low-pass filter; load sag still biases it low while driving. Generic Li-ion curve and resistance, not validated on hardware. The low-battery indicator now trips at a true 20 %, which is earlier than before.
+- ROSbot XL battery percentage comes from a load-compensated estimator (coulomb counting corrected by open-circuit voltage) instead of a linear voltage map, so it no longer jumps with load. ROSbot 3 has no current measurement, so it uses the same rest-voltage curve through a low-pass filter; load sag still biases it low while driving. ROSbot XL uses an OCV curve measured on its pack (HCP18650ZC-3S3P, 2026-11-19); the generic Li-ion curve read ~10 % at a real 50 %. ROSbot 3 uses an OCV curve measured on its own pack (3S1P 18650, 2026-11-23, `docs/rosbot3-battery-ocv.md`); at 10.9 V it reads ~37 % instead of 6 %. The low-battery indicator now trips at a true 20 %.
 
 ### Fixed
 
@@ -39,6 +41,10 @@ Fixes from the 2026-10 static firmware audit. HW-tested 2026-10-26 on ROSbot 3 a
 - ROSbot range sensors whose re-initialisation fails are retried with backoff instead of staying dead until reboot.
 - I2C faults (bus lock, NACK storm, stale DMA callback) are recovered without resetting the MCU; IMU reads wait up to 25 ms for BNO055 clock stretching.
 - Boot IMU calibration starts from scratch instead of loading the saved offsets first.
+- ROSbot 3 `battery.design_capacity` is 3.5 Ah (3S1P, 3500 mAh cells) instead of the ROSbot XL value 7.8 Ah.
+- `battery.current` was NaN whenever the battery discharged: negative values were sent as "not measured". It is now signed (negative while discharging).
+- ROSbot XL: a frame from a power board with no battery is no longer dropped as a bad voltage reading, so `battery.present` goes false instead of the topic going stale.
+- `battery.cell_voltage` reports NaN per cell instead of an even split of the pack voltage presented as measured.
 - NaN/Inf wheel setpoints are rejected (watchdog not fed); PID and PWM guard against non-finite values.
 - ROSbot XL fan runs at 100 % when the NTC reads open or shorted, instead of switching off.
 - One race-free monotonic clock (`lib/time_base/`) behind all MAVLink timestamps and TIMESYNC; the old per-file accumulators could double-count under preemption.

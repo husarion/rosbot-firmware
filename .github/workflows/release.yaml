@@ -82,7 +82,7 @@ permissions:
 
 env:
   # Stable releases are dispatched from this branch only.
-  RELEASE_BRANCH: jazzy
+  RELEASE_BRANCH: main
 
 jobs:
 

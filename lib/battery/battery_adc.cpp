@@ -19,7 +19,9 @@
 #include "time_base.hpp"
 
 BatteryAdc::BatteryAdc(const BatteryAdcConfig config)
-    : cfg_(config), soc_(SocEstimatorConfig{.num_cells = config.num_cells}) {
+    : cfg_(config),
+      soc_(SocEstimatorConfig{.num_cells = config.num_cells,
+                              .ocv = &ocv_curves::kRosbot3}) {
   voltage_factor_ = cfg_.v_ref * cfg_.correction * cfg_.divider;
 }
 

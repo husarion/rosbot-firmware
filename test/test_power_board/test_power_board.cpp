@@ -222,13 +222,27 @@ void test_implausible_voltage_drops_the_whole_frame() {
   feed(frame(2, batteryArgs(12000, 20, 0, 0, 1, 0, 1)));
   pb.update();
   pb.hasBatteryUpdate();
-  feed(frame(2, batteryArgs(3390, 30, 5000, 0, 2, 0, 0)));
+  feed(frame(2, batteryArgs(3390, 30, 5000, 0, 2, 0, 1)));
   pb.update();
   TEST_ASSERT_FALSE(pb.hasBatteryUpdate());
   const BatteryData d = pb.getData();
   TEST_ASSERT_FLOAT_WITHIN(1e-4f, 12.0f, d.voltage);
   TEST_ASSERT_FLOAT_WITHIN(1e-4f, 20.0f, d.temperature);
   TEST_ASSERT_EQUAL_UINT8(1, d.status);
+}
+
+void test_frame_without_battery_marks_it_absent() {
+  auto pb = makeBoard();
+  feed(frame(2, batteryArgs(12000, 20, 0, 0, 1, 0, 1)));
+  pb.update();
+  pb.hasBatteryUpdate();
+  feed(frame(2, batteryArgs(0, 0, 0, 0, 1, 0, 0)));
+  pb.update();
+  TEST_ASSERT_TRUE(pb.hasBatteryUpdate());
+  const BatteryData d = pb.getData();
+  TEST_ASSERT_FALSE(d.present);
+  TEST_ASSERT_FLOAT_WITHIN(1e-4f, 12.0f, d.voltage);
+  TEST_ASSERT_TRUE(std::isnan(d.percentage));
 }
 
 void test_out_of_range_temperature_reads_nan() {
@@ -255,6 +269,7 @@ int main() {
   RUN_TEST(test_battery_state_is_decoded);
   RUN_TEST(test_health_is_trusted_only_from_fast_polling_firmware);
   RUN_TEST(test_implausible_voltage_drops_the_whole_frame);
+  RUN_TEST(test_frame_without_battery_marks_it_absent);
   RUN_TEST(test_out_of_range_temperature_reads_nan);
   return UNITY_END();
 }

@@ -12,6 +12,8 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+#include <cmath>
+
 #include "commands/imu_calibration_command.hpp"
 #include "commands/mcu_id_command.hpp"
 #include "mavlink_node.hpp"
@@ -30,9 +32,12 @@
 static MavlinkSerialTransport serial_transport(SBC_SERIAL_CONFIG);
 
 // Publishers (telemetry: MCU → bridge)
-static MavlinkBatteryPublisher battery_pub({.queue = battery_queue,
-                                            .num_cells = BATTERY_NUM_CELLS,
-                                            .period_ms = 1000});
+static MavlinkBatteryPublisher battery_pub(
+    {.queue = battery_queue,
+     .num_cells = BATTERY_NUM_CELLS,
+     .period_ms = 1000,
+     .power_supply_design_capacity_mah =
+         static_cast<uint16_t>(lroundf(BATTERY_DESIGN_CAPACITY * 1000.0f))});
 // IMU, joint state and ranges: period_ms = 0, the producing task sets the
 // rate. A gate equal to the task period dropped samples: with a 5 ms link
 // loop, ~18% of IMU samples were overwritten in their depth-1 queue before

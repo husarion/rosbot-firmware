@@ -16,6 +16,7 @@
 
 #include <cstdint>
 
+#include "battery_interface.hpp"
 #include "version_text.hpp"
 
 // Power board firmware v1.0.3 serves UART between its slow passes and
@@ -28,7 +29,52 @@ inline bool pbSupportsFastPolling(const char* firmware_version) {
 
 inline constexpr uint32_t PB_SLOW_POLL_PERIOD_MS = 1000;
 
+// Power board firmware v1.0.5 counts SoC itself and sends it in battery-frame
+// byte 13 (255 = not known yet) with the learnt capacity in bytes 9-10 (mAh).
+// Older versions send 0 in both.
+inline bool pbReportsSoc(const char* firmware_version) {
+  return versionAtLeast(firmware_version, 1, 0, 5);
+}
+
+inline float pbSocFraction(uint8_t raw) {
+  return raw <= 100 ? static_cast<float>(raw) * 0.01f : NAN;
+}
+
+inline float pbCapacityAh(uint16_t raw_mah) {
+  return raw_mah != 0 ? static_cast<float>(raw_mah) * 0.001f : NAN;
+}
+
 // 0 = request on every HwMonitor tick.
 inline uint32_t pbBatteryPollPeriodMs(const char* firmware_version) {
   return pbSupportsFastPolling(firmware_version) ? 0 : PB_SLOW_POLL_PERIOD_MS;
+}
+
+inline constexpr uint32_t PB_PARAM_FLAGS_POLL_PERIOD_MS = 1000;
+
+enum class PbRequest : uint8_t { None, BatteryState, BoardInfo, ParamFlags };
+
+// Side requests (board info, param flags) go half a battery period after the
+// previous request: back-to-back requests to a slow PB lost replies on HW
+// (2026-09, cause unconfirmed). With a fast PB the period is 0, so a side
+// request just takes one tick from battery polling.
+inline PbRequest pbNextRequest(uint32_t battery_period_ms,
+                               uint32_t since_battery_ms, uint32_t since_any_ms,
+                               uint32_t since_flags_ms,
+                               bool board_info_pending) {
+  const uint32_t gap_ms = battery_period_ms / 2;
+  if (board_info_pending && since_any_ms > gap_ms) return PbRequest::BoardInfo;
+  if (since_flags_ms >= PB_PARAM_FLAGS_POLL_PERIOD_MS && since_any_ms > gap_ms)
+    return PbRequest::ParamFlags;
+  if (since_battery_ms > battery_period_ms) return PbRequest::BatteryState;
+  return PbRequest::None;
+}
+
+// ParamFlags_1 (cmd 20) byte 4: bit 0 IND_ADPT_SNS, bit 1 USBC_ADPT_SNS.
+// The PB charges from USB-C when both are present.
+inline constexpr uint8_t PB_FLAGS_ADAPTER_BYTE = 4;
+
+inline uint8_t pbChargerTypeFromFlags(uint8_t adapter_byte) {
+  if (adapter_byte & 0x02) return CHARGER_TYPE_USB_C;
+  if (adapter_byte & 0x01) return CHARGER_TYPE_INDUCTIVE;
+  return CHARGER_TYPE_NONE;
 }
