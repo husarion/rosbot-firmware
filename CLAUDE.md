@@ -10,7 +10,7 @@ two variants — **rosbot** and **rosbot_xl**. Shared libraries in `lib/`,
 board support (startup, linker script, HAL/FreeRTOS config) in
 `boards/stm32f407/`, variant-specific entry/RTOS in `src/{rosbot,rosbot_xl}/`,
 variant-specific configuration in `include/{rosbot,rosbot_xl}/`. Working
-branch: **devel** (commit directly); `jazzy` is the release branch.
+branch: **devel** (commit directly); `main` is the release branch.
 
 ## Workflow — spec first, code second
 
@@ -77,8 +77,8 @@ the modified files and commit again. **Never bypass with `--no-verify`** —
 fix the underlying issue (or accept the formatter's choice).
 
 Commit rules:
-- **Branch `devel`** is the working branch (direct commits OK). `jazzy`
-  and `main` change only through a PR.
+- **Branch `devel`** is the working branch (direct commits OK). `main`
+  changes only through a PR.
 - Title under ~60 chars, present tense ("Add X", "Fix Y"). Body only when
   the *why* is not obvious from the diff.
 - No co-author trailer or "Generated with" footer in commits or PRs.

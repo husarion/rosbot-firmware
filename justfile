@@ -174,7 +174,7 @@ stage-snap-firmware:
     done
     echo "Firmware binaries staged under $dest — snapcraft can pick them up."
 
-# Cut a release for the current branch (must be `jazzy`). Drives the full
+# Cut a release for the current branch (must be `main`). Drives the full
 # local→dispatched flow: sanity gates → local build gate → (optional, if
 # `claude` + `jq` on PATH) Claude-drafted CHANGELOG section + bump
 # proposal → y/N → commit + push CHANGELOG → dispatch CI. The Release
@@ -200,8 +200,8 @@ release BUMP="auto":
     # Stable releases come from RELEASE_BRANCH in release.yaml.
     # Keep this check in sync. Pre-release runs (the `release-pre` recipe)
     # skip this entirely.
-    [ "$branch" = "jazzy" ] \
-        || { echo "release: must be on 'jazzy' (you're on '$branch'). For a test build use 'just release-pre {{BUMP}}'." >&2; exit 1; }
+    [ "$branch" = "main" ] \
+        || { echo "release: must be on 'main' (you're on '$branch'). For a test build use 'just release-pre {{BUMP}}'." >&2; exit 1; }
     [ -z "$(git status --porcelain)" ] \
         || { echo "release: working tree dirty — commit or stash first" >&2; exit 1; }
     command -v gh >/dev/null \
@@ -382,7 +382,7 @@ release BUMP="auto":
     echo "  gh run watch    # tail progress interactively"
 
 # Dispatch a pre-release build from the current branch (any branch, not
-# just jazzy). Tag suffixed with `.pre.<run_number>`, the GitHub Release
+# just main). Tag suffixed with `.pre.<run_number>`, the GitHub Release
 # is flagged as pre-release, the rosbot_ros bump PR is SKIPPED. Use to
 # test the release pipeline end-to-end before merging infra changes.
 #
