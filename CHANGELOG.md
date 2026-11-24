@@ -60,6 +60,10 @@ Fixes from the 2026-10 static firmware audit. HW-tested 2026-10-26 on ROSbot 3 a
 - Bridge: after an MCU reboot the time offset is re-seeded instead of taking ~5 min to converge.
 - Status LED SOS is real Morse (three short, three long, three short) and shows at least two full cycles per fault; the old toggle list lost its phase and did not read as SOS.
 
+### Removed
+
+- Bridge container image (`ghcr.io/husarion/rosbot-mavlink-bridge`), its Dockerfile/compose files and the `just bridge-*` recipes. Nothing consumed the image; the bridge ships with rosbot_ros (vcs pin) and through bloom.
+
 ### Added
 - Motor driver nFAULT latch (ROSbot 3): brake and reset the controllers while asserted, SOS on the status LED.
 - `MAV_STATE_CRITICAL` in HEARTBEAT and a STATUSTEXT per transition for a driver fault or critical battery (signal only).
