@@ -137,29 +137,6 @@ lint:
     #!/bin/bash
     pre-commit run --all-files
 
-# Build + start the MAVLink bridge container in the background. The
-# container uses host networking + IPC so it joins the same DDS domain as
-# the rosbot snap and receives MAVLink UDP frames from the firmware.
-bridge-up:
-    #!/bin/bash
-    docker compose -f bridge/docker-compose.yaml up -d --build
-
-# Tail bridge container logs (Ctrl-C to detach).
-bridge-logs:
-    #!/bin/bash
-    docker compose -f bridge/docker-compose.yaml logs -f
-
-# Stop and remove the bridge container.
-bridge-down:
-    #!/bin/bash
-    docker compose -f bridge/docker-compose.yaml down
-
-# One-shot rebuild of the bridge image (no cache) — use after edits to
-# bridge/ or lib/mavlink/dialect/.
-bridge-rebuild:
-    #!/bin/bash
-    docker compose -f bridge/docker-compose.yaml build --no-cache
-
 # Copy release-built MAVLink firmware binaries into the bridge package's
 # `firmware/` directory so the rosbot-snap build can bundle them.
 # Re-run after every firmware rebuild. The destination is gitignored.
