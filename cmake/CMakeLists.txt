@@ -28,7 +28,7 @@ project(rosbot_firmware C CXX ASM)
 # The build tree holds FetchContent sub-projects colcon would pick up.
 file(TOUCH ${CMAKE_BINARY_DIR}/COLCON_IGNORE)
 
-set(FW_VERSION "v2.4.0-jazzy")
+set(FW_VERSION "v2.5.0")
 
 # One build: the flags below do not depend on the CMake build type.
 if(NOT CMAKE_BUILD_TYPE)
